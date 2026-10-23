@@ -2,37 +2,35 @@ import 'dotenv/config';
 import app from './app.js';
 import prisma from './config/db.js';
 
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
 
 let server;
 let shuttingDown = false;
 
 async function startServer() {
-  try {
-    await prisma.$connect();
-    console.log('✅ Connected to database');
-
-    server = app.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 Server running at http://0.0.0.0:${PORT}`);
-    });
-
-    server.on('error', (error) => {
-      console.error('❌ Server error:', error.message);
-      process.exitCode = 1;
-    });
-
-    server.on('close', () => {
-      console.log('🛑 HTTP server closed');
-    });
-  } catch (error) {
-    console.error('❌ Failed to start server:', error.message);
-
+  if (process.env.DATABASE_URL) {
     try {
-      await prisma.$disconnect();
-    } catch (_) {}
-
-    process.exitCode = 1;
+      await prisma.$connect();
+      console.log('✅ Connected to database');
+    } catch (error) {
+      console.warn('⚠️ Database connection warning:', error.message);
+    }
+  } else {
+    console.warn('ℹ️ DATABASE_URL is not set. Set DATABASE_URL in .env to connect to your PostgreSQL database.');
   }
+
+  server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running at http://0.0.0.0:${PORT}`);
+  });
+
+  server.on('error', (error) => {
+    console.error('❌ Server error:', error.message);
+    process.exitCode = 1;
+  });
+
+  server.on('close', () => {
+    console.log('🛑 HTTP server closed');
+  });
 }
 
 async function shutdown(signal) {

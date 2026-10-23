@@ -7,7 +7,8 @@ import topicRouter from "./topic.router.js";
 import onboardingRouter from "./onboarding.router.js";
 import socialRouter from "./social.router.js";
 import problemRouter from "./problem.router.js";
-import studyRouter from "./study.routes.js"; // <-- YAHAN FIX
+import studyRouter from "./study.routes.js";
+import executionRouter from "./execution.router.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const router = Router();
@@ -29,8 +30,8 @@ router.use("/api/topics", topicRouter);
 router.use("/api/onboarding", onboardingRouter);
 router.use("/api/problems", problemRouter);
 router.use("/api/social", socialRouter);
-router.use("/api/study", studyRouter); 
-router.use("/api/topics", topicRouter)
+router.use("/api/study", studyRouter);
+router.use("/api/execution", executionRouter);
 
 // Root endpoint: API documentation & interactive developer dashboard
 router.get("/", (req, res) => {

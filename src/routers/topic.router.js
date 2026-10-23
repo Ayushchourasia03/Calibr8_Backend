@@ -3,22 +3,26 @@ import {
   getAllTopics,
   getDsaTopics,
   getTopicDetail,
-  getAllDsaTopics, 
-  getProblemsByDsaTopic 
+  getAllDsaTopics,
+  getProblemsByDsaTopic,
 } from "../controllers/topic.controller.js";
 
 const router = Router();
 
-// GET /topics/dsa - only DSA topics
+// GET /api/topics/dsa - only DSA calibration topics
 router.get("/dsa", getDsaTopics);
 
-// GET /topics/:identifier - single topic by ID or slug
-router.get("/:identifier", getTopicDetail);
+// GET /api/topics/dsa/categories - all structured DSA topic categories
+router.get("/dsa/categories", getAllDsaTopics);
+router.get("/categories", getAllDsaTopics);
 
-// GET /topics - all topics
+// GET /api/topics/dsa/:slug/problems - problems grouped by DSA topic
+router.get("/dsa/:slug/problems", getProblemsByDsaTopic);
+
+// GET /api/topics - all topics
 router.get("/", getAllTopics);
 
-router.get("/dsa", getAllDsaTopics)
-router.get("/dsa/:slug/problems", getProblemsByDsaTopic)
+// GET /api/topics/:identifier - single topic by ID or slug (must be after specific sub-routes)
+router.get("/:identifier", getTopicDetail);
 
 export default router;
