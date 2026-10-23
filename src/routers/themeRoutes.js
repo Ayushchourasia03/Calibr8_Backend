@@ -1,13 +1,13 @@
 import express from "express";
 import { getAllThemes, buyTheme, applyTheme, getMyThemeStatus } from '../controllers/themeController.js';
-import {  protect  } from "../middlewares/auth.middleware.js"; // your auth middleware
+import {  protect  } from "../middlewares/auth.middleware.js"; 
 
 
 const router = express.Router();
 
-router.get("/", protect , getAllThemes);           // GET /api/themes -> screenshot
-router.get("/me", protect , getMyThemeStatus);     // GET /api/themes/me -> for instant shift
-router.post("/:slug/buy", protect , buyTheme);     // POST /api/themes/arcade/buy
-router.put("/apply", protect , applyTheme);        // PUT /api/themes/apply {slug: 'frost'}
+router.get("/", protect , getAllThemes);          
+router.get("/me", protect , getMyThemeStatus);    
+router.post("/:slug/buy", protect , buyTheme);     
+router.put("/apply", protect , applyTheme);        
 
 export default router;
