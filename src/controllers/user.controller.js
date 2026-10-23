@@ -15,6 +15,7 @@ export const getMe = async (req, res, next) => {
         name: true,
         difficulty: true,
         rating: true,
+        coins:true,
         onboarded: true,
         preferredLanguage: true,
         createdAt: true,

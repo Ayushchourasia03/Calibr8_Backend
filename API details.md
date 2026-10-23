@@ -869,15 +869,181 @@ All API errors return consistent JSON shapes:
 }
 ```
 
+## 13. Themes & Personalization API (`/api/themes`)
+
+Mounted from `src/routers/themeRoutes.js` -> `src/controllers/themeController.js`.
+
+Allows users to view, purchase, and apply IDE themes. Premium themes require coins. All endpoints are protected.
+
+---
+
+### `GET /api/themes`
+
+Returns all available themes with ownership, applied status, and affordability for the authenticated user. Powers the screenshot gallery page.
+
+- **Auth**: Required (`Authorization: Bearer <token>`)
+- **Response (200 OK)**:
+
+```json
+{
+  "success": true,
+  "coins": 80,
+  "themes": [
+    {
+      "id": "e447113c-a354-4737-80d1-697cd80b7bb9",
+      "slug": "default",
+      "name": "Default",
+      "price": 0,
+      "previewColor": "#0A0F2C",
+      "isDefault": true,
+      "owned": true,
+      "applied": false,
+      "canAfford": true
+    },
+    {
+      "id": "a683f5e1-4d2c-4078-8d31-4c27e4a84ddb",
+      "slug": "arcade",
+      "name": "Arcade",
+      "price": 120,
+      "previewColor": "#FF1493",
+      "isDefault": false,
+      "owned": true,
+      "applied": true,
+      "canAfford": false
+    },
+    {
+      "id": "80cf347c-b6d5-4229-8bec-e90eab652a15",
+      "slug": "racer",
+      "name": "Racer",
+      "price": 150,
+      "previewColor": "#FF0000",
+      "isDefault": false,
+      "owned": false,
+      "applied": false,
+      "canAfford": false
+    }
+  ]
+}
+```
+
+---
+
+### `GET /api/themes/me`
+
+Returns minimal state for the current user: active theme, owned theme slugs, and coin balance. Optimized for the `/me` sidebar/header.
+
+- **Auth**: Required
+- **Response (200 OK)**:
+
+```json
+{
+  "coins": 200,
+  "activeTheme": "pearl",
+  "ownedThemes": [
+    "default",
+    "orbit",
+    "frost",
+    "editorial",
+    "monochrome",
+    "pearl"
+  ]
+}
+```
+
+---
+
+### `PUT /api/themes/apply`
+
+Applies an owned theme to the authenticated user, giving an instant visual shift.
+
+- **Auth**: Required
+- **Request Body**:
+
+```json
+{
+  "slug": "frost"
+}
+```
+
+- **Validation Rules**:
+  - `slug`: Required, must exist in the `themes` table.
+  - User must own the theme (free themes are auto-owned; premium themes must be purchased). Returns `403 Forbidden` if not owned.
+- **Response (200 OK)**:
+
+```json
+{
+  "success": true,
+  "activeTheme": "frost",
+  "message": "Frost applied"
+}
+```
+
+- **Error Responses**:
+  - `400 Bad Request`: `{ "error": "slug required" }`
+  - `404 Not Found`: `{ "error": "Theme not found" }`
+  - `403 Forbidden`: `{ "error": "You don't own this theme, buy first" }`
+
+---
+
+### `POST /api/themes/:slug/buy`
+
+Purchases a premium theme using coins, deducts the balance, and auto-applies the theme.
+
+- **Auth**: Required
+- **Parameters**: `slug` (e.g., `arcade`, `racer`)
+- **Request Body**: None
+- **Logic**:
+  1. Check that the theme exists, else `404`.
+  2. Check whether it is already owned, else `400 Already owned`.
+  3. Check `user.coins >= theme.price`, else `400 Not enough coins`.
+  4. Run an atomic transaction: `coins -= price` + `user_themes.create()` + `activeTheme.connect()`.
+- **Response (200 OK)**:
+
+```json
+{
+  "success": true,
+  "message": "Bought Arcade",
+  "theme": {
+    "slug": "arcade",
+    "applied": true,
+    "owned": true
+  },
+  "coins": 80
+}
+```
+
+- **Error Responses**:
+  - `404 Not Found`: `{ "error": "Theme not found" }`
+  - `400 Bad Request`: `{ "error": "Already owned", "owned": true }`
+  - `400 Bad Request`: `{ "error": "Not enough coins", "required": 120, "have": 80 }`
+
+---
+
+### Theme Catalogue (Seeded)
+
+| Slug | Name | Price | Type |
+|---|---|---|---|
+| `default` | Default | 0 | Free |
+| `orbit` | Orbit | 0 | Free |
+| `frost` | Frost | 0 | Free |
+| `editorial` | Editorial | 0 | Free |
+| `monochrome` | Monochrome | 0 | Free |
+| `pearl` | Pearl | 0 | Free |
+| `arcade` | Arcade | 120 | Premium |
+| `racer` | Racer | 150 | Premium |
+
+---
+
 ### HTTP Status Code Reference
 
 | Status Code | Meaning | Typical Scenario |
 |---|---|---|
 | `200 OK` | Succeeded | Successful GET, PUT, PATCH |
 | `201 Created` | Resource created | Successful registration or problem addition |
-| `400 Bad Request` | Validation failure | Missing required fields, invalid language, short password |
-| `401 Unauthorized` | Auth required / Invalid | Missing, revoked, or expired Bearer token; wrong credentials |
-| `404 Not Found` | Not found | Invalid topic ID, problem slug, or subject |
+| `400 Bad Request` | Validation failure | Missing required fields, invalid language, short password, already owned, not enough coins |
+| `401 Unauthorized` | Auth required / invalid | Missing, revoked, or expired Bearer token; wrong credentials |
+| `403 Forbidden` | Not allowed | Applying a theme the user doesn't own |
+| `404 Not Found` | Not found | Invalid topic ID, problem slug, subject, or theme |
 | `409 Conflict` | Conflict | Account with this email already exists |
 | `500 Server Error` | Server error | Unhandled runtime exception |
 | `503 Unavailable` | Service error | Database URL missing or unreachable |

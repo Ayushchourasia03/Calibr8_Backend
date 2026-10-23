@@ -7,18 +7,23 @@ datasource db {
 }
 
 model User {
-  id             String          @id @default(uuid())
-  email          String          @unique
-  passwordHash   String
-  name           String
-  difficulty     String?
-  rating         Int             @default(800)
-  onboarded      Boolean         @default(false)
-   preferredLanguage String       @default("cpp") @map("preferred_language")
-  topics         UserTopic[]
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  socialAccounts SocialAccount[]
+  id                String          @id @default(uuid())
+  email             String          @unique
+  passwordHash      String
+  name              String
+  difficulty        String?
+  rating            Int             @default(800)
+  onboarded         Boolean         @default(false)
+  preferredLanguage String          @default("cpp") @map("preferred_language")
+  topics            UserTopic[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  socialAccounts    SocialAccount[]
+
+  coins             Int             @default(100) // starting coins
+  activeThemeId     String?         @map("activeThemeId")
+  activeTheme       Theme?      @relation("ActiveTheme", fields: [activeThemeId], references: [id])
+  ownedThemes       UserTheme[]
 
   @@map("users")
 }
@@ -68,6 +73,34 @@ model SocialAccount {
   @@map("social_accounts")
 }
 
+model Theme {
+  id           String      @id @default(cuid())
+  slug         String      @unique
+  name         String
+  price        Int         @default(0)
+  previewColor String?
+  cssVars      Json?
+  isDefault    Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  purchases    UserTheme[]
+  activeForUsers User[]    @relation("ActiveTheme")
+
+  @@map("themes")
+}
+
+model UserTheme {
+  id          String   @id @default(cuid())
+  userId      String   @map("userId")
+  themeId     String   @map("themeId")
+  purchasedAt DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme       Theme    @relation(fields: [themeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, themeId])
+  @@map("user_themes")
+}
+
+
 model Problem {
   id            String         @id @default(cuid())
   problemNumber Int            @unique @default(autoincrement()) @map("problemNumber")
@@ -77,12 +110,9 @@ model Problem {
   difficulty    String         @default("Easy")
   timeLimit     Int            @default(1000) @map("timeLimit")
   memoryLimit   Int            @default(256) @map("memoryLimit")
-
-  // --- NEW FIELDS FOR OPTION 2 ---
   dsaTopicId    String?        @map("dsaTopicId")
   dsaTopic      DsaTopic?      @relation(fields: [dsaTopicId], references: [id], onDelete: SetNull)
   tags          String[]       @default([])
-
   testcases     Testcase[]
   templates     CodeTemplate[]
   createdAt     DateTime       @default(now())
@@ -145,8 +175,8 @@ model Submission {
 
 model StudySubject {
   id          String         @id @default(cuid())
-  slug        String         @unique // dbms, oops, system-design
-  name        String         // "DBMS"
+  slug        String         @unique
+  name        String
   description String?
   icon        String?
   order       Int            @default(0)
@@ -173,7 +203,7 @@ model StudyTopic {
   chapterId   String
   chapter     StudyChapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
   order       Int
-  content     String       @db.Text // Markdown
+  content     String       @db.Text
   isPublished Boolean      @default(true)
   mcqs        StudyMCQ[]
   createdAt   DateTime     @default(now())
@@ -186,18 +216,9 @@ model StudyMCQ {
   topicId      String
   topic        StudyTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
   question     String     @db.Text
-  options      Json       // ["A", "B", "C", "D"]
+  options      Json
   correctIndex Int
   explanation  String?    @db.Text
   difficulty   String     @default("Easy")
   order        Int
 }
-
-// Optional: User progress tracking ke liye baad me add karna hai
-// model StudyProgress {
-//   id        String   @id @default(cuid())
-//   userId    String
-//   topicId   String
-//   isCompleted Boolean
-//   score     Int?
-// }
