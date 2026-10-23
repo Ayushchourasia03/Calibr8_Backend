@@ -2,46 +2,103 @@ import jwt from "jsonwebtoken";
 import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
 
-const frontendUrl = () => process.env.FRONTEND_URL || "http://localhost:5173";
-const backendUrl = () => process.env.BACKEND_URL || "http://localhost:3000";
-const stateSecret = () =>
-  process.env.OAUTH_STATE_SECRET ||
-  process.env.JWT_SECRET ||
-  "fallback-secret-change-me";
+/**
+ * GET /api/social/:provider/link-url
+ * Returns authorization URL for linking external social account (Protected).
+ */
+export const getLinkUrl = (req, res, next) => {
+  try {
+    const { provider } = req.params;
+    const providerName = String(provider).toLowerCase();
 
-const redirectUri = (provider) =>
-  `${backendUrl()}/api/social/${provider}/callback`;
+    if (providerName !== "github") {
+      throw new ApiError(404, `Unknown OAuth provider '${provider}'.`);
+    }
 
-const providers = {
-  github: {
-    authorizeUrl(state) {
-      const params = new URLSearchParams({
-        client_id: process.env.GITHUB_CLIENT_ID || "demo-github-client-id",
-        redirect_uri: redirectUri("github"),
-        scope: "read:user user:email",
-        state,
-      });
-      return `https://github.com/login/oauth/authorize?${params.toString()}`;
-    },
-    async fetchProfile(code) {
-      if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
-        // Return dummy profile if credentials are not configured
-        return {
-          providerUserId: "demo-gh-user-12345",
-          username: "octocat-demo",
-          name: "Octocat Demo",
-          email: "octocat@github.dev",
-          avatarUrl: "https://github.com/identicons/octocat.png",
-          profileUrl: "https://github.com/octocat-demo",
-          bio: "GitHub demo user in AI Studio",
-          headline: null,
-          stats: {
-            publicRepos: 12,
-            followers: 42,
-            following: 10,
-          },
-        };
-      }
+    const stateSecret =
+      process.env.OAUTH_STATE_SECRET ||
+      process.env.JWT_SECRET ||
+      "fallback-secret-change-me";
+
+    const state = jwt.sign(
+      { userId: req.user.id, provider: providerName },
+      stateSecret,
+      { expiresIn: "10m" },
+    );
+
+    const backendUrl = process.env.BACKEND_URL || "http://localhost:3000";
+    const redirectUri = `${backendUrl}/api/social/${providerName}/callback`;
+    const clientId = process.env.GITHUB_CLIENT_ID || "demo-github-client-id";
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      scope: "read:user user:email",
+      state,
+    });
+
+    const url = `https://github.com/login/oauth/authorize?${params.toString()}`;
+    res.status(200).json({ url });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/social/:provider/callback
+ * OAuth redirect callback handler.
+ */
+export const handleCallback = async (req, res, next) => {
+  try {
+    const { provider } = req.params;
+    const { code, state, error } = req.query;
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+
+    if (error || !code || !state) {
+      return res.redirect(
+        `${frontendUrl}/?link_error=${encodeURIComponent("Linking was cancelled or failed.")}`,
+      );
+    }
+
+    const stateSecret =
+      process.env.OAUTH_STATE_SECRET ||
+      process.env.JWT_SECRET ||
+      "fallback-secret-change-me";
+
+    let payload;
+    try {
+      payload = jwt.verify(String(state), stateSecret);
+    } catch {
+      return res.redirect(
+        `${frontendUrl}/?link_error=${encodeURIComponent("Link request expired. Please try again.")}`,
+      );
+    }
+
+    const providerName = String(provider).toLowerCase();
+    if (providerName !== "github") {
+      return res.redirect(
+        `${frontendUrl}/?link_error=${encodeURIComponent("Unknown provider.")}`,
+      );
+    }
+
+    // Fetch GitHub Profile
+    let profile;
+    if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
+      // Mock profile fallback if credentials are not configured in environment
+      profile = {
+        providerUserId: "demo-gh-user-12345",
+        username: "octocat-demo",
+        name: "Octocat Demo",
+        email: "octocat@github.dev",
+        avatarUrl: "https://github.com/identicons/octocat.png",
+        profileUrl: "https://github.com/octocat-demo",
+        bio: "GitHub demo user in AI Studio",
+        headline: null,
+        stats: { publicRepos: 12, followers: 42, following: 10 },
+      };
+    } else {
+      const backendUrl = process.env.BACKEND_URL || "http://localhost:3000";
+      const redirectUri = `${backendUrl}/api/social/${providerName}/callback`;
 
       const tokenRes = await fetch(
         "https://github.com/login/oauth/access_token",
@@ -54,8 +111,8 @@ const providers = {
           body: JSON.stringify({
             client_id: process.env.GITHUB_CLIENT_ID,
             client_secret: process.env.GITHUB_CLIENT_SECRET,
-            code,
-            redirect_uri: redirectUri("github"),
+            code: String(code),
+            redirect_uri: redirectUri,
           }),
         },
       );
@@ -88,7 +145,7 @@ const providers = {
           : null;
       }
 
-      return {
+      profile = {
         providerUserId: String(gh.id),
         username: gh.login,
         name: gh.name || gh.login,
@@ -103,64 +160,9 @@ const providers = {
           following: gh.following,
         },
       };
-    },
-  },
-};
+    }
 
-const getProvider = (name) => providers[String(name).toLowerCase()] || null;
-
-/**
- * Generate OAuth authorization URL
- */
-export const getProviderAuthUrl = (providerName, userId) => {
-  const provider = getProvider(providerName);
-  if (!provider) {
-    throw new ApiError(404, `Unknown OAuth provider '${providerName}'.`);
-  }
-
-  const state = jwt.sign(
-    { userId, provider: providerName },
-    stateSecret(),
-    { expiresIn: "10m" },
-  );
-
-  return provider.authorizeUrl(state);
-};
-
-/**
- * Handle incoming OAuth callback
- */
-export const processOAuthCallback = async (providerName, query) => {
-  const { code, state, error } = query;
-
-  if (error || !code || !state) {
-    return {
-      success: false,
-      redirect: `${frontendUrl()}/?link_error=${encodeURIComponent("Linking was cancelled or failed.")}`,
-    };
-  }
-
-  let payload;
-  try {
-    payload = jwt.verify(String(state), stateSecret());
-  } catch {
-    return {
-      success: false,
-      redirect: `${frontendUrl()}/?link_error=${encodeURIComponent("Link request expired. Please try again.")}`,
-    };
-  }
-
-  const provider = getProvider(providerName);
-  if (!provider) {
-    return {
-      success: false,
-      redirect: `${frontendUrl()}/?link_error=${encodeURIComponent("Unknown provider.")}`,
-    };
-  }
-
-  try {
-    const profile = await provider.fetchProfile(String(code));
-
+    // Verify account is not linked to another user
     const existing = await prisma.socialAccount.findUnique({
       where: {
         provider_providerUserId: {
@@ -171,12 +173,12 @@ export const processOAuthCallback = async (providerName, query) => {
     });
 
     if (existing && existing.userId !== payload.userId) {
-      return {
-        success: false,
-        redirect: `${frontendUrl()}/?link_error=${encodeURIComponent(`This ${providerName} account is already linked to another user.`)}`,
-      };
+      return res.redirect(
+        `${frontendUrl}/?link_error=${encodeURIComponent(`This ${providerName} account is already linked to another user.`)}`,
+      );
     }
 
+    // Upsert social account
     await prisma.socialAccount.upsert({
       where: {
         userId_provider: {
@@ -195,67 +197,30 @@ export const processOAuthCallback = async (providerName, query) => {
       },
     });
 
-    return {
-      success: true,
-      redirect: `${frontendUrl()}/?linked=${providerName}`,
-    };
+    res.redirect(`${frontendUrl}/?linked=${providerName}`);
   } catch (err) {
-    console.error(`[Social Service] ${providerName} callback error:`, err);
-    return {
-      success: false,
-      redirect: `${frontendUrl()}/?link_error=${encodeURIComponent(err.message || "Could not link account.")}`,
-    };
-  }
-};
-
-/**
- * Unlink social account provider from user
- */
-export const unlinkSocialAccount = async (userId, providerName) => {
-  const count = await prisma.socialAccount.deleteMany({
-    where: {
-      userId,
-      provider: providerName,
-    },
-  });
-
-  return { success: true, count };
-};
-
-/**
- * GET /api/social/:provider/link-url
- * Returns authorization URL for linking external social account (Protected)
- */
-export const getLinkUrl = (req, res, next) => {
-  try {
-    const url = getProviderAuthUrl(req.params.provider, req.user.id);
-    res.status(200).json({ url });
-  } catch (err) {
-    next(err);
-  }
-};
-
-/**
- * GET /api/social/:provider/callback
- * OAuth redirect callback handler
- */
-export const handleCallback = async (req, res, next) => {
-  try {
-    const result = await processOAuthCallback(req.params.provider, req.query);
-    res.redirect(result.redirect);
-  } catch (err) {
-    next(err);
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    res.redirect(
+      `${frontendUrl}/?link_error=${encodeURIComponent(err.message || "Could not link account.")}`,
+    );
   }
 };
 
 /**
  * DELETE /api/social/:provider
- * Unlink social provider from the authenticated user (Protected)
+ * Unlinks the given social provider from the authenticated user (Protected).
  */
 export const unlinkProvider = async (req, res, next) => {
   try {
-    const result = await unlinkSocialAccount(req.user.id, req.params.provider);
-    res.status(200).json(result);
+    const { provider } = req.params;
+    const count = await prisma.socialAccount.deleteMany({
+      where: {
+        userId: req.user.id,
+        provider: String(provider).toLowerCase(),
+      },
+    });
+
+    res.status(200).json({ success: true, count });
   } catch (err) {
     next(err);
   }
