@@ -4,9 +4,9 @@
   "description": "Calibr8 Backend API — Phase 1",
   "type": "module",
   "main": "src/server.js",
-  "scripts": {
+"scripts": {
     "start": "node src/server.js",
-    "dev": "node src/server.js",
+    "dev": "nodemon src/server.js",
     "build": "node -e \"console.log('Build complete')\"",
     "lint": "node -e \"console.log('Lint check passed')\"",
     "db:push": "npx prisma db push",
@@ -36,6 +36,7 @@
     "ws": "^8.22.0"
   },
   "devDependencies": {
+    "nodemon": "^3.1.14",
     "prisma": "^7.10.1"
   }
 }
