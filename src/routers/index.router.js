@@ -9,6 +9,8 @@ import socialRouter from "./social.router.js";
 import problemRouter from "./problem.router.js";
 import studyRouter from "./study.routes.js";
 import executionRouter from "./execution.router.js";
+import themeRoutes from "./themeRoutes.js";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const router = Router();
@@ -32,6 +34,7 @@ router.use("/api/problems", problemRouter);
 router.use("/api/social", socialRouter);
 router.use("/api/study", studyRouter);
 router.use("/api/execution", executionRouter);
+router.use("/api/themes", themeRoutes);
 
 // Root endpoint: API documentation & interactive developer dashboard
 router.get("/", (req, res) => {
