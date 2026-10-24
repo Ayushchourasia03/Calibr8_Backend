@@ -221,7 +221,7 @@ export const verifyAuth = async (req, res, next) => {
         id: true,
         email: true,
         name: true,
-        role: true,
+       // role: true,
         difficulty: true,
         rating: true,
         coins: true,
