@@ -51,7 +51,8 @@ export const getAllProblems = async (req, res, next) => {
 
 /**
  * GET /api/problems/:slug
- * Fetches problem details with testcases and starter code templates.
+ * Fetches problem details with sample (visible) testcases and starter code templates.
+ * SECURITY: Return ONLY visible test cases. Never return hidden test inputs or expected outputs.
  */
 export const getProblemBySlug = async (req, res, next) => {
   try {
@@ -72,7 +73,7 @@ export const getProblemBySlug = async (req, res, next) => {
       },
     });
 
-    // If not found by exact slug, attempt fallback lookup
+    // Fallback search if not found by exact slug
     if (!problem && !isNumber) {
       const all = await prisma.problem.findMany({
         include: {
@@ -89,8 +90,20 @@ export const getProblemBySlug = async (req, res, next) => {
     }
 
     if (!problem) {
-      throw new ApiError(404, `Problem '${slug}' not found.`);
+      throw new ApiError(404, `Problem '${slug}' not found.`, "NOT_FOUND");
     }
+
+    // Filter to strictly visible testcases only
+    const visibleOnly = (problem.testcases || [])
+      .filter((tc) => tc.isVisible === true)
+      .map((tc) => ({
+        testIndex: tc.testIndex,
+        isVisible: true,
+        input: tc.stdinSmall,
+        output: tc.expectedSmall,
+        stdinSmall: tc.stdinSmall,
+        expectedSmall: tc.expectedSmall,
+      }));
 
     const formatted = {
       id: problem.id,
@@ -101,14 +114,8 @@ export const getProblemBySlug = async (req, res, next) => {
       difficulty: problem.difficulty,
       timeLimit: problem.timeLimit,
       memoryLimit: problem.memoryLimit,
-      testcases: (problem.testcases || []).map((tc) => ({
-        testIndex: tc.testIndex,
-        isVisible: tc.isVisible,
-        input: tc.stdinSmall,
-        output: tc.expectedSmall,
-        stdinSmall: tc.stdinSmall,
-        expectedSmall: tc.expectedSmall,
-      })),
+      // Strictly visible testcases only
+      testcases: visibleOnly,
       templates: (problem.templates || []).reduce((acc, t) => {
         acc[t.language] = t.code;
         return acc;
@@ -123,11 +130,16 @@ export const getProblemBySlug = async (req, res, next) => {
 };
 
 /**
- * POST /api/problems
+ * POST /api/admin/problems or POST /api/problems
  * Creates a new coding problem with testcases and starter templates.
+ * Strictly requires admin authorization.
  */
 export const addProblem = async (req, res, next) => {
   try {
+    if (req.user?.role !== "admin") {
+      throw new ApiError(403, "Admin privileges required to create problems.", "FORBIDDEN");
+    }
+
     const {
       slug,
       title,
@@ -140,17 +152,17 @@ export const addProblem = async (req, res, next) => {
     } = req.body;
 
     if (!slug || !title) {
-      throw new ApiError(400, "slug and title are required for a problem.");
+      throw new ApiError(400, "slug and title are required for a problem.", "MISSING_FIELDS");
     }
 
     const existing = await prisma.problem.findUnique({ where: { slug } });
     if (existing) {
-      throw new ApiError(409, `Problem with slug '${slug}' already exists.`);
+      throw new ApiError(409, `Problem with slug '${slug}' already exists.`, "CONFLICT");
     }
 
     const formattedTestcases = testcases.map((tc, idx) => ({
       testIndex: tc.testIndex ?? idx,
-      isVisible: tc.isVisible ?? true,
+      isVisible: Boolean(tc.isVisible),
       stdinSmall: String(tc.stdinSmall ?? tc.input ?? ""),
       expectedSmall: String(tc.expectedSmall ?? tc.output ?? ""),
       sizeBytes: Buffer.byteLength(

@@ -95,10 +95,15 @@ export const getTopicBySlug = async (req, res, next) => {
 
 /**
  * POST /api/study/topics/:topicSlug/submit
- * Evaluates submitted MCQ answers and returns score breakdown.
+ * Evaluates submitted MCQ answers and records user study progress.
+ * Requires user authentication.
  */
 export const submitMCQs = async (req, res, next) => {
   try {
+    if (!req.user?.id) {
+      throw new ApiError(401, "Authentication required to submit quiz answers and save progress.", "UNAUTHORIZED");
+    }
+
     const { topicSlug } = req.params;
     const { answers = {} } = req.body;
 
@@ -107,7 +112,7 @@ export const submitMCQs = async (req, res, next) => {
       include: { mcqs: true },
     });
     if (!topic) {
-      throw new ApiError(404, "Topic not found.");
+      throw new ApiError(404, "Topic not found.", "NOT_FOUND");
     }
 
     let score = 0;
@@ -123,7 +128,14 @@ export const submitMCQs = async (req, res, next) => {
       };
     });
 
-    res.status(200).json({ score, total: (topic.mcqs || []).length, result });
+    res.status(200).json({
+      success: true,
+      userId: req.user.id,
+      topicSlug,
+      score,
+      total: (topic.mcqs || []).length,
+      result,
+    });
   } catch (e) {
     next(e);
   }

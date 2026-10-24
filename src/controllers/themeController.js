@@ -1,6 +1,7 @@
 import prisma from "../config/db.js";
+import { ApiError } from "../utils/ApiError.js";
 
-export const getAllThemes = async (req, res) => {
+export const getAllThemes = async (req, res, next) => {
   try {
     const themes = await prisma.theme.findMany({ orderBy: [{ price: 'asc' }] });
     const owned = await prisma.userTheme.findMany({ where: { userId: req.user.id } });
@@ -10,11 +11,11 @@ export const getAllThemes = async (req, res) => {
     });
     
     const ownedSet = new Set(owned.map(o => o.themeId));
-    const activeId = user.activeTheme?.id || null;
+    const activeId = user?.activeTheme?.id || null;
 
     res.json({
       success: true,
-      coins: user.coins,
+      coins: user?.coins ?? 0,
       themes: themes.map(t => ({
         id: t.id,
         slug: t.slug,
@@ -24,37 +25,39 @@ export const getAllThemes = async (req, res) => {
         isDefault: t.isDefault,
         owned: ownedSet.has(t.id),
         applied: activeId === t.id,
-        canAfford: user.coins >= t.price
+        canAfford: (user?.coins ?? 0) >= t.price
       }))
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    next(e);
   }
 };
 
-export const buyTheme = async (req, res) => {
+export const buyTheme = async (req, res, next) => {
   try {
     const { slug } = req.params;
     const userId = req.user.id;
 
     const theme = await prisma.theme.findUnique({ where: { slug } });
-    if (!theme) return res.status(404).json({ error: "Theme not found" });
-
-    const alreadyOwned = await prisma.userTheme.findFirst({ where: { userId, themeId: theme.id } });
-    if (alreadyOwned) return res.status(400).json({ error: "Already owned", owned: true });
-
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (user.coins < theme.price) {
-      return res.status(400).json({ error: "Not enough coins", required: theme.price, have: user.coins });
+    if (!theme) {
+      throw new ApiError(404, "Theme not found", "NOT_FOUND");
     }
 
-    // Fixed transaction - no transaction table
+    const alreadyOwned = await prisma.userTheme.findFirst({ where: { userId, themeId: theme.id } });
+    if (alreadyOwned) {
+      throw new ApiError(400, "Already owned", "ALREADY_OWNED", { owned: true });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.coins < theme.price) {
+      throw new ApiError(400, "Not enough coins", "INSUFFICIENT_COINS", { required: theme.price, have: user?.coins ?? 0 });
+    }
+
     await prisma.$transaction([
       prisma.user.update({ where: { id: userId }, data: { coins: { decrement: theme.price } } }),
       prisma.userTheme.create({ data: { userId, themeId: theme.id } }),
     ]);
 
-    // Auto-apply - using relation connect
     await prisma.user.update({ 
       where: { id: userId }, 
       data: { activeTheme: { connect: { id: theme.id } } } 
@@ -67,22 +70,27 @@ export const buyTheme = async (req, res) => {
       coins: user.coins - theme.price
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    next(e);
   }
 };
 
-export const applyTheme = async (req, res) => {
+export const applyTheme = async (req, res, next) => {
   try {
     const { slug } = req.body;
-    if (!slug) return res.status(400).json({ error: "slug required" });
+    if (!slug) {
+      throw new ApiError(400, "slug required", "BAD_REQUEST");
+    }
 
     const theme = await prisma.theme.findUnique({ where: { slug } });
-    if (!theme) return res.status(404).json({ error: "Theme not found" });
+    if (!theme) {
+      throw new ApiError(404, "Theme not found", "NOT_FOUND");
+    }
 
     const owned = await prisma.userTheme.findFirst({ where: { userId: req.user.id, themeId: theme.id } });
-    if (!owned) return res.status(403).json({ error: "You don't own this theme, buy first" });
+    if (!owned) {
+      throw new ApiError(403, "You don't own this theme, buy first", "FORBIDDEN");
+    }
 
-    // FIXED - use relation
     await prisma.user.update({
       where: { id: req.user.id },
       data: { activeTheme: { connect: { id: theme.id } } }
@@ -90,18 +98,28 @@ export const applyTheme = async (req, res) => {
 
     res.json({ success: true, activeTheme: theme.slug, message: `${theme.name} applied` });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    next(e);
   }
 };
 
-export const getMyThemeStatus = async (req, res) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.user.id },
-    include: { activeTheme: true, ownedThemes: { include: { theme: true } } }
-  });
-  res.json({
-    coins: user.coins,
-    activeTheme: user.activeTheme?.slug || 'default',
-    ownedThemes: user.ownedThemes.map(o => o.theme.slug)
-  });
+export const getMyThemeStatus = async (req, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: { activeTheme: true, ownedThemes: { include: { theme: true } } }
+    });
+
+    if (!user) {
+      throw new ApiError(404, "User not found", "NOT_FOUND");
+    }
+
+    res.json({
+      success: true,
+      coins: user.coins,
+      activeTheme: user.activeTheme?.slug || 'default',
+      ownedThemes: (user.ownedThemes || []).map(o => o.theme.slug)
+    });
+  } catch (e) {
+    next(e);
+  }
 };
