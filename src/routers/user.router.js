@@ -14,7 +14,7 @@ router.get("/", protect, getMe);
 router.put("/", protect, updateMe);
 router.patch("/language", protect, updateLanguage);
 
-router.get("/all", protect, getAllProblems);
+router.get("/all",  getAllProblems);
 
 export default router;
 

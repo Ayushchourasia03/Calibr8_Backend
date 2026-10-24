@@ -146,7 +146,7 @@ export const getAllProblems = async (req, res, next) => {
       solvedPercentage: totalUsers > 0 ? Math.round((p.solvedCount / totalUsers) * 100) : 0,
       isSolved: userId ? p.submissions.length > 0 : false
     }));
-    res.json({ success: true, data });
+    res.json({ success: true, data , message: 'Problems fetched successfully' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, code: 'SERVER_ERROR', message: err.message });
