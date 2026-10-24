@@ -15,6 +15,7 @@ model User {
   rating            Int             @default(800)
   onboarded         Boolean         @default(false)
   preferredLanguage String          @default("cpp") @map("preferred_language")
+  role              String          @default("user")
   topics            UserTopic[]
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
@@ -158,19 +159,40 @@ model CodeTemplate {
 }
 
 model Submission {
-  id          String   @id @default(cuid())
-  problemId   String   @map("problemId")
-  userId      String?  @map("userId")
-  language    String
-  code        String   @db.Text
-  status      String
-  passedCount Int      @default(0) @map("passedCount")
-  totalCount  Int      @default(0) @map("totalCount")
-  time        String?
-  memory      Int?
-  createdAt   DateTime @default(now())
+  id                String   @id @default(cuid())
+  problemId         String   @map("problemId")
+  userId            String?  @map("userId")
+  language          String
+  code              String   @db.Text
+  status            String   // queued, running, done, error
+  verdict           String?  // Accepted, Wrong Answer, Time Limit Exceeded, Runtime Error
+  passedCount       Int      @default(0) @map("passedCount")
+  totalCount        Int      @default(0) @map("totalCount")
+  currentTier       Int      @default(1) @map("currentTier")
+  tierReached       Int      @default(0) @map("tierReached")
+  tiersPassed       Int      @default(0) @map("tiersPassed")
+  scoreUnitsAwarded Int      @default(0) @map("scoreUnitsAwarded")
+  maxTimeMs         Int?     @map("maxTimeMs")
+  maxMemoryKb       Int?     @map("maxMemoryKb")
+  compileOutput     String?  @map("compileOutput") @db.Text
+  firstFailure      Json?    @map("firstFailure")
+  time              String?
+  memory            Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now()) @updatedAt
 
   @@map("submissions")
+}
+
+model RevokedToken {
+  id        String   @id @default(cuid())
+  jti       String   @unique
+  token     String?  @db.Text
+  userId    String?  @map("userId")
+  expiresAt DateTime @map("expiresAt")
+  createdAt DateTime @default(now())
+
+  @@map("revoked_tokens")
 }
 
 model StudySubject {
