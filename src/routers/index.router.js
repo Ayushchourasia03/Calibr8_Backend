@@ -7,11 +7,11 @@ import topicRouter from "./topic.router.js";
 import onboardingRouter from "./onboarding.router.js";
 import socialRouter from "./social.router.js";
 import problemRouter from "./problem.router.js";
-import studyRouter from "./study.routes.js";
+import studyRouter from "./study.router.js";
 import executionRouter from "./execution.router.js";
-import themeRoutes from "./themeRoutes.js";
+import themeRouter from "./theme.router.js";
 import adminRouter from "./admin.router.js";
-import rankingRoutes from "./ranking.routes.js";
+import rankingRouter from "./ranking.router.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,9 +38,9 @@ router.use("/api/problems", problemRouter);
 router.use("/api/social", socialRouter);
 router.use("/api/study", studyRouter);
 router.use("/api/execution", executionRouter);
-router.use("/api/themes", themeRoutes);
+router.use("/api/themes", themeRouter);
 router.use("/api/admin", adminRouter);
-router.use("/api/rankings", rankingRoutes);
+router.use("/api/rankings", rankingRouter);
 
 // Root endpoint: API documentation & interactive developer dashboard
 router.get("/", (req, res) => {
