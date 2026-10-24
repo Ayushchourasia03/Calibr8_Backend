@@ -7,34 +7,38 @@ datasource db {
 }
 
 model User {
-  id                                   String          @id @default(uuid())
-  email                                String          @unique
-  passwordHash                         String
-  name                                 String
-  difficulty                           String?
-  rating                               Int             @default(800)
-  score                                Int             @default(0) @map("score") // total points - 48,210 etc
-  streak                               Int             @default(0) // 132 days
-  strictPercent                        Int             @default(0) @map("strictPercent") // 88%
-  tier                                 String          @default("Prism I") // Zenith II, Eclipse III etc
-  college                              String?         // For College filter
-  branch                               String?         // CSE, ECE...
-  batch                                String?         // 2026 etc
-  state                                String?         // Delhi, UP...
-  country                              String?         @default("India")
-  onboarded                            Boolean         @default(false)
-  createdAt                            DateTime        @default(now())
-  updatedAt                            DateTime        @updatedAt
-  preferredLanguage                    String          @default("cpp") @map("preferred_language")
-  coins                                Int             @default(100)
-  activeThemeId                        String?         @map("activeThemeId")
-  active_theme_id                      String?
+  id                String   @id @default(uuid())
+  email             String   @unique
+  passwordHash      String
+  name              String
+  difficulty        String?
+  rating            Int      @default(800)
+  score             Int      @default(0) @map("score")
+  streak            Int      @default(0)
+  strictPercent     Int      @default(0) @map("strictPercent")
+  tier              String   @default("Prism I")
+  college           String?
+  branch            String?
+  batch             String?
+  state             String?
+  country           String?  @default("India")
+  onboarded         Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  preferredLanguage String   @default("cpp") @map("preferred_language")
+  coins             Int      @default(100)
+  activeThemeId     String?  @map("activeThemeId")
+  active_theme_id   String?
+  
+  lastStreakDate    DateTime?
+  longestStreak     Int      @default(0)
+
   socialAccounts                       SocialAccount[]
   ownedThemes                          UserTheme[]
   topics                               UserTopic[]
   submissions                          Submission[]
-  activeTheme                          Theme?          @relation("ActiveTheme", fields: [activeThemeId], references: [id])
-  themes_users_active_theme_idTothemes Theme?          @relation("users_active_theme_idTothemes", fields: [active_theme_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  activeTheme                          Theme? @relation("ActiveTheme", fields: [activeThemeId], references: [id])
+  themes_users_active_theme_idTothemes Theme? @relation("users_active_theme_idTothemes", fields: [active_theme_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([college, score])
   @@index([branch, score])
