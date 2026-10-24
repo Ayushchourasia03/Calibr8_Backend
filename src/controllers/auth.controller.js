@@ -79,7 +79,7 @@ export const register = async (req, res, next) => {
         email: normalizedEmail,
         passwordHash,
         name: name.trim(),
-        role: assignedRole,
+       // role: assignedRole,
       },
       include: {
         socialAccounts: true,

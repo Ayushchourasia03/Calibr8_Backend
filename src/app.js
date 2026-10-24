@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import morgan from 'morgan';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -11,7 +12,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-// Security headers: strict CSP, framing protection, MIME sniffing protection
+// 1. Security headers
 app.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
@@ -23,7 +24,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// CORS - allow configured FRONTEND_URL or allow all origins in dev preview
+// 2. CORS
 app.use(
   cors({
     origin: process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',').map((u) => u.trim()) : true,
@@ -31,17 +32,19 @@ app.use(
   })
 );
 
-// Body parsing with size limit
+// 3. Body parsing 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-// Serve static assets from public/
-app.use(express.static(path.join(__dirname, '../public')));
+// 4. Morgan
+morgan.token('body', (req) => JSON.stringify(req.body));
+morgan.token('query', (req) => JSON.stringify(req.query));
 
-// All routes
+app.use(morgan(':method :url :status :response-time ms - Query: :query - Body: :body'));
+
+app.use(express.static(path.join(__dirname, '../public')));
 app.use('/', indexRouter);
 
-// Global error handler (must be last)
 app.use(errorHandler);
 
 export default app;
