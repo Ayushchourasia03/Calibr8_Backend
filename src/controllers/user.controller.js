@@ -112,3 +112,40 @@ export const updateLanguage = async (req, res, next) => {
     next(err);
   }
 };
+
+
+export const getAllProblems =  async (req, res , next) => {
+  try {
+    const userId = req.user?.id || null;
+    
+    const totalUsers = await prisma.user.count();
+
+    const problems = await prisma.problem.findMany({
+      orderBy: { problemNumber: 'asc' },
+      select: {
+        slug: true,
+        title: true,
+        difficulty: true,
+        solvedCount: true,
+        submissions: userId ? {
+          where: { userId, status: 'ACCEPTED' },
+          select: { id: true }
+        } : undefined
+      }
+    });
+
+    const data = problems.map(p => ({
+      name: p.title,
+      slug: p.slug,
+      level: p.difficulty.toLowerCase(),
+      levelDisplay: p.difficulty.toLowerCase() === 'medium' ? 'mid' : p.difficulty.toLowerCase(), // easy | mid | hard
+      solvedPercentage: totalUsers > 0 ? Math.round((p.solvedCount / totalUsers) * 100) : 0,
+      isSolved: userId ? p.submissions.length > 0 : false
+    }));
+
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, code: 'SERVER_ERROR', message: err.message });
+  }
+}

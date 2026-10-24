@@ -23,6 +23,7 @@ model User {
   socialAccounts                       SocialAccount[]
   ownedThemes                          UserTheme[]
   topics                               UserTopic[]
+  submissions                          Submission[] // ONLY ADD THIS LINE
   activeTheme                          Theme?          @relation("ActiveTheme", fields: [activeThemeId], references: [id])
   themes_users_active_theme_idTothemes Theme?          @relation("users_active_theme_idTothemes", fields: [active_theme_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -108,6 +109,8 @@ model Problem {
   title         String
   description   String
   difficulty    String         @default("Easy")
+  // ADD THIS for fast % calculation
+  solvedCount   Int            @default(0) @map("solvedCount")
   timeLimit     Int            @default(1000) @map("timeLimit")
   memoryLimit   Int            @default(256) @map("memoryLimit")
   createdAt     DateTime       @default(now())
@@ -117,7 +120,7 @@ model Problem {
   templates     CodeTemplate[]
   dsaTopic      DsaTopic?      @relation(fields: [dsaTopicId], references: [id])
   testcases     Testcase[]
-
+  submissions   Submission[] // ADD THIS
   @@map("problems")
 }
 
@@ -163,13 +166,17 @@ model Submission {
   userId      String?  @map("userId")
   language    String
   code        String
-  status      String
+  status      String // ACCEPTED, WRONG_ANSWER...
   passedCount Int      @default(0) @map("passedCount")
   totalCount  Int      @default(0) @map("totalCount")
   time        String?
   memory      Int?
   createdAt   DateTime @default(now())
-
+  // ADD THESE RELATIONS
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem     Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  @@index([problemId, status])
+  @@index([userId, status])
   @@map("submissions")
 }
 
