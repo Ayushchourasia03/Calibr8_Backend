@@ -3,17 +3,30 @@ import { ApiError } from '../utils/ApiError.js';
 /**
  * Global error handling middleware.
  * Catches ApiError instances and generic errors,
- * returning a consistent JSON error shape.
+ * returning a strictly uniform JSON error shape:
+ * {
+ *   success: false,
+ *   code: string,
+ *   message: string,
+ *   details?: any
+ * }
  */
 // eslint-disable-next-line no-unused-vars
 export const errorHandler = (err, req, res, next) => {
-  console.error(`[API Error] ${req.method} ${req.url}:`, err.message || err);
+  // Never log raw tokens or passwords
+  const sanitizedMessage = (err.message || 'Error').replace(/Bearer\s+[A-Za-z0-9-_.]+/gi, 'Bearer [REDACTED]');
+  console.error(`[API Error] ${req.method} ${req.url}:`, sanitizedMessage);
 
   if (err instanceof ApiError) {
-    return res.status(err.status).json({
+    const payload = {
       success: false,
+      code: err.code || ApiError.defaultCode(err.status),
       message: err.message,
-    });
+    };
+    if (err.details !== undefined && err.details !== null) {
+      payload.details = err.details;
+    }
+    return res.status(err.status).json(payload);
   }
 
   // Prisma unique constraint violation (P2002)
@@ -21,6 +34,7 @@ export const errorHandler = (err, req, res, next) => {
     const field = err.meta?.target?.[0] ?? 'field';
     return res.status(409).json({
       success: false,
+      code: 'CONFLICT',
       message: `A record with that ${field} already exists.`,
     });
   }
@@ -34,14 +48,23 @@ export const errorHandler = (err, req, res, next) => {
   ) {
     return res.status(503).json({
       success: false,
+      code: 'DATABASE_UNAVAILABLE',
       message: 'Database connection error: DATABASE_URL is not configured or unreachable.',
-      detail: err.message,
+      details: err.message,
     });
   }
 
-  // Fallback: server error
-  res.status(err.status || 500).json({
+  const status = err.status || (err.name === 'ValidationError' ? 400 : 500);
+  const code = err.code || ApiError.defaultCode(status);
+
+  const payload = {
     success: false,
+    code,
     message: err.message || 'Internal server error.',
-  });
+  };
+  if (err.details) {
+    payload.details = err.details;
+  }
+
+  res.status(status).json(payload);
 };

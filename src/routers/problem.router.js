@@ -4,16 +4,17 @@ import {
   getProblemBySlug,
   addProblem,
 } from "../controllers/problem.controller.js";
-import {protect} from "../middlewares/auth.middleware.js";
+import { protect, requireAdmin } from "../middlewares/auth.middleware.js";
+
 const router = Router();
 
-// GET /api/problems or /problems - list all
-router.get("/",protect, getAllProblems);
+// GET /api/problems - list all problems
+router.get("/", protect, getAllProblems);
 
-// POST /api/problems - add problem
-router.post("/", protect,addProblem);
+// POST /api/problems - moved to /api/admin/problems; retained with strict admin-only check
+router.post("/", protect, requireAdmin, addProblem);
 
-// GET /api/problems/:slug - problem detail with testcases + templates
-router.get("/:slug",protect, getProblemBySlug);
+// GET /api/problems/:slug - problem detail with visible testcases & starter templates
+router.get("/:slug", protect, getProblemBySlug);
 
 export default router;

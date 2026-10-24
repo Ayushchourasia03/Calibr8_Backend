@@ -1,6 +1,48 @@
 import jwt from "jsonwebtoken";
 import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
+import { OAUTH_STATE_SECRET } from "../config/jwt.js";
+
+/**
+ * Validates frontend redirect URL against an allow-list to prevent open redirect vulnerabilities.
+ */
+function getSafeFrontendRedirect(targetUrl, req) {
+  const configured = (process.env.FRONTEND_URL || "http://localhost:3000")
+    .split(",")
+    .map((u) => u.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+
+  const allowedOrigins = [
+    ...configured,
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+  ];
+
+  if (req && req.get("host")) {
+    const host = req.get("host");
+    allowedOrigins.push(`http://${host}`, `https://${host}`);
+  }
+
+  if (targetUrl) {
+    try {
+      const parsed = new URL(targetUrl);
+      const isAllowed = allowedOrigins.some((origin) => {
+        try {
+          return new URL(origin).origin === parsed.origin;
+        } catch {
+          return false;
+        }
+      });
+      if (isAllowed) {
+        return parsed.origin;
+      }
+    } catch {
+      // Invalid URL
+    }
+  }
+
+  return allowedOrigins[0] || "http://localhost:3000";
+}
 
 /**
  * GET /api/social/:provider/link-url
@@ -12,17 +54,13 @@ export const getLinkUrl = (req, res, next) => {
     const providerName = String(provider).toLowerCase();
 
     if (providerName !== "github") {
-      throw new ApiError(404, `Unknown OAuth provider '${provider}'.`);
+      throw new ApiError(404, `Unknown OAuth provider '${provider}'.`, "UNKNOWN_PROVIDER");
     }
 
-    const stateSecret =
-      process.env.OAUTH_STATE_SECRET ||
-      process.env.JWT_SECRET ||
-      "fallback-secret-change-me";
-
+    // Uses OAUTH_STATE_SECRET strictly kept separate from JWT_SECRET
     const state = jwt.sign(
       { userId: req.user.id, provider: providerName },
-      stateSecret,
+      OAUTH_STATE_SECRET,
       { expiresIn: "10m" },
     );
 
@@ -47,44 +85,38 @@ export const getLinkUrl = (req, res, next) => {
 /**
  * GET /api/social/:provider/callback
  * OAuth redirect callback handler.
+ * SECURITY:
+ * 1. Uses short error codes (CANCELLED, EXPIRED, etc.) instead of raw error messages.
+ * 2. Enforces allow-list on redirect destination to prevent open redirect vulnerabilities.
  */
 export const handleCallback = async (req, res, next) => {
+  const safeFrontend = getSafeFrontendRedirect(req.query.redirect_uri || process.env.FRONTEND_URL, req);
+
   try {
     const { provider } = req.params;
     const { code, state, error } = req.query;
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
 
     if (error || !code || !state) {
-      return res.redirect(
-        `${frontendUrl}/?link_error=${encodeURIComponent("Linking was cancelled or failed.")}`,
-      );
+      return res.redirect(`${safeFrontend}/?link_error=CANCELLED`);
     }
-
-    const stateSecret =
-      process.env.OAUTH_STATE_SECRET ||
-      process.env.JWT_SECRET ||
-      "fallback-secret-change-me";
 
     let payload;
     try {
-      payload = jwt.verify(String(state), stateSecret);
+      // Verify with OAUTH_STATE_SECRET
+      payload = jwt.verify(String(state), OAUTH_STATE_SECRET);
     } catch {
-      return res.redirect(
-        `${frontendUrl}/?link_error=${encodeURIComponent("Link request expired. Please try again.")}`,
-      );
+      return res.redirect(`${safeFrontend}/?link_error=EXPIRED`);
     }
 
     const providerName = String(provider).toLowerCase();
     if (providerName !== "github") {
-      return res.redirect(
-        `${frontendUrl}/?link_error=${encodeURIComponent("Unknown provider.")}`,
-      );
+      return res.redirect(`${safeFrontend}/?link_error=UNKNOWN_PROVIDER`);
     }
 
     // Fetch GitHub Profile
     let profile;
     if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
-      // Mock profile fallback if credentials are not configured in environment
+      // Mock profile fallback in development if credentials are not configured
       profile = {
         providerUserId: "demo-gh-user-12345",
         username: "octocat-demo",
@@ -118,10 +150,7 @@ export const handleCallback = async (req, res, next) => {
       );
       const token = await tokenRes.json();
       if (!token.access_token) {
-        throw new ApiError(
-          400,
-          token.error_description || "GitHub token exchange failed",
-        );
+        return res.redirect(`${safeFrontend}/?link_error=AUTH_FAILED`);
       }
 
       const headers = {
@@ -133,7 +162,9 @@ export const handleCallback = async (req, res, next) => {
       const gh = await (
         await fetch("https://api.github.com/user", { headers })
       ).json();
-      if (!gh.id) throw new ApiError(400, "Could not read GitHub profile.");
+      if (!gh.id) {
+        return res.redirect(`${safeFrontend}/?link_error=AUTH_FAILED`);
+      }
 
       let email = gh.email;
       if (!email) {
@@ -173,9 +204,7 @@ export const handleCallback = async (req, res, next) => {
     });
 
     if (existing && existing.userId !== payload.userId) {
-      return res.redirect(
-        `${frontendUrl}/?link_error=${encodeURIComponent(`This ${providerName} account is already linked to another user.`)}`,
-      );
+      return res.redirect(`${safeFrontend}/?link_error=ALREADY_LINKED`);
     }
 
     // Upsert social account
@@ -197,12 +226,10 @@ export const handleCallback = async (req, res, next) => {
       },
     });
 
-    res.redirect(`${frontendUrl}/?linked=${providerName}`);
+    res.redirect(`${safeFrontend}/?linked=${providerName}`);
   } catch (err) {
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-    res.redirect(
-      `${frontendUrl}/?link_error=${encodeURIComponent(err.message || "Could not link account.")}`,
-    );
+    console.error("[OAuth Callback Error]", err.message);
+    res.redirect(`${safeFrontend}/?link_error=SERVER_ERROR`);
   }
 };
 

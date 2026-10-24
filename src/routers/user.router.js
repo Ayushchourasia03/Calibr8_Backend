@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getMe, updateMe, updateLanguage } from "../controllers/user.controller.js";
+import { getMe, updateMe, updateLanguage , getAllProblems} from "../controllers/user.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
 
 const router = Router();
@@ -14,4 +14,10 @@ router.get("/", protect, getMe);
 router.put("/", protect, updateMe);
 router.patch("/language", protect, updateLanguage);
 
+router.get("/all",  getAllProblems);
+
 export default router;
+
+
+
+
