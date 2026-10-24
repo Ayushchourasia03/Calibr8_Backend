@@ -18,7 +18,7 @@
     />
     <style>
       :root {
-        --bg: #0a0404;
+        --bg: #0b0f19;
         --card-bg: #111827;
         --card-border: #1f293d;
         --text: #f3f4f6;
@@ -38,9 +38,7 @@
         padding: 0;
       }
       body {
-        font-family:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
-          Cantarell, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
         background: var(--bg);
         color: var(--text);
         padding: 1.5rem 1rem;
@@ -50,7 +48,7 @@
         align-items: center;
       }
       .container {
-        max-width: 980px;
+        max-width: 1100px;
         width: 100%;
       }
       .header {
@@ -59,7 +57,7 @@
         align-items: center;
         padding-bottom: 1.25rem;
         border-bottom: 1px solid var(--card-border);
-        margin-bottom: 1.5rem;
+        margin-bottom: 1.25rem;
         flex-wrap: wrap;
         gap: 1rem;
       }
@@ -69,31 +67,32 @@
         gap: 0.75rem;
       }
       .logo-badge {
-        width: 40px;
-        height: 40px;
+        width: 42px;
+        height: 42px;
         border-radius: 10px;
         background: linear-gradient(135deg, #3b82f6, #8b5cf6);
         display: flex;
         align-items: center;
         justify-content: center;
         font-weight: 800;
-        font-size: 1.2rem;
+        font-size: 1.25rem;
         color: #fff;
         box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
       }
       h1 {
-        font-size: 1.6rem;
+        font-size: 1.55rem;
         font-weight: 700;
         color: #fff;
       }
       p.subtitle {
         color: var(--text-muted);
-        font-size: 0.88rem;
+        font-size: 0.85rem;
       }
       .header-actions {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: 0.6rem;
+        flex-wrap: wrap;
       }
       .status-badge {
         display: inline-flex;
@@ -108,11 +107,44 @@
         font-weight: 600;
       }
       .status-dot {
-        width: 7px;
-        height: 7px;
+        width: 8px;
+        height: 8px;
         background: var(--success);
         border-radius: 50%;
         box-shadow: 0 0 6px var(--success);
+      }
+
+      /* Global Auth & Token Bar */
+      .token-bar {
+        background: #0f172a;
+        border: 1px solid var(--card-border);
+        border-radius: 10px;
+        padding: 0.75rem 1rem;
+        margin-bottom: 1.25rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+      .token-info {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-size: 0.85rem;
+      }
+      .token-input-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex: 1;
+        max-width: 550px;
+      }
+      .token-input-group input {
+        font-family: monospace;
+        font-size: 0.8rem;
+        padding: 0.45rem 0.6rem;
+        width: 100%;
       }
 
       /* Tabs */
@@ -122,17 +154,19 @@
         margin-bottom: 1.25rem;
         border-bottom: 1px solid var(--card-border);
         padding-bottom: 0.25rem;
+        overflow-x: auto;
       }
       .tab-btn {
         background: transparent;
         border: none;
         color: var(--text-muted);
-        font-size: 0.92rem;
+        font-size: 0.9rem;
         font-weight: 600;
         padding: 0.6rem 1.1rem;
         border-radius: 8px;
         cursor: pointer;
         transition: all 0.2s;
+        white-space: nowrap;
       }
       .tab-btn:hover {
         color: #fff;
@@ -143,7 +177,6 @@
         background: var(--card-bg);
         border: 1px solid var(--card-border);
       }
-
       .tab-content {
         display: none;
       }
@@ -151,7 +184,7 @@
         display: block;
       }
 
-      /* Cards */
+      /* Cards & Common UI */
       .card {
         background: var(--card-bg);
         border: 1px solid var(--card-border);
@@ -168,38 +201,6 @@
         justify-content: space-between;
         align-items: center;
       }
-
-      /* Forms */
-      .form-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 1rem;
-        margin-bottom: 1rem;
-      }
-      .form-group {
-        display: flex;
-        flex-direction: column;
-        gap: 0.35rem;
-      }
-      label {
-        font-size: 0.8rem;
-        color: var(--text-muted);
-        font-weight: 500;
-      }
-      input,
-      select {
-        background: var(--input-bg);
-        border: 1px solid var(--border-color);
-        border-radius: 7px;
-        padding: 0.6rem 0.8rem;
-        color: #fff;
-        font-size: 0.9rem;
-        outline: none;
-      }
-      input:focus,
-      select:focus {
-        border-color: var(--accent);
-      }
       .btn {
         display: inline-flex;
         align-items: center;
@@ -208,14 +209,12 @@
         background: var(--accent);
         color: #fff;
         border: none;
-        padding: 0.55rem 1.1rem;
-        border-radius: 7px;
+        padding: 0.5rem 0.9rem;
+        border-radius: 6px;
         cursor: pointer;
-        font-size: 0.85rem;
+        font-size: 0.82rem;
         font-weight: 600;
-        transition:
-          background 0.15s,
-          transform 0.1s;
+        transition: background 0.15s, transform 0.1s;
       }
       .btn:hover {
         background: var(--accent-hover);
@@ -239,2059 +238,1052 @@
       .btn-danger:hover {
         background: rgba(239, 68, 68, 0.3);
       }
-      .btn-beginner {
-        background: linear-gradient(135deg, #10b981, #059669);
-        color: #fff;
-        font-size: 0.9rem;
-        padding: 0.75rem 1.25rem;
-        box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+      .btn-success {
+        background: #059669;
       }
-      .btn-beginner:hover {
-        background: linear-gradient(135deg, #059669, #047857);
+      .btn-success:hover {
+        background: #047857;
       }
 
-      /* Topic Level Grid */
-      .topics-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 0.85rem;
-        margin: 1rem 0;
-      }
-      .topic-card {
-        background: var(--code-bg);
+      input, select, textarea {
+        background: var(--input-bg);
         border: 1px solid var(--border-color);
-        border-radius: 10px;
-        padding: 0.85rem 1rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.6rem;
-        transition: border-color 0.2s;
+        border-radius: 6px;
+        padding: 0.5rem 0.75rem;
+        color: #fff;
+        font-size: 0.85rem;
+        outline: none;
       }
-      .topic-card:hover {
-        border-color: #4b5563;
+      input:focus, select:focus, textarea:focus {
+        border-color: var(--accent);
       }
-      .topic-head {
-        display: flex;
-        justify-content: space-between;
+      textarea {
+        font-family: monospace;
+        resize: vertical;
+      }
+
+      /* HTTP Method Badges */
+      .method {
+        display: inline-block;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-weight: 700;
+        font-size: 0.75rem;
+        font-family: monospace;
+        text-align: center;
+        min-width: 52px;
+      }
+      .method.get { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+      .method.post { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+      .method.put { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+      .method.patch { background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
+      .method.delete { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+      .tag-auth {
+        display: inline-flex;
         align-items: center;
-      }
-      .topic-name {
-        font-weight: 600;
-        font-size: 0.92rem;
-        color: #f1f5f9;
-      }
-      .topic-cat {
+        gap: 0.25rem;
         font-size: 0.7rem;
-        background: rgba(59, 130, 246, 0.15);
-        color: #93c5fd;
         padding: 0.15rem 0.45rem;
         border-radius: 4px;
         font-weight: 600;
       }
+      .tag-protected { background: rgba(245, 158, 11, 0.15); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.3); }
+      .tag-public { background: rgba(16, 185, 129, 0.12); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.25); }
+
+      /* API Tester Item */
+      .api-card {
+        background: #0d1322;
+        border: 1px solid var(--card-border);
+        border-radius: 8px;
+        margin-bottom: 0.85rem;
+        overflow: hidden;
+        transition: border-color 0.2s;
+      }
+      .api-card:hover {
+        border-color: #3b82f6;
+      }
+      .api-header {
+        padding: 0.75rem 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        user-select: none;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+      .api-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        flex-wrap: wrap;
+      }
+      .api-path {
+        font-family: monospace;
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: #f1f5f9;
+      }
+      .api-desc {
+        color: var(--text-muted);
+        font-size: 0.8rem;
+      }
+      .api-body {
+        padding: 1rem;
+        background: #090e1a;
+        border-top: 1px solid var(--card-border);
+        display: none;
+      }
+      .api-body.open {
+        display: block;
+      }
+      .api-form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 0.75rem;
+      }
+      .api-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+      }
+      .api-field label {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        font-weight: 600;
+      }
+
+      /* Category Filter Pills */
+      .cat-filter-bar {
+        display: flex;
+        gap: 0.4rem;
+        overflow-x: auto;
+        padding-bottom: 0.5rem;
+        margin-bottom: 1rem;
+      }
+      .cat-pill {
+        background: #1e293b;
+        color: #94a3b8;
+        border: 1px solid var(--border-color);
+        padding: 0.35rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: all 0.15s;
+      }
+      .cat-pill:hover {
+        color: #fff;
+        background: #334155;
+      }
+      .cat-pill.active {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+      }
+
+      /* Live Console Pre */
+      pre.console-box {
+        background: var(--code-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 8px;
+        padding: 1rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.82rem;
+        color: #38bdf8;
+        max-height: 400px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+
+      /* Curriculum & Topics UI */
+      .subject-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: #1e293b;
+        border: 1px solid var(--border-color);
+        color: #cbd5e1;
+        padding: 0.5rem 0.9rem;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.82rem;
+        font-weight: 600;
+      }
+      .subject-pill:hover, .subject-pill.active {
+        background: #2563eb;
+        color: #fff;
+        border-color: #3b82f6;
+      }
+      .chapter-box {
+        border: 1px solid var(--card-border);
+        border-radius: 8px;
+        margin-bottom: 0.75rem;
+        overflow: hidden;
+      }
+      .chapter-title {
+        background: #0f172a;
+        padding: 0.65rem 0.9rem;
+        font-weight: 600;
+        font-size: 0.88rem;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+      }
+      .topic-row {
+        padding: 0.5rem 0.9rem;
+        border-top: 1px solid var(--card-border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.82rem;
+        cursor: pointer;
+      }
+      .topic-row:hover {
+        background: #1e293b;
+      }
+
+      .dsa-card {
+        background: #0d1322;
+        border: 1px solid var(--card-border);
+        border-radius: 8px;
+        padding: 0.85rem;
+        margin-bottom: 0.65rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
       .level-pills {
         display: flex;
         gap: 0.35rem;
-        background: rgba(255, 255, 255, 0.03);
-        padding: 0.25rem;
-        border-radius: 8px;
       }
       .pill-btn {
-        flex: 1;
-        text-align: center;
-        padding: 0.35rem 0.4rem;
+        background: #1e293b;
+        color: var(--text-muted);
+        border: 1px solid var(--border-color);
+        padding: 0.25rem 0.65rem;
+        border-radius: 4px;
         font-size: 0.78rem;
         font-weight: 600;
-        border-radius: 6px;
         cursor: pointer;
-        border: 1px solid transparent;
-        color: var(--text-muted);
-        background: transparent;
-        transition: all 0.15s;
       }
-      .pill-btn:hover {
-        color: #fff;
-        background: rgba(255, 255, 255, 0.05);
-      }
-      .pill-btn.active-easy {
-        background: rgba(16, 185, 129, 0.2);
-        color: #34d399;
-        border-color: rgba(16, 185, 129, 0.4);
-      }
-      .pill-btn.active-mid {
-        background: rgba(245, 158, 11, 0.2);
-        color: #fbbf24;
-        border-color: rgba(245, 158, 11, 0.4);
-      }
-      .pill-btn.active-hard {
-        background: rgba(239, 68, 68, 0.2);
-        color: #f87171;
-        border-color: rgba(239, 68, 68, 0.4);
-      }
-
-      /* Endpoint list */
-      .endpoint {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0.7rem 0.9rem;
-        border-radius: 8px;
-        background: var(--code-bg);
-        border: 1px solid var(--border-color);
-        margin-bottom: 0.6rem;
-        font-family: monospace;
-        font-size: 0.85rem;
-      }
-      .method {
-        display: inline-block;
-        padding: 0.2rem 0.45rem;
-        border-radius: 4px;
-        font-weight: 700;
-        font-size: 0.72rem;
-        margin-right: 0.6rem;
-      }
-      .get {
-        background: rgba(59, 130, 246, 0.2);
-        color: #60a5fa;
-      }
-      .post {
-        background: rgba(16, 185, 129, 0.2);
-        color: #34d399;
-      }
-      .put {
-        background: rgba(245, 158, 11, 0.2);
-        color: #fbbf24;
-      }
-
-      /* Console */
-      #console {
-        background: var(--code-bg);
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
-        padding: 1rem;
-        color: #38bdf8;
-        font-family: "JetBrains Mono", Consolas, monospace;
-        font-size: 0.82rem;
-        white-space: pre-wrap;
-        max-height: 280px;
-        overflow-y: auto;
-      }
-      .rating-banner {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        background: linear-gradient(
-          90deg,
-          rgba(59, 130, 246, 0.15),
-          rgba(139, 92, 246, 0.15)
-        );
-        border: 1px solid rgba(59, 130, 246, 0.3);
-        padding: 0.85rem 1.25rem;
-        border-radius: 10px;
-        margin-bottom: 1rem;
-      }
-      .rating-number {
-        font-size: 1.5rem;
-        font-weight: 800;
-        color: #60a5fa;
-      }
-
-      /* CS Curriculum Styling */
-      .curriculum-layout {
-        display: grid;
-        grid-template-columns: 310px 1fr;
-        gap: 1.25rem;
-        align-items: start;
-      }
-      @media (max-width: 840px) {
-        .curriculum-layout {
-          grid-template-columns: 1fr;
-        }
-      }
-      .subject-nav-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-        gap: 0.65rem;
-        margin-bottom: 1.25rem;
-      }
-      .subject-btn {
-        background: var(--code-bg);
-        border: 1px solid var(--border-color);
-        border-radius: 10px;
-        padding: 0.75rem 0.9rem;
-        cursor: pointer;
-        text-align: left;
-        transition: all 0.2s;
-        color: var(--text);
-      }
-      .subject-btn:hover {
-        border-color: var(--accent);
-        background: rgba(59, 130, 246, 0.08);
-      }
-      .subject-btn.active {
-        border-color: var(--accent);
-        background: rgba(59, 130, 246, 0.16);
-        box-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
-      }
-      .subject-btn .sub-title {
-        font-weight: 700;
-        font-size: 0.92rem;
-        color: #f8fafc;
-        margin-bottom: 0.2rem;
-      }
-      .subject-btn .sub-count {
-        font-size: 0.75rem;
-        color: #94a3b8;
-      }
-
-      .chapter-list {
-        max-height: 650px;
-        overflow-y: auto;
-        border: 1px solid var(--border-color);
-        border-radius: 10px;
-        background: var(--code-bg);
-        padding: 0.5rem;
-      }
-      .chapter-group {
-        margin-bottom: 0.5rem;
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.02);
-        border: 1px solid rgba(255, 255, 255, 0.04);
-        overflow: hidden;
-      }
-      .chapter-header {
-        padding: 0.6rem 0.75rem;
-        font-size: 0.85rem;
-        font-weight: 600;
-        color: #e2e8f0;
-        background: rgba(255, 255, 255, 0.03);
-        cursor: pointer;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-      .chapter-header:hover {
-        background: rgba(255, 255, 255, 0.06);
-      }
-      .topic-item {
-        padding: 0.5rem 0.75rem 0.5rem 1.1rem;
-        font-size: 0.82rem;
-        color: #94a3b8;
-        cursor: pointer;
-        border-top: 1px solid rgba(255, 255, 255, 0.02);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        transition: all 0.15s;
-      }
-      .topic-item:hover {
-        color: #fff;
-        background: rgba(59, 130, 246, 0.08);
-      }
-      .topic-item.active {
-        color: #60a5fa;
-        background: rgba(59, 130, 246, 0.15);
-        font-weight: 600;
-        border-left: 3px solid var(--accent);
-      }
-      .topic-item .mcq-badge {
-        font-size: 0.68rem;
-        background: rgba(16, 185, 129, 0.15);
-        color: #34d399;
-        padding: 0.1rem 0.4rem;
-        border-radius: 4px;
-      }
-
-      .topic-content-panel {
-        border: 1px solid var(--border-color);
-        border-radius: 12px;
-        background: var(--card-bg);
-        padding: 1.5rem;
-        min-height: 650px;
-      }
-      .markdown-body {
-        line-height: 1.68;
-        color: #e2e8f0;
-        font-size: 0.93rem;
-      }
-      .markdown-body h1 {
-        font-size: 1.5rem;
-        color: #fff;
-        margin-bottom: 0.75rem;
-        border-bottom: 1px solid var(--border-color);
-        padding-bottom: 0.5rem;
-      }
-      .markdown-body h2 {
-        font-size: 1.25rem;
-        color: #93c5fd;
-        margin-top: 1.5rem;
-        margin-bottom: 0.5rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        padding-bottom: 0.35rem;
-      }
-      .markdown-body h3 {
-        font-size: 1.05rem;
-        color: #f1f5f9;
-        margin-top: 1.25rem;
-        margin-bottom: 0.4rem;
-      }
-      .markdown-body p {
-        margin-bottom: 0.85rem;
-      }
-      .markdown-body ul,
-      .markdown-body ol {
-        margin-left: 1.5rem;
-        margin-bottom: 0.85rem;
-      }
-      .markdown-body li {
-        margin-bottom: 0.35rem;
-      }
-      .markdown-body pre {
-        background: #050811;
-        border: 1px solid #1e293b;
-        border-radius: 8px;
-        padding: 1rem;
-        overflow-x: auto;
-        font-family:
-          ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        font-size: 0.85rem;
-        color: #38bdf8;
-        margin: 1rem 0;
-      }
-      .markdown-body code {
-        font-family: ui-monospace, SFMono-Regular, monospace;
-        background: rgba(255, 255, 255, 0.08);
-        padding: 0.15rem 0.4rem;
-        border-radius: 4px;
-        font-size: 0.85em;
-        color: #f43f5e;
-      }
-      .markdown-body pre code {
-        background: transparent;
-        padding: 0;
-        color: inherit;
-      }
-      .markdown-body table {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 1rem 0;
-        font-size: 0.86rem;
-      }
-      .markdown-body th,
-      .markdown-body td {
-        border: 1px solid var(--border-color);
-        padding: 0.55rem 0.75rem;
-        text-align: left;
-      }
-      .markdown-body th {
-        background: rgba(59, 130, 246, 0.1);
-        color: #93c5fd;
-      }
-      .markdown-body blockquote {
-        border-left: 4px solid var(--accent);
-        padding: 0.5rem 1rem;
-        background: rgba(59, 130, 246, 0.05);
-        border-radius: 0 8px 8px 0;
-        margin: 1rem 0;
-        color: #cbd5e1;
-      }
-
-      /* MCQ Quiz Area */
-      .quiz-container {
-        margin-top: 2rem;
-        border-top: 2px dashed var(--border-color);
-        padding-top: 1.5rem;
-      }
-      .mcq-question-card {
-        background: var(--code-bg);
-        border: 1px solid var(--border-color);
-        border-radius: 10px;
-        padding: 1.1rem;
-        margin-bottom: 1.25rem;
-      }
-      .mcq-q-header {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 0.75rem;
-        font-weight: 600;
-        color: #f8fafc;
-        font-size: 0.95rem;
-      }
-      .mcq-options {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-      }
-      .mcq-option {
-        display: flex;
-        align-items: center;
-        gap: 0.65rem;
-        padding: 0.6rem 0.85rem;
-        border-radius: 7px;
-        background: rgba(255, 255, 255, 0.02);
-        border: 1px solid var(--border-color);
-        cursor: pointer;
-        font-size: 0.88rem;
-        transition: all 0.15s;
-      }
-      .mcq-option:hover {
-        background: rgba(255, 255, 255, 0.06);
-        border-color: #64748b;
-      }
-      .mcq-option.selected {
-        border-color: var(--accent);
-        background: rgba(59, 130, 246, 0.12);
-      }
-      .mcq-option.correct-reveal {
-        border-color: var(--success) !important;
-        background: rgba(16, 185, 129, 0.2) !important;
-        color: #34d399 !important;
-      }
-      .mcq-option.wrong-reveal {
-        border-color: var(--danger) !important;
-        background: rgba(239, 68, 68, 0.2) !important;
-        color: #f87171 !important;
-      }
-      .mcq-explanation {
-        margin-top: 0.75rem;
-        padding: 0.75rem;
-        background: rgba(59, 130, 246, 0.08);
-        border-left: 3px solid var(--accent);
-        border-radius: 0 6px 6px 0;
-        font-size: 0.82rem;
-        color: #cbd5e1;
-        display: none;
-      }
+      .pill-btn.active-easy { background: rgba(16, 185, 129, 0.25); color: #34d399; border-color: #10b981; }
+      .pill-btn.active-mid { background: rgba(245, 158, 11, 0.25); color: #fbbf24; border-color: #f59e0b; }
+      .pill-btn.active-hard { background: rgba(239, 68, 68, 0.25); color: #f87171; border-color: #ef4444; }
     </style>
   </head>
   <body>
     <div class="container">
+      <!-- Header -->
       <div class="header">
         <div class="brand">
           <div class="logo-badge">C8</div>
           <div>
-            <h1>Calibr8 — CS Curriculum & Engineering Suite</h1>
-            <p class="subtitle">
-              Complete Computer Science Core Curriculum (OOPS, System Design,
-              DBMS, OS, Networks) & Skill Calibration
-            </p>
+            <h1>Calibr8 Developer Hub</h1>
+            <p class="subtitle">Complete API Testing Console, Sandbox & CS Curriculum Explorer</p>
           </div>
         </div>
         <div class="header-actions">
-          <div id="authStatusBadge" class="status-badge">
-            <span
-              style="
-                width: 7px;
-                height: 7px;
-                border-radius: 50%;
-                background: #94a3b8;
-              "
-            ></span>
-            <span id="authStatusText">Guest (Not Logged In)</span>
-          </div>
-          <button
-            id="logoutBtn"
-            class="btn btn-danger"
-            style="display: none"
-            onclick="handleLogout()"
-          >
-            Logout
-          </button>
+          <span class="status-badge" id="apiStatusBadge">
+            <span class="status-dot"></span>
+            <span id="apiStatusText">Server Online (Port 3000)</span>
+          </span>
+          <span class="status-badge" id="authStatusBadge">
+            <span id="authStatusText">Guest (No Token)</span>
+          </span>
+          <button class="btn btn-secondary" id="logoutBtn" style="display:none;" onclick="handleLogout()">Logout</button>
         </div>
       </div>
 
-      <!-- Navigation Tabs -->
+      <!-- Quick Session & Token Bar -->
+      <div class="token-bar">
+        <div class="token-info">
+          <span>🔑 <strong>JWT Authorization Token</strong></span>
+        </div>
+        <div class="token-input-group">
+          <input type="text" id="globalTokenInput" placeholder="Paste or view active JWT Bearer token here..." />
+          <button class="btn btn-secondary" onclick="applyCustomToken()">Apply</button>
+          <button class="btn btn-danger" onclick="clearToken()">Clear</button>
+        </div>
+      </div>
+
+      <!-- Main Navigation Tabs -->
       <div class="tabs">
-        <button
-          class="tab-btn active"
-          id="btnTabCurriculum"
-          onclick="switchTab('curriculumTab')"
-        >
-          🎓 CS Curriculum (5 Core Subjects)
-        </button>
-        <button class="tab-btn" id="btnTabDsa" onclick="switchTab('dsaTab')">
-          DSA Level Selector
+        <button class="tab-btn active" id="btnTabExplorer" onclick="switchTab('explorerTab')">
+          🚀 All APIs Console (45 Endpoints)
         </button>
         <button class="tab-btn" id="btnTabAuth" onclick="switchTab('authTab')">
-          Auth & Profile
+          🔐 Auth & Profile
         </button>
-        <button
-          class="tab-btn"
-          id="btnTabExp"
-          onclick="switchTab('explorerTab')"
-        >
-          API Explorer
+        <button class="tab-btn" id="btnTabCurriculum" onclick="switchTab('curriculumTab')">
+          🎓 CS Curriculum (5 Subjects)
+        </button>
+        <button class="tab-btn" id="btnTabDsa" onclick="switchTab('dsaTab')">
+          🎯 DSA Skill Calibration
         </button>
       </div>
 
-      <!-- TAB 0: CS Curriculum (5 Core Subjects) -->
-      <div id="curriculumTab" class="tab-content active">
-        <!-- Subject Selection Bar -->
-        <div
-          class="card"
-          style="border-color: rgba(59, 130, 246, 0.4); margin-bottom: 1rem"
-        >
-          <div
-            style="
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              margin-bottom: 0.75rem;
-              flex-wrap: wrap;
-              gap: 0.5rem;
-            "
-          >
-            <div>
-              <h2 style="font-size: 1.15rem; color: #60a5fa; font-weight: 700">
-                Computer Science Curriculum Expansion
-              </h2>
-              <p style="font-size: 0.85rem; color: var(--text-muted)">
-                75 In-Depth Chapters across 5 Core Disciplines &middot;
-                11-Section Pedagogical Deep Dives &middot; 159 Interview MCQs
-              </p>
-            </div>
-            <div
-              style="
-                font-size: 0.82rem;
-                background: rgba(59, 130, 246, 0.15);
-                color: #93c5fd;
-                padding: 0.35rem 0.75rem;
-                border-radius: 9999px;
-                border: 1px solid rgba(59, 130, 246, 0.3);
-              "
-            >
-              Production-Grade & Interview Ready
-            </div>
-          </div>
-
-          <div class="subject-nav-grid" id="subjectButtonsContainer">
-            <!-- Populated dynamically: OOPS, System Design, DBMS, OS, Networks -->
-          </div>
+      <!-- TAB 1: Complete REST API Explorer (All 45 Endpoints) -->
+      <div id="explorerTab" class="tab-content active">
+        <!-- Category Filter Bar -->
+        <div class="cat-filter-bar" id="categoryFilterBar">
+          <button class="cat-pill active" onclick="filterApis('all', this)">All APIs (45)</button>
+          <button class="cat-pill" onclick="filterApis('auth', this)">🔐 Auth (7)</button>
+          <button class="cat-pill" onclick="filterApis('users', this)">👤 Users (5)</button>
+          <button class="cat-pill" onclick="filterApis('topics', this)">🎯 Topics (5)</button>
+          <button class="cat-pill" onclick="filterApis('onboarding', this)">🚀 Onboarding (4)</button>
+          <button class="cat-pill" onclick="filterApis('problems', this)">🧩 Problems (2)</button>
+          <button class="cat-pill" onclick="filterApis('execution', this)">⚡ Execution (4)</button>
+          <button class="cat-pill" onclick="filterApis('social', this)">🌐 Social (3)</button>
+          <button class="cat-pill" onclick="filterApis('study', this)">📚 Study (5)</button>
+          <button class="cat-pill" onclick="filterApis('themes', this)">🎨 Themes (4)</button>
+          <button class="cat-pill" onclick="filterApis('rankings', this)">🏆 Rankings (1)</button>
+          <button class="cat-pill" onclick="filterApis('system', this)">🩺 System (5)</button>
         </div>
 
-        <!-- Main Curriculum Two-Column Layout -->
-        <div class="curriculum-layout">
-          <!-- Sidebar: Chapter Accordion & Topic Picker -->
-          <div>
-            <div class="card" style="padding: 1rem; margin-bottom: 0.75rem">
-              <div
-                style="
-                  display: flex;
-                  justify-content: space-between;
-                  align-items: center;
-                  margin-bottom: 0.6rem;
-                "
-              >
-                <span
-                  style="font-weight: 600; font-size: 0.88rem; color: #f1f5f9"
-                  >Chapters & Topics</span
-                >
-                <span
-                  id="topicCountBadge"
-                  style="font-size: 0.75rem; color: var(--text-muted)"
-                  >Loading...</span
-                >
-              </div>
-              <input
-                type="text"
-                id="curriculumSearch"
-                placeholder="🔍 Filter chapters or topics..."
-                oninput="handleCurriculumSearch(this.value)"
-                style="
-                  width: 100%;
-                  font-size: 0.84rem;
-                  padding: 0.45rem 0.65rem;
-                "
-              />
-            </div>
-            <div class="chapter-list" id="chapterListContainer">
-              <div
-                style="
-                  text-align: center;
-                  padding: 2rem;
-                  color: var(--text-muted);
-                  font-size: 0.85rem;
-                "
-              >
-                Loading curriculum...
-              </div>
-            </div>
-          </div>
-
-          <!-- Main Content Area: Topic Reader + Quiz Mode -->
-          <div class="topic-content-panel">
-            <div
-              id="topicHeaderArea"
-              style="
-                margin-bottom: 1.25rem;
-                border-bottom: 1px solid var(--border-color);
-                padding-bottom: 0.75rem;
-              "
-            >
-              <div
-                style="
-                  display: flex;
-                  justify-content: space-between;
-                  align-items: flex-start;
-                  flex-wrap: wrap;
-                  gap: 0.5rem;
-                "
-              >
-                <div>
-                  <div
-                    id="topicBreadcrumb"
-                    style="
-                      font-size: 0.78rem;
-                      color: #93c5fd;
-                      text-transform: uppercase;
-                      letter-spacing: 0.5px;
-                      margin-bottom: 0.35rem;
-                    "
-                  >
-                    Subject / Chapter
-                  </div>
-                  <h2
-                    id="topicTitle"
-                    style="font-size: 1.4rem; color: #fff; font-weight: 700"
-                  >
-                    Select a topic to start reading
-                  </h2>
-                </div>
-                <div style="display: flex; gap: 0.5rem" id="topicActionBtns">
-                  <button
-                    class="btn btn-secondary"
-                    onclick="scrollToQuiz()"
-                    style="font-size: 0.8rem; padding: 0.4rem 0.75rem"
-                  >
-                    📝 Take Assessment (<span id="activeQuizCount">0</span>
-                    MCQs)
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Formatted Markdown Reader -->
-            <div id="topicMarkdownBody" class="markdown-body">
-              <p style="color: var(--text-muted)">
-                Pick any topic from the chapter navigation on the left to read
-                its comprehensive 11-section study material with C++/SQL code
-                examples, visual diagrams, and interview cheat sheets.
-              </p>
-            </div>
-
-            <!-- Interactive Quiz Section -->
-            <div
-              id="topicQuizArea"
-              class="quiz-container"
-              style="display: none"
-            >
-              <div
-                style="
-                  display: flex;
-                  justify-content: space-between;
-                  align-items: center;
-                  margin-bottom: 1rem;
-                  flex-wrap: wrap;
-                  gap: 0.5rem;
-                "
-              >
-                <div>
-                  <h3
-                    style="font-size: 1.2rem; color: #34d399; font-weight: 700"
-                  >
-                    Topic Mastery Assessment
-                  </h3>
-                  <p style="font-size: 0.82rem; color: var(--text-muted)">
-                    Answer the multiple-choice questions below to test your
-                    understanding. Explanations provided upon submission.
-                  </p>
-                </div>
-                <div
-                  id="quizScoreBanner"
-                  style="
-                    display: none;
-                    font-size: 0.95rem;
-                    font-weight: 700;
-                    padding: 0.4rem 0.9rem;
-                    border-radius: 8px;
-                  "
-                ></div>
-              </div>
-
-              <div id="mcqQuestionsList"></div>
-
-              <div
-                style="
-                  display: flex;
-                  justify-content: flex-end;
-                  gap: 0.75rem;
-                  margin-top: 1.25rem;
-                "
-              >
-                <button class="btn btn-secondary" onclick="resetQuiz()">
-                  Clear Answers
-                </button>
-                <button
-                  class="btn"
-                  id="btnSubmitQuiz"
-                  onclick="submitCurrentQuiz()"
-                >
-                  Submit Quiz for Evaluation
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- TAB 1: DSA Topic Level Selection -->
-      <div id="dsaTab" class="tab-content">
-        <!-- Beginner Quick Action -->
-        <div class="card" style="border-color: rgba(16, 185, 129, 0.35)">
-          <div
-            style="
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              flex-wrap: wrap;
-              gap: 1rem;
-            "
-          >
-            <div>
-              <h3
-                style="
-                  font-size: 1.15rem;
-                  color: #34d399;
-                  margin-bottom: 0.25rem;
-                "
-              >
-                Are you a Beginner?
-              </h3>
-              <p style="color: var(--text-muted); font-size: 0.88rem">
-                One-click setup: Automatically sets all DSA topics to
-                <strong>Easy</strong> level and starts your calibration rating
-                at <strong>800</strong>.
-              </p>
-            </div>
-            <button class="btn btn-beginner" onclick="applyBeginnerMode()">
-              ⚡ I am a Beginner (Set All to Easy)
-            </button>
-          </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.75rem;">
+          <input type="text" id="apiSearchInput" placeholder="🔍 Search endpoint by path or description..." oninput="searchApis(this.value)" style="max-width: 380px; width:100%;" />
+          <span style="font-size: 0.8rem; color: var(--text-muted);" id="apiCountDisplay">Showing 45 endpoints</span>
         </div>
 
-        <!-- Individual DSA Level Selection -->
-        <div class="card">
+        <!-- Endpoints Container -->
+        <div id="apisListContainer"></div>
+
+        <!-- Live Response Viewer -->
+        <div class="card" style="margin-top: 1.5rem;">
           <div class="card-title">
-            <span>Custom DSA Topic Calibration</span>
-            <span
-              style="
-                font-size: 0.8rem;
-                font-weight: normal;
-                color: var(--text-muted);
-              "
-            >
-              Pick Easy, Mid, or Hard for each individual DSA topic
-            </span>
-          </div>
-
-          <div class="rating-banner">
-            <div>
-              <div
-                style="
-                  font-size: 0.8rem;
-                  color: var(--text-muted);
-                  text-transform: uppercase;
-                  letter-spacing: 0.5px;
-                "
-              >
-                Projected Calibration Rating
-              </div>
-              <div
-                style="font-size: 0.9rem; color: #cbd5e1; margin-top: 0.2rem"
-                id="ratingBreakdown"
-              >
-                Calculating based on your selected levels...
-              </div>
-            </div>
-            <div style="text-align: right">
-              <div class="rating-number" id="projectedRating">800</div>
-              <div
-                style="font-size: 0.75rem; color: #93c5fd"
-                id="projectedDifficulty"
-              >
-                EASY LEVEL
-              </div>
+            <span id="responseStatusTitle">Live Response Console</span>
+            <div style="display:flex; gap:0.5rem;">
+              <button class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.6rem;" onclick="copyConsole()">Copy</button>
+              <button class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.6rem;" onclick="clearConsole()">Clear</button>
             </div>
           </div>
-
-          <div class="topics-grid" id="topicsContainer">
-            <div
-              style="
-                grid-column: 1/-1;
-                text-align: center;
-                padding: 2rem;
-                color: var(--text-muted);
-              "
-            >
-              Loading topics...
-            </div>
-          </div>
-
-          <div
-            style="
-              display: flex;
-              justify-content: flex-end;
-              gap: 0.75rem;
-              margin-top: 1rem;
-              border-top: 1px solid var(--border-color);
-              padding-top: 1rem;
-            "
-          >
-            <button class="btn btn-secondary" onclick="resetToAllEasy()">
-              Reset All to Easy
-            </button>
-            <button class="btn" onclick="saveTopicLevels()">
-              💾 Save & Complete Onboarding
-            </button>
-          </div>
+          <pre id="console" class="console-box">Click "Send Request" or "Run" on any API endpoint above to view live HTTP status, latency, and JSON output.</pre>
         </div>
       </div>
 
-      <!-- TAB 2: Authentication & Profile -->
+      <!-- TAB 2: Auth & Profile Tab -->
       <div id="authTab" class="tab-content">
-        <div class="form-grid">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.25rem;">
           <!-- Register Card -->
           <div class="card">
-            <div class="card-title">Register New Account</div>
-            <div class="form-group" style="margin-bottom: 0.75rem">
+            <div class="card-title">Register Account</div>
+            <div class="api-field" style="margin-bottom:0.6rem;">
               <label>Full Name</label>
-              <input
-                type="text"
-                id="regName"
-                placeholder="e.g. Alex Chen"
-                value="Alex Chen"
-              />
+              <input type="text" id="regName" value="Alex Smith" />
             </div>
-            <div class="form-group" style="margin-bottom: 0.75rem">
+            <div class="api-field" style="margin-bottom:0.6rem;">
               <label>Email Address</label>
-              <input
-                type="email"
-                id="regEmail"
-                placeholder="alex@calibr8.dev"
-                value=""
-              />
+              <input type="email" id="regEmail" value="alex@example.com" />
             </div>
-            <div class="form-group" style="margin-bottom: 1rem">
-              <label>Password</label>
-              <input
-                type="password"
-                id="regPassword"
-                placeholder="Minimum 6 characters"
-                value="Password123!"
-              />
+            <div class="api-field" style="margin-bottom:0.8rem;">
+              <label>Password (min 8 chars, != email)</label>
+              <input type="password" id="regPassword" value="Calibr8Pass123" />
             </div>
-            <button class="btn" style="width: 100%" onclick="handleRegister()">
-              Register Account
-            </button>
+            <button class="btn btn-success" style="width:100%;" onclick="handleRegister()">Register Account</button>
           </div>
 
           <!-- Login Card -->
           <div class="card">
-            <div class="card-title">Sign In</div>
-            <div class="form-group" style="margin-bottom: 0.75rem">
+            <div class="card-title">Login</div>
+            <div class="api-field" style="margin-bottom:0.6rem;">
               <label>Email Address</label>
-              <input
-                type="email"
-                id="loginEmail"
-                placeholder="alex@calibr8.dev"
-                value=""
-              />
+              <input type="email" id="loginEmail" value="alex@example.com" />
             </div>
-            <div class="form-group" style="margin-bottom: 1rem">
+            <div class="api-field" style="margin-bottom:0.8rem;">
               <label>Password</label>
-              <input type="password" id="loginPassword" value="Password123!" />
+              <input type="password" id="loginPassword" value="Calibr8Pass123" />
             </div>
-            <button class="btn" style="width: 100%" onclick="handleLogin()">
-              Sign In
-            </button>
+            <button class="btn" style="width:100%;" onclick="handleLogin()">Sign In</button>
           </div>
         </div>
 
-        <!-- Current Profile Card -->
+        <!-- Active User Profile Card -->
         <div class="card">
           <div class="card-title">
-            <span>Active Session & Profile</span>
-            <button
-              class="btn btn-secondary"
-              style="padding: 0.35rem 0.7rem; font-size: 0.8rem"
-              onclick="fetchProfile()"
-            >
-              Refresh Profile (/api/users/me)
-            </button>
+            <span>Current Session Profile</span>
+            <button class="btn btn-secondary" style="font-size:0.75rem;" onclick="fetchProfile()">Refresh Profile</button>
           </div>
-          <div
-            id="profileDetails"
-            style="color: var(--text-muted); font-size: 0.88rem"
-          >
-            No active user session. Please register or log in.
+          <div id="profileDetails" style="font-size:0.85rem; line-height: 1.7; color: var(--text);">
+            No active session. Please register or log in above.
           </div>
         </div>
+      </div>
 
-        <!-- Password Change Card -->
+      <!-- TAB 3: CS Curriculum -->
+      <div id="curriculumTab" class="tab-content">
         <div class="card">
-          <div class="card-title">Change Password</div>
-          <div class="form-grid" style="margin-bottom: 0.75rem">
-            <div class="form-group">
-              <label>Current Password</label>
-              <input type="password" id="oldPassword" value="Password123!" />
-            </div>
-            <div class="form-group">
-              <label>New Password</label>
-              <input
-                type="password"
-                id="newPassword"
-                placeholder="Minimum 6 characters"
-              />
-            </div>
-          </div>
-          <button class="btn btn-secondary" onclick="handleChangePassword()">
-            Update Password
-          </button>
+          <div class="card-title">Computer Science Core Curriculum</div>
+          <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">
+            75 comprehensive chapters across Computer Networks, DBMS, OOPs, Operating Systems, and System Design.
+          </p>
+          <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1.25rem;" id="subjectListPills"></div>
+          <div id="chaptersContainer"></div>
         </div>
       </div>
 
-      <!-- TAB 3: REST API Explorer -->
-      <div id="explorerTab" class="tab-content">
+      <!-- TAB 4: DSA Skill Calibration -->
+      <div id="dsaTab" class="tab-content">
         <div class="card">
-          <div class="card-title">REST API Endpoints</div>
-
-          <div class="endpoint">
-            <div>
-              <span class="method get">GET</span><span>/health</span
-              ><span style="color: var(--text-muted); margin-left: 0.5rem"
-                >— API health check</span
-              >
-            </div>
-            <button class="btn" onclick="testEndpoint('/health')">Test</button>
+          <div class="card-title">
+            <span>DSA Topic Calibration</span>
+            <button class="btn btn-success" onclick="applyBeginnerPreset()">⚡ 1-Click Beginner Preset (800 Rating)</button>
           </div>
-
-          <div class="endpoint">
-            <div>
-              <span class="method get">GET</span><span>/api/topics/dsa</span
-              ><span style="color: var(--text-muted); margin-left: 0.5rem"
-                >— List DSA topics specifically</span
-              >
+          <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">
+            Calibrate topic difficulty levels (Easy = 800, Mid = 1200, Hard = 1600).
+          </p>
+          <div id="topicsContainer"></div>
+          <div style="margin-top:1rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+            <div style="font-size:0.9rem;">
+              Projected Calibration Rating: <strong id="projectedRating" style="color:#34d399; font-size:1.1rem;">800</strong>
             </div>
-            <button class="btn" onclick="testEndpoint('/api/topics/dsa')">
-              Test
-            </button>
-          </div>
-
-          <div class="endpoint">
-            <div>
-              <span class="method get">GET</span><span>/api/topics</span
-              ><span style="color: var(--text-muted); margin-left: 0.5rem"
-                >— List all topics (DSA + Core)</span
-              >
-            </div>
-            <button class="btn" onclick="testEndpoint('/api/topics')">
-              Test
-            </button>
-          </div>
-
-          <div class="endpoint">
-            <div>
-              <span class="method get">GET</span
-              ><span>/api/onboarding/status</span
-              ><span style="color: var(--text-muted); margin-left: 0.5rem"
-                >— User onboarding & topic levels (Protected)</span
-              >
-            </div>
-            <button
-              class="btn"
-              onclick="testEndpoint('/api/onboarding/status', true)"
-            >
-              Test
-            </button>
-          </div>
-
-          <div class="endpoint">
-            <div>
-              <span class="method get">GET</span><span>/api/users/me</span
-              ><span style="color: var(--text-muted); margin-left: 0.5rem"
-                >— Current user profile (Protected)</span
-              >
-            </div>
-            <button class="btn" onclick="testEndpoint('/api/users/me', true)">
-              Test
-            </button>
-          </div>
-
-          <div class="endpoint">
-            <div>
-              <span class="method get">GET</span><span>/api/problems</span
-              ><span style="color: var(--text-muted); margin-left: 0.5rem"
-                >— Coding problems catalogue (15 problems)</span
-              >
-            </div>
-            <button class="btn" onclick="testEndpoint('/api/problems')">
-              Test
-            </button>
-          </div>
-
-          <div class="endpoint">
-            <div>
-              <span class="method get">GET</span><span>/api/study/subjects</span
-              ><span style="color: var(--text-muted); margin-left: 0.5rem"
-                >— List 5 core CS subjects with chapter counts</span
-              >
-            </div>
-            <button class="btn" onclick="testEndpoint('/api/study/subjects')">
-              Test
-            </button>
-          </div>
-
-          <div class="endpoint">
-            <div>
-              <span class="method get">GET</span
-              ><span>/api/study/subjects/oops</span
-              ><span style="color: var(--text-muted); margin-left: 0.5rem"
-                >— OOPS Subject with 14 chapters & topics</span
-              >
-            </div>
-            <button
-              class="btn"
-              onclick="testEndpoint('/api/study/subjects/oops')"
-            >
-              Test
-            </button>
-          </div>
-
-          <div class="endpoint">
-            <div>
-              <span class="method get">GET</span
-              ><span>/api/study/topics/paradigms-and-oop-foundations</span
-              ><span style="color: var(--text-muted); margin-left: 0.5rem"
-                >— Complete 11-section topic & MCQs</span
-              >
-            </div>
-            <button
-              class="btn"
-              onclick="
-                testEndpoint('/api/study/topics/paradigms-and-oop-foundations')
-              "
-            >
-              Test
-            </button>
-          </div>
-
-          <div class="endpoint">
-            <div>
-              <span class="method post">POST</span><span>/api/auth/logout</span
-              ><span style="color: var(--text-muted); margin-left: 0.5rem"
-                >— Revoke current auth token (Protected)</span
-              >
-            </div>
-            <button class="btn btn-danger" onclick="handleLogout()">
-              Test Logout
-            </button>
+            <button class="btn" onclick="saveCalibration()">Save Onboarding Calibration</button>
           </div>
         </div>
       </div>
 
-      <!-- Live Response Console -->
-      <div class="card">
-        <div class="card-title">
-          <span>Response Console</span>
-          <button
-            class="btn btn-secondary"
-            style="font-size: 0.75rem; padding: 0.25rem 0.6rem"
-            onclick="clearConsole()"
-          >
-            Clear
-          </button>
-        </div>
-        <pre id="console">
-Calibr8 Backend ready. Loading curriculum and session...</pre
-        >
-      </div>
     </div>
 
-    
     <script>
-      // If you open the HTML via file://, point this at your backend (e.g. http://localhost:5000)
-      const API_BASE =
-        location.protocol === "file:" ? "http://localhost:5000" : "";
-
       let authToken = localStorage.getItem("calibr8_token") || "";
       let currentUser = null;
       let dsaTopicList = [];
       const selectedLevels = {};
 
+      // Curriculum State
       let curriculumSubjects = [];
-      let currentSubject = null;
-      let currentTopicSlug = "";
-      let selectedQuizAnswers = {};
-      let mcqEls = {};
-      const expandedChapters = new Set();
+      let currentSubjectSlug = "dbms";
 
-      /* ---------- helpers ---------- */
-      async function api(path, opts) {
-        opts = opts || {};
-        const headers = {};
-        if (opts.body !== undefined)
-          headers["Content-Type"] = "application/json";
-        if (authToken) headers["Authorization"] = "Bearer " + authToken;
-        try {
-          const res = await fetch(API_BASE + path, {
-            method: opts.method || "GET",
-            headers: headers,
-            body:
-              opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-          });
-          const text = await res.text();
-          let data;
-          try {
-            data = text ? JSON.parse(text) : null;
-          } catch (e) {
-            data = { nonJsonResponse: text.slice(0, 400) };
-          }
-          return { ok: res.ok, status: res.status, data: data };
-        } catch (err) {
-          return {
-            ok: false,
-            status: 0,
-            data: {
-              error: err.message,
-              hint: "Network/CORS error or wrong API_BASE",
-            },
-          };
+      // Full Master Catalog of 45 Endpoints (excluding admin only)
+      const ALL_ENDPOINTS = [
+        // System & Health
+        { id: "sys-1", category: "system", method: "GET", path: "/health", auth: false, desc: "Health check reporting server uptime and status" },
+        { id: "sys-2", category: "system", method: "GET", path: "/ping", auth: false, desc: "Simple ping check returning 'pong'" },
+        { id: "sys-3", category: "system", method: "GET", path: "/api/health", auth: false, desc: "API namespace health check" },
+        { id: "sys-4", category: "system", method: "GET", path: "/api/ping", auth: false, desc: "API namespace ping check" },
+        { id: "sys-5", category: "system", method: "GET", path: "/", auth: false, desc: "Service metadata and catalog spec (JSON)", headers: { "Accept": "application/json" } },
+
+        // Authentication
+        { id: "auth-1", category: "auth", method: "POST", path: "/api/auth/register", auth: false, desc: "Register a new student account", body: { email: "user_" + Math.floor(Math.random()*9000+1000) + "@calibr8.dev", password: "StrongPassword123", name: "Student Demo" } },
+        { id: "auth-2", category: "auth", method: "POST", path: "/api/auth/login", auth: false, desc: "Authenticate with email & password to obtain JWT token", body: { email: "student@example.com", password: "StrongPassword123" } },
+        { id: "auth-3", category: "auth", method: "GET", path: "/api/auth/me", auth: true, desc: "Verify active JWT token and retrieve claims" },
+        { id: "auth-4", category: "auth", method: "GET", path: "/api/auth/verify", auth: true, desc: "Verify authentication token alias" },
+        { id: "auth-5", category: "auth", method: "POST", path: "/api/auth/refresh", auth: true, desc: "Refresh active authentication token" },
+        { id: "auth-6", category: "auth", method: "POST", path: "/api/auth/change-password", auth: true, desc: "Update user account password", body: { currentPassword: "OldPassword123", newPassword: "NewStrongPassword456" } },
+        { id: "auth-7", category: "auth", method: "POST", path: "/api/auth/logout", auth: true, desc: "Revoke active token persistently" },
+
+        // User & Profile
+        { id: "usr-1", category: "users", method: "GET", path: "/api/users/me", auth: true, desc: "Get authenticated profile with topic calibrations & preferences" },
+        { id: "usr-2", category: "users", method: "PUT", path: "/api/users/me", auth: true, desc: "Update user profile name", body: { name: "Jane Developer" } },
+        { id: "usr-3", category: "users", method: "PATCH", path: "/api/users/me/language", auth: true, desc: "Update preferred programming language (cpp, python, javascript, java, c)", body: { language: "python" } },
+        { id: "usr-4", category: "users", method: "PATCH", path: "/api/users/me/academic", auth: true, desc: "Update academic details (college, batch, state, country)", body: { college: "AKGEC", batch: "2026", state: "UP", country: "India" } },
+        { id: "usr-5", category: "users", method: "GET", path: "/api/users/all", auth: true, desc: "Get problem list formatted with user solve status" },
+
+        // Topics
+        { id: "top-1", category: "topics", method: "GET", path: "/api/topics", auth: true, desc: "List all calibration topics (DSA + Core)", query: { category: "" } },
+        { id: "top-2", category: "topics", method: "GET", path: "/api/topics/dsa", auth: true, desc: "List DSA calibration topics specifically" },
+        { id: "top-3", category: "topics", method: "GET", path: "/api/topics/categories", auth: true, desc: "List all structured DSA topic categories" },
+        { id: "top-4", category: "topics", method: "GET", path: "/api/topics/dsa/:slug/problems", auth: true, desc: "List problems grouped by DSA topic category", pathParams: { slug: "arrays-and-hashing" }, query: { difficulty: "", search: "" } },
+        { id: "top-5", category: "topics", method: "GET", path: "/api/topics/:identifier", auth: true, desc: "Get specific topic by ID or unique slug", pathParams: { identifier: "dsa-arrays" } },
+
+        // Onboarding
+        { id: "onb-1", category: "onboarding", method: "POST", path: "/api/onboarding", auth: true, desc: "Complete onboarding skill calibration", body: { difficulty: "medium", topicIds: "all" } },
+        { id: "onb-2", category: "onboarding", method: "PUT", path: "/api/onboarding/levels", auth: true, desc: "Update topic levels alias", body: { beginner: true } },
+        { id: "onb-3", category: "onboarding", method: "GET", path: "/api/onboarding/status", auth: true, desc: "Get onboarding calibration status and topic levels" },
+        { id: "onb-4", category: "onboarding", method: "PATCH", path: "/api/onboarding/language", auth: true, desc: "Set language preference during onboarding", body: { language: "cpp" } },
+
+        // Coding Problems
+        { id: "prb-1", category: "problems", method: "GET", path: "/api/problems", auth: true, desc: "List coding problems catalogue with search & difficulty filters", query: { difficulty: "", search: "" } },
+        { id: "prb-2", category: "problems", method: "GET", path: "/api/problems/:slug", auth: true, desc: "Get problem definition with visible testcases and code templates", pathParams: { slug: "two-sum-001" } },
+
+        // Code Execution & Judging
+        { id: "exe-1", category: "execution", method: "GET", path: "/api/execution/languages", auth: true, desc: "List supported sandbox programming languages" },
+        { id: "exe-2", category: "execution", method: "POST", path: "/api/execution/runs", auth: true, desc: "Synchronously run user code against sample test cases", body: { slug: "two-sum-001", language: "python", code: "class Solution:\n    def twoSum(self, nums, target):\n        lookup = {}\n        for i, n in enumerate(nums):\n            diff = target - n\n            if diff in lookup:\n                return [lookup[diff], i]\n            lookup[n] = i\n" } },
+        { id: "exe-3", category: "execution", method: "POST", path: "/api/execution/submissions", auth: true, desc: "Asynchronously submit code for multi-tier evaluation (202 Accepted)", body: { slug: "two-sum-001", language: "python", code: "class Solution:\n    def twoSum(self, nums, target):\n        lookup = {}\n        for i, n in enumerate(nums):\n            diff = target - n\n            if diff in lookup:\n                return [lookup[diff], i]\n            lookup[n] = i\n" } },
+        { id: "exe-4", category: "execution", method: "GET", path: "/api/execution/submissions/:id", auth: true, desc: "Get submission evaluation status & tier metrics", pathParams: { id: "sub-demo-id" } },
+
+        // Social & GitHub OAuth
+        { id: "soc-1", category: "social", method: "GET", path: "/api/social/:provider/link-url", auth: true, desc: "Generate GitHub OAuth authorization link", pathParams: { provider: "github" } },
+        { id: "soc-2", category: "social", method: "GET", path: "/api/social/:provider/callback", auth: false, desc: "OAuth callback handler", pathParams: { provider: "github" }, query: { code: "demo_code", state: "demo_state" } },
+        { id: "soc-3", category: "social", method: "DELETE", path: "/api/social/:provider", auth: true, desc: "Unlink social account", pathParams: { provider: "github" } },
+
+        // Study Curriculum
+        { id: "stu-1", category: "study", method: "GET", path: "/api/study/subjects", auth: false, desc: "List all 5 core CS subjects with chapter counts" },
+        { id: "stu-2", category: "study", method: "GET", path: "/api/study/subjects/:subjectSlug", auth: false, desc: "Get subject chapters and curriculum structure", pathParams: { subjectSlug: "dbms" } },
+        { id: "stu-3", category: "study", method: "GET", path: "/api/study/chapters/:chapterId/topics", auth: false, desc: "Get topics for a specific chapter ID", pathParams: { chapterId: "chap-dbms-1" } },
+        { id: "stu-4", category: "study", method: "GET", path: "/api/study/topics/:topicSlug", auth: false, desc: "Get topic lesson content and practice MCQs", pathParams: { topicSlug: "dbms-foundations-and-architecture" } },
+        { id: "stu-5", category: "study", method: "POST", path: "/api/study/topics/:topicSlug/submit", auth: true, desc: "Submit MCQ quiz answers and save progress", pathParams: { topicSlug: "dbms-foundations-and-architecture" }, body: { answers: { "mcq-1": 0 } } },
+
+        // Themes
+        { id: "thm-1", category: "themes", method: "GET", path: "/api/themes", auth: true, desc: "List all available IDE themes with ownership and prices" },
+        { id: "thm-2", category: "themes", method: "GET", path: "/api/themes/me", auth: true, desc: "Get current user active theme and coins" },
+        { id: "thm-3", category: "themes", method: "PUT", path: "/api/themes/apply", auth: true, desc: "Apply an owned theme to user profile", body: { slug: "default" } },
+        { id: "thm-4", category: "themes", method: "POST", path: "/api/themes/:slug/buy", auth: true, desc: "Purchase a theme with coins", pathParams: { slug: "cyberpunk" } },
+
+        // Rankings
+        { id: "rnk-1", category: "rankings", method: "GET", path: "/api/rankings", auth: false, desc: "Get public leaderboard rankings with optional filters", query: { scope: "", college: "", batch: "", state: "", country: "", limit: "10" } }
+      ];
+
+      let currentCategory = "all";
+      let currentSearchQuery = "";
+
+      // Initialize UI
+      window.addEventListener("DOMContentLoaded", async () => {
+        if (authToken) {
+          document.getElementById("globalTokenInput").value = authToken;
+          await fetchProfile();
         }
-      }
-
-      function asArray(d, keys) {
-        if (Array.isArray(d)) return d;
-        for (let i = 0; i < (keys || []).length; i++) {
-          if (d && Array.isArray(d[keys[i]])) return d[keys[i]];
-        }
-        return [];
-      }
-
-      function pickUser(d) {
-        if (!d) return null;
-        if (d.user) return d.user;
-        if (d.id || d.email) return d;
-        return null;
-      }
-
-      function escapeHtml(str) {
-        if (str === null || str === undefined) return "";
-        return String(str)
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#39;");
-      }
-
-      function logConsole(title, data) {
-        const el = document.getElementById("console");
-        const body =
-          typeof data === "string" ? data : JSON.stringify(data, null, 2);
-        el.textContent =
-          "=== " +
-          title +
-          " [" +
-          new Date().toLocaleTimeString() +
-          "] ===\n" +
-          body;
-      }
-      function clearConsole() {
-        document.getElementById("console").textContent = "Console cleared.";
-      }
+        updateAuthUI();
+        renderApis();
+        loadCurriculum();
+        loadTopics();
+      });
 
       function switchTab(tabId) {
-        document.querySelectorAll(".tab-btn").forEach(function (b) {
-          b.classList.remove("active");
-        });
-        document.querySelectorAll(".tab-content").forEach(function (c) {
-          c.classList.remove("active");
-        });
+        document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+        document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
         const map = {
-          curriculumTab: "btnTabCurriculum",
-          dsaTab: "btnTabDsa",
+          explorerTab: "btnTabExplorer",
           authTab: "btnTabAuth",
-          explorerTab: "btnTabExp",
+          curriculumTab: "btnTabCurriculum",
+          dsaTab: "btnTabDsa"
         };
-        if (map[tabId])
-          document.getElementById(map[tabId]).classList.add("active");
+        if (map[tabId]) document.getElementById(map[tabId]).classList.add("active");
         const target = document.getElementById(tabId);
         if (target) target.classList.add("active");
       }
 
-      /* FIX #1: testEndpoint was called by every API Explorer button but never defined */
-      async function testEndpoint(path, needsAuth) {
-        if (needsAuth && !authToken) {
-          logConsole(
-            "GET " + path,
-            "This endpoint is protected. Register or log in first (Auth & Profile tab).",
-          );
-          return;
-        }
-        logConsole("GET " + path, "Loading...");
-        const r = await api(path);
-        logConsole(
-          "GET " + path + "  →  " + r.status + (r.ok ? " OK" : " ERROR"),
-          r.data,
-        );
-      }
-
-      /* ---------- auth UI ---------- */
       function updateAuthUI() {
         const badge = document.getElementById("authStatusBadge");
         const text = document.getElementById("authStatusText");
         const logoutBtn = document.getElementById("logoutBtn");
+
         if (authToken && currentUser) {
           badge.style.background = "rgba(16, 185, 129, 0.15)";
           badge.style.color = "#34d399";
           badge.style.borderColor = "rgba(16, 185, 129, 0.3)";
-          text.textContent =
-            "👤 " +
-            (currentUser.name || currentUser.email) +
-            " (Rating: " +
-            (currentUser.rating || 800) +
-            ")";
+          text.textContent = "👤 " + (currentUser.name || currentUser.email) + " (" + (currentUser.rating || 800) + ")";
           logoutBtn.style.display = "inline-flex";
-          const topicsList = (currentUser.topics || [])
-            .map(function (t) {
-              const n = t.topic && t.topic.name ? t.topic.name : t.topicId;
-              return n + " (" + (t.level || "easy") + ")";
-            })
-            .join(", ");
+
+          const topics = (currentUser.topics || []).map(t => (t.topic?.name || t.topicId) + " (" + (t.level || "easy") + ")").join(", ");
           document.getElementById("profileDetails").innerHTML =
-            '<div style="line-height: 1.6;">' +
-            "<div><strong>Name:</strong> " +
-            escapeHtml(currentUser.name) +
-            "</div>" +
-            "<div><strong>Email:</strong> " +
-            escapeHtml(currentUser.email) +
-            "</div>" +
-            '<div><strong>Overall Difficulty:</strong> <span style="text-transform: capitalize; color: #60a5fa;">' +
-            escapeHtml(currentUser.difficulty || "Not set") +
-            "</span></div>" +
-            '<div><strong>Calibration Rating:</strong> <span style="color: #34d399; font-weight: bold;">' +
-            escapeHtml(currentUser.rating) +
-            "</span></div>" +
-            "<div><strong>Onboarded:</strong> " +
-            (currentUser.onboarded ? "✅ Yes" : "⏳ Pending") +
-            "</div>" +
-            '<div style="margin-top: 0.5rem;"><strong>Calibrated Topics:</strong> ' +
-            escapeHtml(topicsList || "None selected yet") +
-            "</div>" +
-            "</div>";
+            "<div><strong>Name:</strong> " + escapeHtml(currentUser.name) + "</div>" +
+            "<div><strong>Email:</strong> " + escapeHtml(currentUser.email) + "</div>" +
+            "<div><strong>Role:</strong> " + escapeHtml(currentUser.role || "user") + "</div>" +
+            "<div><strong>Rating:</strong> <span style='color:#34d399; font-weight:bold;'>" + (currentUser.rating || 800) + "</span></div>" +
+            "<div><strong>Score:</strong> " + (currentUser.score || 0) + " pts | <strong>Streak:</strong> " + (currentUser.streak || 0) + " days | <strong>Coins:</strong> " + (currentUser.coins || 100) + "</div>" +
+            "<div><strong>Academic:</strong> " + escapeHtml(currentUser.college || "Not set") + " (" + escapeHtml(currentUser.batch || "N/A") + "), " + escapeHtml(currentUser.state || "") + "</div>" +
+            "<div><strong>Language:</strong> " + escapeHtml(currentUser.preferredLanguage || "cpp") + "</div>" +
+            "<div style='margin-top:0.4rem;'><strong>Topics:</strong> " + escapeHtml(topics || "None calibrated yet") + "</div>";
         } else {
           badge.style.background = "rgba(100, 116, 139, 0.15)";
           badge.style.color = "#cbd5e1";
           badge.style.borderColor = "#475569";
-          text.textContent = "Guest (Not Logged In)";
+          text.textContent = "Guest (No Active Token)";
           logoutBtn.style.display = "none";
-          document.getElementById("profileDetails").textContent =
-            "No active user session. Please register or log in.";
+          document.getElementById("profileDetails").textContent = "No active session. Please register or log in.";
         }
       }
 
-      function clearSession() {
+      function applyCustomToken() {
+        const token = document.getElementById("globalTokenInput").value.trim();
+        if (!token) {
+          clearToken();
+          return;
+        }
+        authToken = token;
+        localStorage.setItem("calibr8_token", token);
+        logConsole("TOKEN UPDATED", { message: "Token set in localStorage and applied to all protected requests.", tokenPrefix: token.slice(0, 20) + "..." });
+        fetchProfile();
+      }
+
+      function clearToken() {
         authToken = "";
         currentUser = null;
         localStorage.removeItem("calibr8_token");
+        document.getElementById("globalTokenInput").value = "";
         updateAuthUI();
+        logConsole("TOKEN CLEARED", { message: "Session token cleared. Requests will run unauthenticated." });
       }
 
-      /* ---------- DSA topics ---------- */
-      /* FIX #2: response shape was assumed; now uses /api/topics/dsa and accepts several shapes */
-      async function loadTopics() {
-        let r = await api("/api/topics/dsa");
-        let list = asArray(r.data, ["dsaTopics", "dsa", "topics", "data"]);
-        if (!list.length) {
-          r = await api("/api/topics");
-          list = asArray(r.data, ["dsaTopics", "dsa", "topics", "data"]);
-        }
-        if (!list.length) {
-          document.getElementById("topicsContainer").innerHTML =
-            '<div style="grid-column:1/-1;color:#ef4444;">Failed to load topics (HTTP ' +
-            r.status +
-            "). Check Response Console via API Explorer.</div>";
-          logConsole("TOPICS LOAD FAILED", r.data);
-          return;
-        }
-        dsaTopicList = list;
-        renderTopics();
+      function filterApis(cat, btn) {
+        currentCategory = cat;
+        document.querySelectorAll(".cat-pill").forEach(p => p.classList.remove("active"));
+        if (btn) btn.classList.add("active");
+        renderApis();
       }
 
-      function renderTopics() {
-        const container = document.getElementById("topicsContainer");
+      function searchApis(query) {
+        currentSearchQuery = query.toLowerCase().trim();
+        renderApis();
+      }
+
+      function renderApis() {
+        const container = document.getElementById("apisListContainer");
         container.innerHTML = "";
-        dsaTopicList.forEach(function (topic) {
-          if (!selectedLevels[topic.id]) selectedLevels[topic.id] = "easy";
-          const lvl = selectedLevels[topic.id];
+
+        const filtered = ALL_ENDPOINTS.filter(ep => {
+          const matchCat = (currentCategory === "all" || ep.category === currentCategory);
+          const matchSearch = (!currentSearchQuery ||
+            ep.path.toLowerCase().includes(currentSearchQuery) ||
+            ep.desc.toLowerCase().includes(currentSearchQuery) ||
+            ep.method.toLowerCase().includes(currentSearchQuery)
+          );
+          return matchCat && matchSearch;
+        });
+
+        document.getElementById("apiCountDisplay").textContent = "Showing " + filtered.length + " of " + ALL_ENDPOINTS.length + " endpoints";
+
+        filtered.forEach(ep => {
           const card = document.createElement("div");
-          card.className = "topic-card";
+          card.className = "api-card";
+          card.id = "card-" + ep.id;
+
+          const methodClass = ep.method.toLowerCase();
+          const authBadge = ep.auth
+            ? '<span class="tag-auth tag-protected">🔒 Protected</span>'
+            : '<span class="tag-auth tag-public">🌐 Public</span>';
+
           card.innerHTML =
-            '<div class="topic-head"><span class="topic-name">' +
-            escapeHtml(topic.name) +
-            "</span>" +
-            '<span class="topic-cat">' +
-            escapeHtml(topic.category || "DSA") +
-            "</span></div>" +
-            '<div class="level-pills"></div>';
-          const pills = card.querySelector(".level-pills");
-          [
-            ["easy", "Easy", "active-easy"],
-            ["mid", "Mid", "active-mid"],
-            ["hard", "Hard", "active-hard"],
-          ].forEach(function (p) {
-            const b = document.createElement("button");
-            const active = lvl === p[0] || (p[0] === "mid" && lvl === "medium");
-            b.className = "pill-btn" + (active ? " " + p[2] : "");
-            b.textContent = p[1];
-            b.onclick = function () {
-              selectedLevels[topic.id] = p[0];
-              renderTopics();
-            };
-            pills.appendChild(b);
-          });
+            '<div class="api-header" onclick="toggleApiBody(\'' + ep.id + '\')">' +
+              '<div class="api-meta">' +
+                '<span class="method ' + methodClass + '">' + ep.method + '</span>' +
+                '<span class="api-path">' + escapeHtml(ep.path) + '</span>' +
+                authBadge +
+              '</div>' +
+              '<div style="display:flex; align-items:center; gap:0.6rem;">' +
+                '<span class="api-desc">' + escapeHtml(ep.desc) + '</span>' +
+                '<button class="btn" style="padding:0.35rem 0.7rem; font-size:0.75rem;" onclick="event.stopPropagation(); executeApi(\'' + ep.id + '\')">Send</button>' +
+              '</div>' +
+            '</div>' +
+            '<div class="api-body" id="body-' + ep.id + '">' +
+              buildApiForm(ep) +
+              '<div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.75rem;">' +
+                '<button class="btn btn-secondary" style="font-size:0.75rem;" onclick="toggleApiBody(\'' + ep.id + '\')">Close</button>' +
+                '<button class="btn" style="font-size:0.75rem;" onclick="executeApi(\'' + ep.id + '\')">Send Request</button>' +
+              '</div>' +
+            '</div>';
+
           container.appendChild(card);
         });
-        calculateProjectedRating();
       }
 
-      function resetToAllEasy() {
-        dsaTopicList.forEach(function (t) {
-          selectedLevels[t.id] = "easy";
-        });
-        renderTopics();
+      function toggleApiBody(id) {
+        const body = document.getElementById("body-" + id);
+        if (body) {
+          body.classList.toggle("open");
+        }
       }
 
-      function calculateProjectedRating() {
-        const map = { easy: 800, mid: 1200, medium: 1200, hard: 1600 };
-        const keys = Object.keys(selectedLevels);
-        if (!keys.length) return;
-        let sum = 0,
-          e = 0,
-          m = 0,
-          h = 0;
-        keys.forEach(function (k) {
-          const l = selectedLevels[k];
-          sum += map[l] || 800;
-          if (l === "easy") e++;
-          else if (l === "mid" || l === "medium") m++;
-          else if (l === "hard") h++;
-        });
-        const avg = Math.round(sum / keys.length);
-        document.getElementById("projectedRating").textContent = avg;
-        document.getElementById("projectedDifficulty").textContent =
-          (avg >= 1400 ? "HARD" : avg >= 1000 ? "MEDIUM" : "EASY") + " LEVEL";
-        document.getElementById("ratingBreakdown").textContent =
-          keys.length +
-          " Topics Selected (" +
-          e +
-          " Easy, " +
-          m +
-          " Mid, " +
-          h +
-          " Hard)";
+      function buildApiForm(ep) {
+        let html = '';
+
+        // Path params
+        if (ep.pathParams) {
+          html += '<div style="margin-bottom:0.6rem;"><strong style="font-size:0.8rem; color:#93c5fd;">Route URL Parameters:</strong></div>';
+          html += '<div class="api-form-grid">';
+          for (const [key, defVal] of Object.entries(ep.pathParams)) {
+            html += '<div class="api-field">' +
+              '<label>:' + key + '</label>' +
+              '<input type="text" id="param-' + ep.id + '-' + key + '" value="' + escapeHtml(defVal) + '" />' +
+            '</div>';
+          }
+          html += '</div>';
+        }
+
+        // Query params
+        if (ep.query) {
+          html += '<div style="margin-bottom:0.6rem;"><strong style="font-size:0.8rem; color:#93c5fd;">Query String Parameters:</strong></div>';
+          html += '<div class="api-form-grid">';
+          for (const [key, defVal] of Object.entries(ep.query)) {
+            html += '<div class="api-field">' +
+              '<label>?' + key + '</label>' +
+              '<input type="text" id="query-' + ep.id + '-' + key + '" value="' + escapeHtml(defVal) + '" placeholder="Optional ' + key + '" />' +
+            '</div>';
+          }
+          html += '</div>';
+        }
+
+        // Request Body
+        if (ep.body !== undefined) {
+          html += '<div style="margin-bottom:0.4rem;"><strong style="font-size:0.8rem; color:#93c5fd;">Request JSON Body:</strong></div>';
+          html += '<textarea id="body-text-' + ep.id + '" rows="4" style="width:100%;">' + escapeHtml(JSON.stringify(ep.body, null, 2)) + '</textarea>';
+        }
+
+        return html;
       }
 
-      function syncUserTopics(user) {
-        if (user && user.topics) {
-          user.topics.forEach(function (t) {
-            selectedLevels[t.topicId] = t.level || "easy";
+      async function executeApi(epId) {
+        const ep = ALL_ENDPOINTS.find(e => e.id === epId);
+        if (!ep) return;
+
+        // Resolve Path with route parameters
+        let resolvedPath = ep.path;
+        if (ep.pathParams) {
+          for (const key of Object.keys(ep.pathParams)) {
+            const inputEl = document.getElementById('param-' + ep.id + '-' + key);
+            const val = inputEl ? inputEl.value.trim() : ep.pathParams[key];
+            resolvedPath = resolvedPath.replace(':' + key, encodeURIComponent(val));
+          }
+        }
+
+        // Append query params
+        if (ep.query) {
+          const qParams = new URLSearchParams();
+          for (const key of Object.keys(ep.query)) {
+            const inputEl = document.getElementById('query-' + ep.id + '-' + key);
+            const val = inputEl ? inputEl.value.trim() : ep.query[key];
+            if (val) qParams.append(key, val);
+          }
+          const qs = qParams.toString();
+          if (qs) resolvedPath += (resolvedPath.includes('?') ? '&' : '?') + qs;
+        }
+
+        // Parse Request Body
+        let bodyData = undefined;
+        if (ep.body !== undefined) {
+          const bodyEl = document.getElementById('body-text-' + ep.id);
+          const raw = bodyEl ? bodyEl.value.trim() : '';
+          if (raw) {
+            try {
+              bodyData = JSON.parse(raw);
+            } catch (err) {
+              logConsole(ep.method + " " + resolvedPath + " [JSON Parse Error]", { error: "Invalid JSON format in request body", message: err.message });
+              return;
+            }
+          }
+        }
+
+        const headers = { ...ep.headers };
+        if (bodyData !== undefined) headers["Content-Type"] = "application/json";
+        if (authToken) headers["Authorization"] = "Bearer " + authToken;
+
+        const startTime = Date.now();
+        logConsole(ep.method + " " + resolvedPath, "Sending request...");
+
+        try {
+          const res = await fetch(resolvedPath, {
+            method: ep.method,
+            headers,
+            body: bodyData !== undefined ? JSON.stringify(bodyData) : undefined
           });
-          renderTopics();
+
+          const duration = Date.now() - startTime;
+          const contentType = res.headers.get("content-type") || "";
+
+          let resultData;
+          if (contentType.includes("application/json")) {
+            resultData = await res.json();
+          } else {
+            resultData = await res.text();
+          }
+
+          // If login or register succeeded, capture token!
+          if (res.ok && resultData && resultData.token) {
+            authToken = resultData.token;
+            localStorage.setItem("calibr8_token", authToken);
+            document.getElementById("globalTokenInput").value = authToken;
+            if (resultData.user) {
+              currentUser = resultData.user;
+            }
+            updateAuthUI();
+          }
+
+          const statusBadge = res.status + " " + res.statusText + " (" + duration + "ms)";
+          logConsole(ep.method + " " + resolvedPath + "  →  " + statusBadge, resultData);
+          document.getElementById("responseStatusTitle").textContent = "Response: " + ep.method + " " + resolvedPath + " (" + res.status + ")";
+        } catch (err) {
+          const duration = Date.now() - startTime;
+          logConsole(ep.method + " " + resolvedPath + "  →  FAILED (" + duration + "ms)", { error: err.message, hint: "Check server connection or CORS." });
         }
       }
 
-      async function applyBeginnerMode() {
-        if (!authToken) await autoRegisterDemoUser();
-        const r = await api("/api/onboarding", {
-          method: "POST",
-          body: { beginner: true },
-        });
-        logConsole("BEGINNER ONBOARDING  →  " + r.status, r.data);
-        const u = r.ok && pickUser(r.data);
-        if (u) {
-          currentUser = u;
-          syncUserTopics(u);
-          updateAuthUI();
-        }
+      function logConsole(title, data) {
+        const el = document.getElementById("console");
+        const body = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+        el.textContent = "=== " + title + " [" + new Date().toLocaleTimeString() + "] ===\n" + body;
+        el.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }
 
-      async function saveTopicLevels() {
-        if (!authToken) await autoRegisterDemoUser();
-        const topicLevels = Object.keys(selectedLevels).map(function (id) {
-          return { topicId: id, level: selectedLevels[id] };
-        });
-        const r = await api("/api/onboarding", {
-          method: "POST",
-          body: { topicLevels: topicLevels },
-        });
-        logConsole("ONBOARDING SAVE  →  " + r.status, r.data);
-        const u = r.ok && pickUser(r.data);
-        if (u) {
-          currentUser = u;
-          updateAuthUI();
-        }
+      function clearConsole() {
+        document.getElementById("console").textContent = "Console cleared.";
+        document.getElementById("responseStatusTitle").textContent = "Live Response Console";
       }
 
-      /* ---------- auth ---------- */
+      function copyConsole() {
+        const text = document.getElementById("console").textContent;
+        navigator.clipboard.writeText(text).then(() => {
+          alert("Copied console output to clipboard!");
+        });
+      }
+
+      function escapeHtml(str) {
+        if (str === null || str === undefined) return "";
+        return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      }
+
+      /* Auth Tab actions */
       async function handleRegister() {
-        const name = document.getElementById("regName").value;
-        const email =
-          document.getElementById("regEmail").value ||
-          "user_" + Math.floor(Math.random() * 10000) + "@calibr8.dev";
+        const email = document.getElementById("regEmail").value.trim();
         const password = document.getElementById("regPassword").value;
-        const r = await api("/api/auth/register", {
-          method: "POST",
-          body: { name: name, email: email, password: password },
-        });
-        logConsole("REGISTER  →  " + r.status, r.data);
-        if (r.ok && r.data && r.data.token) {
-          authToken = r.data.token;
-          currentUser = pickUser(r.data);
-          localStorage.setItem("calibr8_token", authToken);
-          document.getElementById("loginEmail").value = email;
-          updateAuthUI();
+        const name = document.getElementById("regName").value.trim();
+
+        logConsole("POST /api/auth/register", "Submitting registration...");
+        try {
+          const res = await fetch("/api/auth/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password, name })
+          });
+          const data = await res.json();
+          logConsole("POST /api/auth/register → " + res.status, data);
+
+          if (res.ok && data.token) {
+            authToken = data.token;
+            localStorage.setItem("calibr8_token", authToken);
+            document.getElementById("globalTokenInput").value = authToken;
+            currentUser = data.user;
+            updateAuthUI();
+          }
+        } catch (err) {
+          logConsole("POST /api/auth/register ERROR", { error: err.message });
         }
       }
 
       async function handleLogin() {
-        const email = document.getElementById("loginEmail").value;
+        const email = document.getElementById("loginEmail").value.trim();
         const password = document.getElementById("loginPassword").value;
-        if (!email || !password) {
-          logConsole("LOGIN FAILED", "Please enter email and password.");
-          return;
+
+        logConsole("POST /api/auth/login", "Signing in...");
+        try {
+          const res = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password })
+          });
+          const data = await res.json();
+          logConsole("POST /api/auth/login → " + res.status, data);
+
+          if (res.ok && data.token) {
+            authToken = data.token;
+            localStorage.setItem("calibr8_token", authToken);
+            document.getElementById("globalTokenInput").value = authToken;
+            currentUser = data.user;
+            updateAuthUI();
+          }
+        } catch (err) {
+          logConsole("POST /api/auth/login ERROR", { error: err.message });
         }
-        const r = await api("/api/auth/login", {
-          method: "POST",
-          body: { email: email, password: password },
-        });
-        logConsole("LOGIN  →  " + r.status, r.data);
-        if (r.ok && r.data && r.data.token) {
-          authToken = r.data.token;
-          currentUser = pickUser(r.data);
-          localStorage.setItem("calibr8_token", authToken);
-          updateAuthUI();
-          syncUserTopics(currentUser);
+      }
+
+      async function fetchProfile() {
+        if (!authToken) return;
+        try {
+          const res = await fetch("/api/users/me", {
+            headers: { "Authorization": "Bearer " + authToken }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            currentUser = data.user;
+            updateAuthUI();
+          }
+        } catch (e) {
+          // silent
         }
       }
 
       async function handleLogout() {
-        const r = await api("/api/auth/logout", { method: "POST" });
-        logConsole("LOGOUT  →  " + r.status, r.data);
-        clearSession();
+        if (authToken) {
+          try {
+            await fetch("/api/auth/logout", {
+              method: "POST",
+              headers: { "Authorization": "Bearer " + authToken }
+            });
+          } catch(e) {}
+        }
+        clearToken();
       }
 
-      async function fetchProfile() {
-        if (!authToken) {
-          logConsole("PROFILE", "No active token. Please log in.");
-          return;
-        }
-        const r = await api("/api/users/me");
-        logConsole("PROFILE  →  " + r.status, r.data);
-        if (r.status === 401) {
-          clearSession();
-          return;
-        } // stale token
-        const u = r.ok && pickUser(r.data);
-        if (u) {
-          currentUser = u;
-          updateAuthUI();
-          syncUserTopics(u);
-        }
-      }
-
-      async function handleChangePassword() {
-        if (!authToken) {
-          logConsole("PASSWORD CHANGE", "Please log in first.");
-          return;
-        }
-        const r = await api("/api/auth/change-password", {
-          method: "POST",
-          body: {
-            oldPassword: document.getElementById("oldPassword").value,
-            newPassword: document.getElementById("newPassword").value,
-          },
-        });
-        logConsole("PASSWORD CHANGE  →  " + r.status, r.data);
-      }
-
-      async function autoRegisterDemoUser() {
-        const r = await api("/api/auth/register", {
-          method: "POST",
-          body: {
-            name: "Demo Student",
-            email:
-              "user_" + Math.floor(Math.random() * 100000) + "@calibr8.dev",
-            password: "Password123!",
-          },
-        });
-        if (r.ok && r.data && r.data.token) {
-          authToken = r.data.token;
-          currentUser = pickUser(r.data);
-          localStorage.setItem("calibr8_token", authToken);
-          updateAuthUI();
-        } else {
-          logConsole("AUTO REGISTER FAILED  →  " + r.status, r.data);
-        }
-      }
-
-      /* ---------- curriculum ---------- */
+      /* Curriculum Tab Functions */
       async function loadCurriculum() {
-        const r = await api("/api/study/subjects");
-        curriculumSubjects = asArray(r.data, ["subjects", "data"]);
-        if (!curriculumSubjects.length) {
-          document.getElementById("chapterListContainer").innerHTML =
-            '<div style="color:#ef4444;padding:1rem;">Failed to load subjects (HTTP ' +
-            r.status +
-            ").</div>";
-          return;
+        try {
+          const res = await fetch("/api/study/subjects");
+          curriculumSubjects = await res.json();
+          renderSubjectPills();
+          if (curriculumSubjects.length > 0) {
+            loadSubjectChapters(curriculumSubjects[0].slug);
+          }
+        } catch (err) {
+          console.warn("Could not load curriculum:", err.message);
         }
-        renderSubjectButtons();
-        selectSubject(curriculumSubjects[0].slug);
       }
 
-      function renderSubjectButtons() {
-        const container = document.getElementById("subjectButtonsContainer");
+      function renderSubjectPills() {
+        const container = document.getElementById("subjectListPills");
         container.innerHTML = "";
-        const icons = {
-          oops: "🧩",
-          "system-design": "🏗️",
-          dbms: "🗄️",
-          os: "⚡",
-          cn: "🌐",
-        };
-        curriculumSubjects.forEach(function (sub) {
-          const btn = document.createElement("div");
-          btn.className =
-            "subject-btn" +
-            (currentSubject && currentSubject.slug === sub.slug
-              ? " active"
-              : "");
-          btn.id = "subject-btn-" + sub.slug;
-          const n =
-            (sub._count && sub._count.chapters) ||
-            (sub.chapters ? sub.chapters.length : "");
-          btn.innerHTML =
-            '<div class="sub-title">' +
-            (icons[sub.slug] || "📚") +
-            " " +
-            escapeHtml(sub.name) +
-            "</div>" +
-            '<div class="sub-count">' +
-            n +
-            " Core Chapters</div>";
-          btn.onclick = function () {
-            selectSubject(sub.slug);
+        curriculumSubjects.forEach(s => {
+          const btn = document.createElement("button");
+          btn.className = "subject-pill " + (s.slug === currentSubjectSlug ? "active" : "");
+          btn.textContent = s.name + " (" + (s._count?.chapters || 0) + " chapters)";
+          btn.onclick = () => {
+            document.querySelectorAll(".subject-pill").forEach(p => p.classList.remove("active"));
+            btn.classList.add("active");
+            currentSubjectSlug = s.slug;
+            loadSubjectChapters(s.slug);
           };
           container.appendChild(btn);
         });
       }
 
-      async function fetchChapterTopics(ch) {
-        if (Array.isArray(ch.topics)) return;
-        const r = await api(
-          "/api/study/chapters/" + encodeURIComponent(ch.id) + "/topics",
-        );
-        // FIX #3: only accept a real array; an error object here used to crash the renderer
-        ch.topics = r.ok ? asArray(r.data, ["topics", "data"]) : [];
-      }
-
-      async function selectSubject(slug) {
-        document.querySelectorAll(".subject-btn").forEach(function (b) {
-          b.classList.remove("active");
-        });
-        const ab = document.getElementById("subject-btn-" + slug);
-        if (ab) ab.classList.add("active");
-        const list = document.getElementById("chapterListContainer");
-        list.innerHTML =
-          '<div style="text-align:center;padding:2rem;color:var(--text-muted);font-size:0.85rem;">Loading chapters...</div>';
-
-        const r = await api("/api/study/subjects/" + encodeURIComponent(slug));
-        if (!r.ok) {
-          list.innerHTML =
-            '<div style="color:#ef4444;padding:1rem;">Failed to load chapters (HTTP ' +
-            r.status +
-            ").</div>";
-          return;
-        }
-        currentSubject = r.data.subject || r.data;
-        const chapters = currentSubject.chapters || [];
-        expandedChapters.clear();
-        if (chapters.length) {
-          expandedChapters.add(chapters[0].id);
-          await fetchChapterTopics(chapters[0]); // no-op if the subject response already embeds topics
-        }
-        renderChapterList(chapters);
-        const first =
-          chapters.length && chapters[0].topics && chapters[0].topics[0];
-        if (first) loadTopic(first.slug);
-      }
-
-      function renderChapterList(chapters, filter) {
-        const container = document.getElementById("chapterListContainer");
-        container.innerHTML = "";
-        const f = (filter || "").toLowerCase();
-        let shownTopics = 0;
-
-        chapters.forEach(function (ch, idx) {
-          const topics = ch.topics || [];
-          const chMatch = !f || ch.name.toLowerCase().includes(f);
-          // FIX #4: the filter used to compute matches but then render all topics
-          const visible =
-            f && !chMatch
-              ? topics.filter(function (t) {
-                  return t.name.toLowerCase().includes(f);
-                })
-              : topics;
-          if (f && !chMatch && !visible.length) return;
-
-          const group = document.createElement("div");
-          group.className = "chapter-group";
-          const header = document.createElement("div");
-          header.className = "chapter-header";
-          const count = ch._count ? ch._count.topics : topics.length;
-          header.innerHTML =
-            "<span>Ch " +
-            (idx + 1) +
-            ": " +
-            escapeHtml(ch.name) +
-            "</span>" +
-            '<span style="font-size:0.72rem;color:#94a3b8;">' +
-            count +
-            " topic" +
-            (count === 1 ? "" : "s") +
-            "</span>";
-          header.onclick = async function () {
-            if (expandedChapters.has(ch.id)) expandedChapters.delete(ch.id);
-            else {
-              expandedChapters.add(ch.id);
-              await fetchChapterTopics(ch);
-            }
-            renderChapterList(
-              chapters,
-              document.getElementById("curriculumSearch").value,
-            );
-          };
-          group.appendChild(header);
-
-          if (expandedChapters.has(ch.id) || f) {
-            visible.forEach(function (t) {
-              shownTopics++;
-              const item = document.createElement("div");
-              item.className =
-                "topic-item" + (currentTopicSlug === t.slug ? " active" : "");
-              item.id = "topic-nav-" + t.slug;
-              const mc = t.mcqCount || (t._count && t._count.mcqs) || 0;
-              item.innerHTML =
-                "<span>" +
-                escapeHtml(t.name) +
-                "</span>" +
-                (mc ? '<span class="mcq-badge">' + mc + " MCQs</span>" : "");
-              item.onclick = function () {
-                loadTopic(t.slug);
-              };
-              group.appendChild(item);
-            });
-          }
-          container.appendChild(group);
-        });
-
-        document.getElementById("topicCountBadge").textContent =
-          chapters.length + " Chapters";
-        if (f && !container.children.length) {
-          container.innerHTML =
-            '<div style="padding:1rem;color:var(--text-muted);font-size:0.85rem;">No matches.</div>';
-        }
-      }
-
-      function handleCurriculumSearch(q) {
-        if (currentSubject && currentSubject.chapters)
-          renderChapterList(currentSubject.chapters, q);
-      }
-
-      async function loadTopic(slug) {
-        currentTopicSlug = slug;
-        selectedQuizAnswers = {};
-        document.querySelectorAll(".topic-item").forEach(function (i) {
-          i.classList.remove("active");
-        });
-        const nav = document.getElementById("topic-nav-" + slug);
-        if (nav) nav.classList.add("active");
-
-        const titleEl = document.getElementById("topicTitle");
-        const bodyEl = document.getElementById("topicMarkdownBody");
-        const quizArea = document.getElementById("topicQuizArea");
-        document.getElementById("quizScoreBanner").style.display = "none";
-        titleEl.textContent = "Loading topic content...";
-        bodyEl.innerHTML =
-          '<div style="color:var(--text-muted);padding:1.5rem 0;">Retrieving material...</div>';
-
-        const r = await api("/api/study/topics/" + encodeURIComponent(slug));
-        if (!r.ok) {
-          titleEl.textContent = "Could not load topic";
-          bodyEl.innerHTML =
-            '<div style="color:#ef4444;">HTTP ' +
-            r.status +
-            ": " +
-            escapeHtml(JSON.stringify(r.data)) +
-            "</div>";
-          quizArea.style.display = "none";
-          return;
-        }
-        const topic = r.data.topic || r.data;
-        titleEl.textContent = topic.name || slug;
-        // FIX #5: optional chaining — a missing chapter/subject object used to abort rendering of the content
-        const subj =
-          topic.chapter && topic.chapter.subject && topic.chapter.subject.name;
-        document.getElementById("topicBreadcrumb").textContent =
-          (subj ? subj + " › " : "") +
-          ((topic.chapter && topic.chapter.name) || "Computer Science");
-
-        let content = topic.content || topic.markdown || topic.body || "";
-        if (!content && Array.isArray(topic.sections)) {
-          content = topic.sections
-            .map(function (s) {
-              return typeof s === "string"
-                ? s
-                : "## " +
-                    (s.title || s.heading || "") +
-                    "\n\n" +
-                    (s.content || s.body || "");
-            })
-            .join("\n\n");
-        }
-        bodyEl.innerHTML =
-          renderMarkdown(content) ||
-          '<p style="color:var(--text-muted)">This topic has no content yet.</p>';
-
-        const mcqs = asArray(topic.mcqs || topic.questions, []).map(
-          normalizeMcq,
-        );
-        document.getElementById("activeQuizCount").textContent = mcqs.length;
-        if (mcqs.length) {
-          quizArea.style.display = "block";
-          renderQuiz(mcqs);
-        } else {
-          quizArea.style.display = "none";
-        }
-      }
-
-      /* FIX #6: markdown renderer rewritten line-by-line.
-   The old regex pipeline ran bold/italic/heading/list rules INSIDE code blocks (breaking C++ `*ptr`, `# comments`),
-   and wrapped everything between the first and last <li> in one <ul>. */
-      function inline(raw) {
-        return escapeHtml(raw)
-          .split(/(`[^`]+`)/g)
-          .map(function (p) {
-            if (p.length > 1 && p[0] === "`" && p[p.length - 1] === "`")
-              return "<code>" + p.slice(1, -1) + "</code>";
-            return p
-              .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-              .replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?!\*)/g, "$1<em>$2</em>");
-          })
-          .join("");
-      }
-
-      function renderMarkdown(md) {
-        const out = [];
-        const lines = String(md || "")
-          .replace(/\r/g, "")
-          .split("\n");
-        let i = 0,
-          para = [],
-          list = null,
-          m;
-        const flushP = function () {
-          if (para.length) {
-            out.push("<p>" + inline(para.join(" ")) + "</p>");
-            para = [];
-          }
-        };
-        const flushL = function () {
-          if (list) {
-            out.push("</" + list + ">");
-            list = null;
-          }
-        };
-        const isRow = function (l) {
-          return /^\s*\|.*\|\s*$/.test(l);
-        };
-
-        while (i < lines.length) {
-          const line = lines[i];
-          if ((m = line.match(/^```\s*([\w+#-]*)/))) {
-            flushP();
-            flushL();
-            const code = [];
-            i++;
-            while (i < lines.length && !/^```/.test(lines[i]))
-              code.push(lines[i++]);
-            i++;
-            out.push(
-              '<pre><code class="language-' +
-                (m[1] || "text") +
-                '">' +
-                escapeHtml(code.join("\n")) +
-                "</code></pre>",
-            );
-            continue;
-          }
-          if (isRow(line)) {
-            flushP();
-            flushL();
-            const rows = [];
-            while (i < lines.length && isRow(lines[i])) rows.push(lines[i++]);
-            let html = "<table>",
-              head = true;
-            rows.forEach(function (r) {
-              if (/^\s*\|[\s:|-]+\|\s*$/.test(r)) {
-                head = false;
-                return;
-              }
-              const cells = r
-                .trim()
-                .replace(/^\||\|$/g, "")
-                .split("|");
-              const tag = head ? "th" : "td";
-              html +=
-                "<tr>" +
-                cells
-                  .map(function (c) {
-                    return (
-                      "<" + tag + ">" + inline(c.trim()) + "</" + tag + ">"
-                    );
-                  })
-                  .join("") +
-                "</tr>";
-            });
-            out.push(html + "</table>");
-            continue;
-          }
-          if ((m = line.match(/^(#{1,6})\s+(.*)$/))) {
-            flushP();
-            flushL();
-            const n = Math.min(m[1].length, 3);
-            out.push("<h" + n + ">" + inline(m[2]) + "</h" + n + ">");
-            i++;
-            continue;
-          }
-          if ((m = line.match(/^>\s?(.*)$/))) {
-            flushP();
-            flushL();
-            out.push("<blockquote>" + inline(m[1]) + "</blockquote>");
-            i++;
-            continue;
-          }
-          if ((m = line.match(/^\s*([-*]|\d+\.)\s+(.*)$/))) {
-            flushP();
-            const t = /\d/.test(m[1]) ? "ol" : "ul";
-            if (list !== t) {
-              flushL();
-              out.push("<" + t + ">");
-              list = t;
-            }
-            const cb = m[2].match(/^\[( |x)\]\s*(.*)$/i);
-            out.push(
-              cb
-                ? '<li style="list-style:none">' +
-                    (cb[1] === " " ? "◻️ " : "✅ ") +
-                    inline(cb[2]) +
-                    "</li>"
-                : "<li>" + inline(m[2]) + "</li>",
-            );
-            i++;
-            continue;
-          }
-          if (!line.trim()) {
-            flushP();
-            flushL();
-            i++;
-            continue;
-          }
-          flushL();
-          para.push(line.trim());
-          i++;
-        }
-        flushP();
-        flushL();
-        return out.join("");
-      }
-
-      /* ---------- quiz ---------- */
-      function normalizeMcq(m, idx) {
-        let opts = m.options;
-        if (typeof opts === "string") {
-          try {
-            opts = JSON.parse(opts);
-          } catch (e) {
-            opts = [];
-          }
-        }
-        opts = (opts || []).map(function (o) {
-          return typeof o === "string" ? o : o.text || o.label || String(o);
-        });
-        return {
-          id: m.id !== undefined ? m.id : idx,
-          question: m.question || m.text || "",
-          options: opts,
-          difficulty: m.difficulty,
-        };
-      }
-
-      function renderQuiz(mcqs) {
-        const container = document.getElementById("mcqQuestionsList");
-        container.innerHTML = "";
-        mcqEls = {};
-        const labels = ["A", "B", "C", "D", "E"];
-        mcqs.forEach(function (mcq, qIdx) {
-          const diffColor =
-            mcq.difficulty === "Hard"
-              ? "#f87171"
-              : mcq.difficulty === "Medium"
-                ? "#fbbf24"
-                : "#34d399";
-          const card = document.createElement("div");
-          card.className = "mcq-question-card";
-          card.innerHTML =
-            '<div class="mcq-q-header"><span>Q' +
-            (qIdx + 1) +
-            ". " +
-            escapeHtml(mcq.question) +
-            "</span>" +
-            '<span style="font-size:0.72rem;color:' +
-            diffColor +
-            ';background:rgba(255,255,255,0.05);padding:0.15rem 0.5rem;border-radius:4px;">' +
-            escapeHtml(mcq.difficulty || "Standard") +
-            "</span></div>" +
-            '<div class="mcq-options"></div><div class="mcq-explanation"></div>';
-          const optBox = card.querySelector(".mcq-options");
-          const els = { opts: [], exp: card.querySelector(".mcq-explanation") };
-          mcq.options.forEach(function (text, oIdx) {
-            const d = document.createElement("div");
-            d.className = "mcq-option";
-            d.innerHTML =
-              '<span style="font-weight:700;color:#94a3b8;width:18px;">' +
-              (labels[oIdx] || oIdx) +
-              ".</span><span>" +
-              escapeHtml(text) +
-              "</span>";
-            d.onclick = function () {
-              selectedQuizAnswers[mcq.id] = oIdx;
-              els.opts.forEach(function (x) {
-                x.classList.remove("selected");
-              });
-              d.classList.add("selected");
-            };
-            els.opts.push(d);
-            optBox.appendChild(d);
+      async function loadSubjectChapters(slug) {
+        const container = document.getElementById("chaptersContainer");
+        container.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem;">Loading chapters for ' + escapeHtml(slug) + '...</div>';
+        try {
+          const res = await fetch("/api/study/subjects/" + encodeURIComponent(slug));
+          const data = await res.json();
+          container.innerHTML = "";
+          (data.chapters || []).forEach(chap => {
+            const box = document.createElement("div");
+            box.className = "chapter-box";
+            box.innerHTML =
+              '<div class="chapter-title" onclick="loadChapterTopics(\'' + chap.id + '\', this)">' +
+                '<span>📖 ' + escapeHtml(chap.name) + '</span>' +
+                '<span style="font-size:0.75rem; color:#93c5fd;">' + (chap._count?.topics || 0) + ' Topics ▼</span>' +
+              '</div>' +
+              '<div id="topics-for-' + chap.id + '" style="display:none; background:#0b1120;"></div>';
+            container.appendChild(box);
           });
-          mcqEls[mcq.id] = els;
+        } catch (err) {
+          container.innerHTML = '<div style="color:#ef4444;">Failed to load chapters: ' + escapeHtml(err.message) + '</div>';
+        }
+      }
+
+      async function loadChapterTopics(chapId, headerEl) {
+        const target = document.getElementById("topics-for-" + chapId);
+        if (target.style.display === "block") {
+          target.style.display = "none";
+          return;
+        }
+        target.style.display = "block";
+        target.innerHTML = '<div style="padding:0.6rem; color:var(--text-muted); font-size:0.8rem;">Loading topics...</div>';
+        try {
+          const res = await fetch("/api/study/chapters/" + encodeURIComponent(chapId) + "/topics");
+          const topics = await res.json();
+          target.innerHTML = "";
+          topics.forEach(t => {
+            const row = document.createElement("div");
+            row.className = "topic-row";
+            row.innerHTML = '<span>📄 ' + escapeHtml(t.name) + '</span><span style="color:#60a5fa; font-size:0.75rem;">Read & Test →</span>';
+            row.onclick = () => {
+              switchTab("explorerTab");
+              filterApis("study");
+              document.getElementById("param-stu-4-topicSlug").value = t.slug;
+              executeApi("stu-4");
+            };
+            target.appendChild(row);
+          });
+        } catch (err) {
+          target.innerHTML = '<div style="padding:0.6rem; color:#ef4444;">Error loading topics</div>';
+        }
+      }
+
+      /* DSA Level Calibration Tab */
+      async function loadTopics() {
+        try {
+          const res = await fetch("/api/topics/dsa", {
+            headers: authToken ? { "Authorization": "Bearer " + authToken } : {}
+          });
+          const data = await res.json();
+          dsaTopicList = data.topics || data.dsaTopics || [];
+          renderTopics();
+        } catch (e) {
+          // fallback default topics
+          dsaTopicList = [
+            { id: "t-1", slug: "dsa-arrays", name: "DSA - Arrays", category: "DSA" },
+            { id: "t-2", slug: "dsa-graphs-dp", name: "DSA - Graphs & DP", category: "DSA" },
+            { id: "t-3", slug: "dsa-linked-list", name: "DSA - Linked List", category: "DSA" },
+            { id: "t-4", slug: "dsa-stack-queue", name: "DSA - Stack & Queue", category: "DSA" },
+            { id: "t-5", slug: "dsa-trees", name: "DSA - Trees", category: "DSA" }
+          ];
+          renderTopics();
+        }
+      }
+
+      function renderTopics() {
+        const container = document.getElementById("topicsContainer");
+        container.innerHTML = "";
+
+        dsaTopicList.forEach(t => {
+          if (!selectedLevels[t.id]) selectedLevels[t.id] = "easy";
+          const card = document.createElement("div");
+          card.className = "dsa-card";
+          const current = selectedLevels[t.id];
+
+          card.innerHTML =
+            '<div><strong>' + escapeHtml(t.name) + '</strong> <span style="font-size:0.75rem; color:var(--text-muted);">' + escapeHtml(t.slug) + '</span></div>' +
+            '<div class="level-pills">' +
+              '<button class="pill-btn ' + (current === 'easy' ? 'active-easy' : '') + '" onclick="setTopicLevel(\'' + t.id + '\', \'easy\')">Easy</button>' +
+              '<button class="pill-btn ' + (current === 'mid' ? 'active-mid' : '') + '" onclick="setTopicLevel(\'' + t.id + '\', \'mid\')">Mid</button>' +
+              '<button class="pill-btn ' + (current === 'hard' ? 'active-hard' : '') + '" onclick="setTopicLevel(\'' + t.id + '\', \'hard\')">Hard</button>' +
+            '</div>';
           container.appendChild(card);
         });
+
+        calculateRating();
       }
 
-      async function submitCurrentQuiz() {
-        if (!currentTopicSlug) return;
-        const btn = document.getElementById("btnSubmitQuiz");
-        btn.textContent = "Evaluating Answers...";
-        btn.disabled = true;
-        const r = await api(
-          "/api/study/topics/" +
-            encodeURIComponent(currentTopicSlug) +
-            "/submit",
-          { method: "POST", body: { answers: selectedQuizAnswers } },
-        );
-        btn.textContent = "Submit Quiz for Evaluation";
-        btn.disabled = false;
-        logConsole("QUIZ SUBMIT  →  " + r.status, r.data);
-        const banner = document.getElementById("quizScoreBanner");
-        banner.style.display = "inline-block";
-        if (!r.ok || !r.data) {
-          banner.style.background = "rgba(239,68,68,0.2)";
-          banner.style.color = "#f87171";
-          banner.textContent = "⚠️ Submit failed (HTTP " + r.status + ")";
+      function setTopicLevel(id, lvl) {
+        selectedLevels[id] = lvl;
+        renderTopics();
+      }
+
+      function applyBeginnerPreset() {
+        dsaTopicList.forEach(t => { selectedLevels[t.id] = "easy"; });
+        renderTopics();
+      }
+
+      function calculateRating() {
+        const map = { easy: 800, mid: 1200, hard: 1600 };
+        const keys = Object.keys(selectedLevels);
+        if (!keys.length) return;
+        const total = keys.reduce((sum, k) => sum + (map[selectedLevels[k]] || 800), 0);
+        const avg = Math.round(total / keys.length);
+        document.getElementById("projectedRating").textContent = avg;
+      }
+
+      async function saveCalibration() {
+        if (!authToken) {
+          alert("Please log in first from Auth & Profile tab to save your calibration.");
+          switchTab("authTab");
           return;
         }
-        const ev = r.data.result || r.data;
-        const pct =
-          ev.percentage !== undefined
-            ? ev.percentage
-            : ev.total
-              ? Math.round((ev.score / ev.total) * 100)
-              : 0;
-        const passed = ev.passed !== undefined ? ev.passed : pct >= 60;
-        banner.style.background = passed
-          ? "rgba(16,185,129,0.2)"
-          : "rgba(239,68,68,0.2)";
-        banner.style.color = passed ? "#34d399" : "#f87171";
-        banner.textContent =
-          (passed ? "🎉 " : "⚠️ ") +
-          "Score: " +
-          ev.score +
-          " / " +
-          ev.total +
-          " (" +
-          pct +
-          "%) — " +
-          (passed ? "Passed!" : "Review & Try Again");
-
-        asArray(ev.results, []).forEach(function (res) {
-          const els = mcqEls[res.id];
-          if (!els) return;
-          els.opts.forEach(function (o) {
-            o.classList.remove("correct-reveal", "wrong-reveal");
+        const topicSelections = Object.entries(selectedLevels).map(([tId, diff]) => ({
+          topicId: tId,
+          difficulty: diff
+        }));
+        try {
+          const res = await fetch("/api/onboarding", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer " + authToken
+            },
+            body: JSON.stringify({ topicSelections })
           });
-          if (els.opts[res.correctIndex])
-            els.opts[res.correctIndex].classList.add("correct-reveal");
-          if (
-            res.userAnswer !== undefined &&
-            res.userAnswer !== null &&
-            res.userAnswer !== res.correctIndex &&
-            els.opts[res.userAnswer]
-          ) {
-            els.opts[res.userAnswer].classList.add("wrong-reveal");
-          }
-          if (res.explanation) {
-            els.exp.style.display = "block";
-            els.exp.innerHTML =
-              "<strong>Explanation:</strong> " + escapeHtml(res.explanation);
-          }
-        });
-        banner.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          const data = await res.json();
+          logConsole("POST /api/onboarding", data);
+          alert("Calibration saved successfully!");
+          fetchProfile();
+        } catch (e) {
+          alert("Error saving calibration: " + e.message);
+        }
       }
-
-      function resetQuiz() {
-        selectedQuizAnswers = {};
-        document.querySelectorAll(".mcq-option").forEach(function (o) {
-          o.classList.remove("selected", "correct-reveal", "wrong-reveal");
-        });
-        document.querySelectorAll(".mcq-explanation").forEach(function (e) {
-          e.style.display = "none";
-        });
-        document.getElementById("quizScoreBanner").style.display = "none";
-      }
-
-      function scrollToQuiz() {
-        const q = document.getElementById("topicQuizArea");
-        if (q) q.scrollIntoView({ behavior: "smooth" });
-      }
-
-      window.addEventListener("DOMContentLoaded", async function () {
-        document.getElementById("regEmail").value =
-          "user_" + Math.floor(Math.random() * 10000) + "@calibr8.dev";
-        await loadCurriculum();
-        await loadTopics();
-        if (authToken) await fetchProfile();
-      });
     </script>
   </body>
 </html>
