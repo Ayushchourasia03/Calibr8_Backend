@@ -109,7 +109,7 @@ model Problem {
   title         String
   description   String
   difficulty    String         @default("Easy")
-  // ADD THIS for fast % calculation
+  
   solvedCount   Int            @default(0) @map("solvedCount")
   timeLimit     Int            @default(1000) @map("timeLimit")
   memoryLimit   Int            @default(256) @map("memoryLimit")

@@ -127,6 +127,7 @@ export const getAllProblems =  async (req, res , next) => {
         title: true,
         difficulty: true,
         solvedCount: true,
+        problemNumber: true,
         submissions: userId ? {
           where: { userId, status: 'ACCEPTED' },
           select: { id: true }
@@ -137,6 +138,7 @@ export const getAllProblems =  async (req, res , next) => {
     const data = problems.map(p => ({
       name: p.title,
       slug: p.slug,
+      number: p.problemNumber,
       level: p.difficulty.toLowerCase(),
       levelDisplay: p.difficulty.toLowerCase() === 'medium' ? 'mid' : p.difficulty.toLowerCase(), // easy | mid | hard
       solvedPercentage: totalUsers > 0 ? Math.round((p.solvedCount / totalUsers) * 100) : 0,
