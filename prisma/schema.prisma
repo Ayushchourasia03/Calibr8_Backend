@@ -7,24 +7,24 @@ datasource db {
 }
 
 model User {
-  id                String          @id @default(uuid())
-  email             String          @unique
-  passwordHash      String
-  name              String
-  difficulty        String?
-  rating            Int             @default(800)
-  onboarded         Boolean         @default(false)
-  preferredLanguage String          @default("cpp") @map("preferred_language")
-  role              String          @default("user")
-  topics            UserTopic[]
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  socialAccounts    SocialAccount[]
-
-  coins             Int             @default(100) // starting coins
-  activeThemeId     String?         @map("activeThemeId")
-  activeTheme       Theme?      @relation("ActiveTheme", fields: [activeThemeId], references: [id])
-  ownedThemes       UserTheme[]
+  id                                   String          @id @default(uuid())
+  email                                String          @unique
+  passwordHash                         String
+  name                                 String
+  difficulty                           String?
+  rating                               Int             @default(800)
+  onboarded                            Boolean         @default(false)
+  createdAt                            DateTime        @default(now())
+  updatedAt                            DateTime        @updatedAt
+  preferredLanguage                    String          @default("cpp") @map("preferred_language")
+  coins                                Int             @default(100)
+  activeThemeId                        String?         @map("activeThemeId")
+  active_theme_id                      String?
+  socialAccounts                       SocialAccount[]
+  ownedThemes                          UserTheme[]
+  topics                               UserTopic[]
+  activeTheme                          Theme?          @relation("ActiveTheme", fields: [activeThemeId], references: [id])
+  themes_users_active_theme_idTothemes Theme?          @relation("users_active_theme_idTothemes", fields: [active_theme_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("users")
 }
@@ -44,9 +44,8 @@ model UserTopic {
   userId  String
   topicId String
   level   String @default("easy")
-
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  topic   Topic  @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, topicId])
   @@map("user_topics")
@@ -62,12 +61,11 @@ model SocialAccount {
   email          String?
   avatarUrl      String?
   profileUrl     String?
-  bio            String?  @db.Text
+  bio            String?
   headline       String?
   stats          Json?
   connectedAt    DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, provider])
   @@unique([provider, providerUserId])
@@ -75,59 +73,60 @@ model SocialAccount {
 }
 
 model Theme {
-  id           String      @id @default(cuid())
-  slug         String      @unique
-  name         String
-  price        Int         @default(0)
-  previewColor String?
-  cssVars      Json?
-  isDefault    Boolean     @default(false)
-  createdAt    DateTime    @default(now())
-  purchases    UserTheme[]
-  activeForUsers User[]    @relation("ActiveTheme")
+  id                                  String      @id @default(dbgenerated("(gen_random_uuid())::text"))
+  slug                                String      @unique
+  name                                String
+  price                               Int         @default(0)
+  previewColor                        String?
+  cssVars                             Json?
+  isDefault                           Boolean     @default(false)
+  createdAt                           DateTime    @default(now())
+  purchases                           UserTheme[]
+  activeForUsers                      User[]      @relation("ActiveTheme")
+  users_users_active_theme_idTothemes User[]      @relation("users_active_theme_idTothemes")
 
   @@map("themes")
 }
 
 model UserTheme {
-  id          String   @id @default(cuid())
+  id          String   @id @default(dbgenerated("(gen_random_uuid())::text"))
   userId      String   @map("userId")
   themeId     String   @map("themeId")
   purchasedAt DateTime @default(now())
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   theme       Theme    @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, themeId])
+  @@index([userId])
   @@map("user_themes")
 }
-
 
 model Problem {
   id            String         @id @default(cuid())
   problemNumber Int            @unique @default(autoincrement()) @map("problemNumber")
   slug          String         @unique
   title         String
-  description   String         @db.Text
+  description   String
   difficulty    String         @default("Easy")
   timeLimit     Int            @default(1000) @map("timeLimit")
   memoryLimit   Int            @default(256) @map("memoryLimit")
-  dsaTopicId    String?        @map("dsaTopicId")
-  dsaTopic      DsaTopic?      @relation(fields: [dsaTopicId], references: [id], onDelete: SetNull)
-  tags          String[]       @default([])
-  testcases     Testcase[]
-  templates     CodeTemplate[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  dsaTopicId    String?        @map("dsaTopicId")
+  tags          String[]       @default([])
+  templates     CodeTemplate[]
+  dsaTopic      DsaTopic?      @relation(fields: [dsaTopicId], references: [id])
+  testcases     Testcase[]
 
   @@map("problems")
 }
 
 model DsaTopic {
-  id        String    @id @default(cuid())
-  slug      String    @unique
-  name      String
-  order     Int       @default(0)
-  problems  Problem[]
+  id       String    @id @default(cuid())
+  slug     String    @unique
+  name     String
+  order    Int       @default(0)
+  problems Problem[]
 
   @@map("dsa_topics")
 }
@@ -137,8 +136,8 @@ model Testcase {
   problemId     String  @map("problemId")
   testIndex     Int     @map("testIndex")
   isVisible     Boolean @default(false) @map("isVisible")
-  stdinSmall    String  @map("stdinSmall") @db.Text
-  expectedSmall String  @map("expectedSmall") @db.Text
+  stdinSmall    String  @map("stdinSmall")
+  expectedSmall String  @map("expectedSmall")
   sizeBytes     Int     @default(0) @map("sizeBytes")
   r2Key         String? @map("r2Key")
   problem       Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
@@ -151,7 +150,7 @@ model CodeTemplate {
   id        String  @id @default(cuid())
   problemId String  @map("problemId")
   language  String
-  code      String  @db.Text
+  code      String
   problem   Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
 
   @@unique([problemId, language])
@@ -159,40 +158,19 @@ model CodeTemplate {
 }
 
 model Submission {
-  id                String   @id @default(cuid())
-  problemId         String   @map("problemId")
-  userId            String?  @map("userId")
-  language          String
-  code              String   @db.Text
-  status            String   // queued, running, done, error
-  verdict           String?  // Accepted, Wrong Answer, Time Limit Exceeded, Runtime Error
-  passedCount       Int      @default(0) @map("passedCount")
-  totalCount        Int      @default(0) @map("totalCount")
-  currentTier       Int      @default(1) @map("currentTier")
-  tierReached       Int      @default(0) @map("tierReached")
-  tiersPassed       Int      @default(0) @map("tiersPassed")
-  scoreUnitsAwarded Int      @default(0) @map("scoreUnitsAwarded")
-  maxTimeMs         Int?     @map("maxTimeMs")
-  maxMemoryKb       Int?     @map("maxMemoryKb")
-  compileOutput     String?  @map("compileOutput") @db.Text
-  firstFailure      Json?    @map("firstFailure")
-  time              String?
-  memory            Int?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @default(now()) @updatedAt
+  id          String   @id @default(cuid())
+  problemId   String   @map("problemId")
+  userId      String?  @map("userId")
+  language    String
+  code        String
+  status      String
+  passedCount Int      @default(0) @map("passedCount")
+  totalCount  Int      @default(0) @map("totalCount")
+  time        String?
+  memory      Int?
+  createdAt   DateTime @default(now())
 
   @@map("submissions")
-}
-
-model RevokedToken {
-  id        String   @id @default(cuid())
-  jti       String   @unique
-  token     String?  @db.Text
-  userId    String?  @map("userId")
-  expiresAt DateTime @map("expiresAt")
-  createdAt DateTime @default(now())
-
-  @@map("revoked_tokens")
 }
 
 model StudySubject {
@@ -202,18 +180,18 @@ model StudySubject {
   description String?
   icon        String?
   order       Int            @default(0)
-  chapters    StudyChapter[]
   createdAt   DateTime       @default(now())
+  chapters    StudyChapter[]
 }
 
 model StudyChapter {
-  id          String       @id @default(cuid())
-  slug        String
-  name        String
-  subjectId   String
-  subject     StudySubject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  order       Int
-  topics      StudyTopic[]
+  id        String       @id @default(cuid())
+  slug      String
+  name      String
+  subjectId String
+  order     Int
+  subject   StudySubject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topics    StudyTopic[]
 
   @@unique([subjectId, slug])
 }
@@ -223,12 +201,12 @@ model StudyTopic {
   slug        String
   name        String
   chapterId   String
-  chapter     StudyChapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
   order       Int
-  content     String       @db.Text
+  content     String
   isPublished Boolean      @default(true)
-  mcqs        StudyMCQ[]
   createdAt   DateTime     @default(now())
+  mcqs        StudyMCQ[]
+  chapter     StudyChapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
 
   @@unique([chapterId, slug])
 }
@@ -236,11 +214,11 @@ model StudyTopic {
 model StudyMCQ {
   id           String     @id @default(cuid())
   topicId      String
-  topic        StudyTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  question     String     @db.Text
+  question     String
   options      Json
   correctIndex Int
-  explanation  String?    @db.Text
+  explanation  String?
   difficulty   String     @default("Easy")
   order        Int
+  topic        StudyTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
 }
