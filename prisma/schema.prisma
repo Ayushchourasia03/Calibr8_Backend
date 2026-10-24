@@ -1,9 +1,9 @@
 generator client {
   provider = "prisma-client-js"
 }
-
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -13,6 +13,15 @@ model User {
   name                                 String
   difficulty                           String?
   rating                               Int             @default(800)
+  score                                Int             @default(0) @map("score") // total points - 48,210 etc
+  streak                               Int             @default(0) // 132 days
+  strictPercent                        Int             @default(0) @map("strictPercent") // 88%
+  tier                                 String          @default("Prism I") // Zenith II, Eclipse III etc
+  college                              String?         // For College filter
+  branch                               String?         // CSE, ECE...
+  batch                                String?         // 2026 etc
+  state                                String?         // Delhi, UP...
+  country                              String?         @default("India")
   onboarded                            Boolean         @default(false)
   createdAt                            DateTime        @default(now())
   updatedAt                            DateTime        @updatedAt
@@ -23,10 +32,15 @@ model User {
   socialAccounts                       SocialAccount[]
   ownedThemes                          UserTheme[]
   topics                               UserTopic[]
-  submissions                          Submission[] // ONLY ADD THIS LINE
+  submissions                          Submission[]
   activeTheme                          Theme?          @relation("ActiveTheme", fields: [activeThemeId], references: [id])
   themes_users_active_theme_idTothemes Theme?          @relation("users_active_theme_idTothemes", fields: [active_theme_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([college, score])
+  @@index([branch, score])
+  @@index([batch, score])
+  @@index([state, score])
+  @@index([country, score])
   @@map("users")
 }
 

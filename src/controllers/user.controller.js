@@ -1,6 +1,59 @@
 import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
 
+// Tier helper
+function getTierFromRating(rating) {
+  if (rating >= 1700) return { name: "Zenith II", color: "pink" };
+  if (rating >= 1600) return { name: "Eclipse III", color: "orange" };
+  if (rating >= 1500) return { name: "Eclipse I", color: "orange" };
+  if (rating >= 1400) return { name: "Aurora III", color: "green" };
+  if (rating >= 1300) return { name: "Aurora II", color: "green" };
+  if (rating >= 1200) return { name: "Prism II", color: "purple" };
+  return { name: "Prism I", color: "purple" };
+}
+
+export const updateAcademic = async (req, res) => {
+  try {
+    const userId = req.user.id; // if your middleware uses req.userId, change to req.userId
+    const { college, batch, state, country } = req.body;
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { college, batch, state, country }
+    });
+
+    res.json(updated);
+  } catch (e) {
+    console.log(e);
+    res.status(500).json({ error: e.message });
+  }
+};
+
+// Call this when user solves a problem
+export const addScore = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    
+    const newRating = user.rating + 10;
+    const tier = getTierFromRating(newRating).name;
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { 
+        score: { increment: 100 },
+        rating: { increment: 10 },
+        tier: tier
+      }
+    });
+
+    res.json(updated);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+};
+
+
 /**
  * GET /api/users/me
  * Returns the authenticated user's profile details with topics and preferences.
@@ -152,3 +205,25 @@ export const getAllProblems = async (req, res, next) => {
     res.status(500).json({ success: false, code: 'SERVER_ERROR', message: err.message });
   }
 }
+
+
+export const updateAcademicProfile = async (req, res) => {
+  const { college, batch, state, country } = req.body;
+
+  const data = {};
+  if (college) data.college = college;
+  if (batch) data.batch = batch.toString();
+  if (state) data.state = state;
+  if (country) data.country = country;
+
+  if (Object.keys(data).length === 0) {
+    return res.status(400).json({ success: false, message: "No fields provided" });
+  }
+
+  const user = await prisma.user.update({
+    where: { id: req.user.id },
+    data
+  });
+
+  res.json({ success: true, message: "Academic profile saved", user });
+};

@@ -4,7 +4,7 @@
   "description": "Calibr8 Backend API — Phase 1",
   "type": "module",
   "main": "src/server.js",
-"scripts": {
+  "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "build": "node -e \"console.log('Build complete')\"",
@@ -26,7 +26,7 @@
     "@neondatabase/serverless": "^1.2.0",
     "@prisma/adapter-neon": "^7.10.1",
     "@prisma/adapter-pg": "^7.10.1",
-    "@prisma/client": "^7.10.1",
+    "@prisma/client": "^6.16.1",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
@@ -39,6 +39,6 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.14",
-    "prisma": "^7.10.1"
+    "prisma": "^6.16.1"
   }
 }
