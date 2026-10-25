@@ -1140,7 +1140,7 @@ _Rating Calculation_:
 ### 9.2 Get Problem Details & Starter Templates
 
 - **Method & Path**: `GET /api/problems/:slug`
-- **Protected**: Yes (`Authorization: Bearer <token>`)
+- **Protected**: No
 - **Path Parameter**: `:slug` (e.g. `'two-sum-001'` or problem number integer `'1'`).
 - **Security Constraint**: Returns **visible / sample test cases ONLY**. Hidden verification cases are never exposed.
 - **Success Response (200 OK)**:

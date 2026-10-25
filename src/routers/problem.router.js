@@ -8,13 +8,13 @@ import { protect, requireAdmin } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
-// Problem catalog metadata is public; mutations and details remain protected.
+// Catalog reads are public; mutations remain protected.
 router.get("/", getAllProblems);
 
 // POST /api/problems - moved to /api/admin/problems; retained with strict admin-only check
 router.post("/", protect, requireAdmin, addProblem);
 
 // GET /api/problems/:slug - problem detail with visible testcases & starter templates
-router.get("/:slug", protect, getProblemBySlug);
+router.get("/:slug", getProblemBySlug);
 
 export default router;
