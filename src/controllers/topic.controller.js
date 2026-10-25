@@ -40,11 +40,12 @@ export const getAllTopics = async (req, res, next) => {
     }
 
     res.status(200).json({
+      message: "Topics fetched successfully",
       success: true,
       count: returnTopics.length,
       topics: returnTopics,
-      dsaTopics,
-      coreTopics,
+      // dsaTopics,
+      // coreTopics,
     });
   } catch (err) {
     next(err);
