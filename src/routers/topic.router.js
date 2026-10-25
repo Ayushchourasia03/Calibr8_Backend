@@ -14,16 +14,16 @@ const router = Router();
 router.get("/dsa", protect, getDsaTopics);
 
 // GET /api/topics/dsa/categories - all structured DSA topic categories
-router.get("/dsa/categories", protect,getAllDsaTopics);
+router.get("/dsa/categories", protect, getAllDsaTopics);
 router.get("/categories", getAllDsaTopics);
 
-// GET /api/topics/dsa/:slug/problems - problems grouped by DSA topic
-router.get("/dsa/:slug/problems",protect, getProblemsByDsaTopic);
+// DSA category problem lists contain public catalog metadata.
+router.get("/dsa/:slug/problems", getProblemsByDsaTopic);
 
 // GET /api/topics - all topics
-router.get("/",protect, getAllTopics);
+router.get("/", protect, getAllTopics);
 
 // GET /api/topics/:identifier - single topic by ID or slug (must be after specific sub-routes)
-router.get("/:identifier",protect, getTopicDetail);
+router.get("/:identifier", protect, getTopicDetail);
 
 export default router;

@@ -8,8 +8,8 @@ import { protect, requireAdmin } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
-// GET /api/problems - list all problems
-router.get("/", protect, getAllProblems);
+// Problem catalog metadata is public; mutations and details remain protected.
+router.get("/", getAllProblems);
 
 // POST /api/problems - moved to /api/admin/problems; retained with strict admin-only check
 router.post("/", protect, requireAdmin, addProblem);

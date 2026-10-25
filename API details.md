@@ -32,7 +32,9 @@
 ## 1. Global API Protocols & Contracts
 
 ### 1.1 Success Response Shapes
+
 Endpoints returning single entities or operations return `{ success: true, ... }` or directly the requested resource. Endpoints returning collections include an explicit `count` and `data` array or the array directly:
+
 ```json
 {
   "success": true,
@@ -42,7 +44,9 @@ Endpoints returning single entities or operations return `{ success: true, ... }
 ```
 
 ### 1.2 Unified Error Response Contract
+
 Every error emitted by the backend (4xx and 5xx) strictly adheres to this structure:
+
 ```json
 {
   "success": false,
@@ -53,30 +57,31 @@ Every error emitted by the backend (4xx and 5xx) strictly adheres to this struct
 ```
 
 #### Master Error Codes Reference
-| HTTP Status | Error Code | Description / Trigger Condition |
-| :--- | :--- | :--- |
-| `400 Bad Request` | `VALIDATION_ERROR` | Missing required body fields or invalid data types |
-| `400 Bad Request` | `INVALID_EMAIL` | Email fails standard regex format validation |
-| `400 Bad Request` | `WEAK_PASSWORD` | Password has fewer than 8 characters |
-| `400 Bad Request` | `PASSWORD_TOO_LONG` | Password exceeds bcrypt 72-byte limit |
-| `400 Bad Request` | `PASSWORD_EQUALS_EMAIL` | Password matches the user's email address |
-| `400 Bad Request` | `INSUFFICIENT_COINS` | User coin balance is lower than theme price |
-| `400 Bad Request` | `ALREADY_OWNED` | User already owns the requested theme |
-| `400 Bad Request` | `MISSING_CODE` | Code string missing in execution payload |
-| `401 Unauthorized` | `UNAUTHORIZED` | Missing or invalid `Authorization: Bearer <token>` |
-| `401 Unauthorized` | `INVALID_CREDENTIALS` | Incorrect email or password during login |
-| `401 Unauthorized` | `TOKEN_REVOKED` | Token was invalidated via `POST /api/auth/logout` |
-| `401 Unauthorized` | `TOKEN_EXPIRED` | JWT has passed its `exp` claim |
-| `401 Unauthorized` | `USER_NOT_FOUND` | User ID encoded in JWT token no longer exists in DB |
-| `403 Forbidden` | `FORBIDDEN` | Access denied (e.g., trying to apply an unowned theme) |
-| `403 Forbidden` | `ADMIN_REQUIRED` | Administrative credentials required for endpoint |
-| `404 Not Found` | `NOT_FOUND` | Problem, study topic, chapter, subject, or theme not found |
-| `404 Not Found` | `SUBMISSION_NOT_FOUND` | Submission ID does not exist or belongs to another user (anti-leak protection) |
-| `409 Conflict` | `EMAIL_ALREADY_EXISTS` | Registration email is already associated with an account |
-| `413 Payload Too Large` | `CODE_TOO_LARGE` | Submitted code string exceeds 64 KB limit |
-| `422 Unprocessable` | `UNSUPPORTED_LANGUAGE` | Programming language not in `[cpp, c, java, python, javascript]` |
-| `429 Too Many Requests` | `TOO_MANY_REQUESTS` | Exceeded rate limit (run, submit, or auth) |
-| `500 Server Error` | `SERVER_ERROR` | Unhandled database or runtime execution error |
+
+| HTTP Status             | Error Code              | Description / Trigger Condition                                                |
+| :---------------------- | :---------------------- | :----------------------------------------------------------------------------- |
+| `400 Bad Request`       | `VALIDATION_ERROR`      | Missing required body fields or invalid data types                             |
+| `400 Bad Request`       | `INVALID_EMAIL`         | Email fails standard regex format validation                                   |
+| `400 Bad Request`       | `WEAK_PASSWORD`         | Password has fewer than 8 characters                                           |
+| `400 Bad Request`       | `PASSWORD_TOO_LONG`     | Password exceeds bcrypt 72-byte limit                                          |
+| `400 Bad Request`       | `PASSWORD_EQUALS_EMAIL` | Password matches the user's email address                                      |
+| `400 Bad Request`       | `INSUFFICIENT_COINS`    | User coin balance is lower than theme price                                    |
+| `400 Bad Request`       | `ALREADY_OWNED`         | User already owns the requested theme                                          |
+| `400 Bad Request`       | `MISSING_CODE`          | Code string missing in execution payload                                       |
+| `401 Unauthorized`      | `UNAUTHORIZED`          | Missing or invalid `Authorization: Bearer <token>`                             |
+| `401 Unauthorized`      | `INVALID_CREDENTIALS`   | Incorrect email or password during login                                       |
+| `401 Unauthorized`      | `TOKEN_REVOKED`         | Token was invalidated via `POST /api/auth/logout`                              |
+| `401 Unauthorized`      | `TOKEN_EXPIRED`         | JWT has passed its `exp` claim                                                 |
+| `401 Unauthorized`      | `USER_NOT_FOUND`        | User ID encoded in JWT token no longer exists in DB                            |
+| `403 Forbidden`         | `FORBIDDEN`             | Access denied (e.g., trying to apply an unowned theme)                         |
+| `403 Forbidden`         | `ADMIN_REQUIRED`        | Administrative credentials required for endpoint                               |
+| `404 Not Found`         | `NOT_FOUND`             | Problem, study topic, chapter, subject, or theme not found                     |
+| `404 Not Found`         | `SUBMISSION_NOT_FOUND`  | Submission ID does not exist or belongs to another user (anti-leak protection) |
+| `409 Conflict`          | `EMAIL_ALREADY_EXISTS`  | Registration email is already associated with an account                       |
+| `413 Payload Too Large` | `CODE_TOO_LARGE`        | Submitted code string exceeds 64 KB limit                                      |
+| `422 Unprocessable`     | `UNSUPPORTED_LANGUAGE`  | Programming language not in `[cpp, c, java, python, javascript]`               |
+| `429 Too Many Requests` | `TOO_MANY_REQUESTS`     | Exceeded rate limit (run, submit, or auth)                                     |
+| `500 Server Error`      | `SERVER_ERROR`          | Unhandled database or runtime execution error                                  |
 
 ---
 
@@ -86,15 +91,25 @@ Copy these types directly into your frontend codebase (e.g. `src/types/api.ts`):
 
 ```typescript
 // --- Core User & Auth ---
-export type SupportedLanguage = 'cpp' | 'c' | 'java' | 'python' | 'javascript';
-export type UserDifficulty = 'easy' | 'medium' | 'hard';
-export type UserTier = 'Prism I' | 'Prism II' | 'Aurora I' | 'Aurora II' | 'Aurora III' | 'Eclipse I' | 'Eclipse II' | 'Eclipse III' | 'Zenith I' | 'Zenith II';
+export type SupportedLanguage = "cpp" | "c" | "java" | "python" | "javascript";
+export type UserDifficulty = "easy" | "medium" | "hard";
+export type UserTier =
+  | "Prism I"
+  | "Prism II"
+  | "Aurora I"
+  | "Aurora II"
+  | "Aurora III"
+  | "Eclipse I"
+  | "Eclipse II"
+  | "Eclipse III"
+  | "Zenith I"
+  | "Zenith II";
 
 export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'user' | 'admin';
+  role: "user" | "admin";
   difficulty: UserDifficulty | null;
   rating: number;
   score: number;
@@ -119,7 +134,7 @@ export interface UserTopicAssociation {
   id: string;
   userId: string;
   topicId: string;
-  level: 'easy' | 'medium' | 'hard';
+  level: "easy" | "medium" | "hard";
   topic?: Topic;
 }
 
@@ -135,7 +150,7 @@ export interface Topic {
   id: string;
   slug: string;
   name: string;
-  category: 'DSA' | 'CORE';
+  category: "DSA" | "CORE";
 }
 
 export interface DsaCategory {
@@ -152,7 +167,7 @@ export interface ProblemListItem {
   problemNumber: number;
   slug: string;
   title: string;
-  difficulty: 'Easy' | 'Medium' | 'Hard';
+  difficulty: "Easy" | "Medium" | "Hard";
   timeLimit: number;
   memoryLimit: number;
   _count: {
@@ -176,7 +191,7 @@ export interface ProblemDetail {
   slug: string;
   title: string;
   description: string;
-  difficulty: 'Easy' | 'Medium' | 'Hard';
+  difficulty: "Easy" | "Medium" | "Hard";
   timeLimit: number;
   memoryLimit: number;
   testcases: TestCase[]; // Strictly visible sample cases only
@@ -184,7 +199,11 @@ export interface ProblemDetail {
 }
 
 // --- Code Execution ---
-export type ExecutionStatus = 'Accepted' | 'Wrong Answer' | 'Runtime Error' | 'Time Limit Exceeded';
+export type ExecutionStatus =
+  | "Accepted"
+  | "Wrong Answer"
+  | "Runtime Error"
+  | "Time Limit Exceeded";
 
 export interface RunCaseResult {
   index: number;
@@ -209,7 +228,7 @@ export interface RunResponse {
 export interface SubmissionQueuedResponse {
   success: boolean;
   submissionId: string;
-  status: 'QUEUED';
+  status: "QUEUED";
   pollUrl: string;
   message: string;
 }
@@ -218,7 +237,13 @@ export interface SubmissionDetail {
   id: string;
   problemId: string;
   language: SupportedLanguage;
-  status: 'QUEUED' | 'PROCESSING' | 'ACCEPTED' | 'WRONG_ANSWER' | 'RUNTIME_ERROR' | 'TIME_LIMIT_EXCEEDED';
+  status:
+    | "QUEUED"
+    | "PROCESSING"
+    | "ACCEPTED"
+    | "WRONG_ANSWER"
+    | "RUNTIME_ERROR"
+    | "TIME_LIMIT_EXCEEDED";
   passedCount: number;
   totalCount: number;
   time: string | null;
@@ -233,7 +258,7 @@ export interface SubmissionDetail {
 // --- Study Curriculum ---
 export interface StudySubject {
   id: string;
-  slug: 'cn' | 'dbms' | 'oops' | 'os' | 'system-design';
+  slug: "cn" | "dbms" | "oops" | "os" | "system-design";
   name: string;
   description: string | null;
   icon: string | null;
@@ -340,21 +365,25 @@ export interface RankedUser {
 ## 3. Frontend Client Implementation Guide
 
 ### 3.1 Fetch API Interceptor with Automatic Bearer Header
+
 ```typescript
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
 export async function apiClient<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<T> {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('calibr8_token') : null;
+  const token =
+    typeof window !== "undefined"
+      ? localStorage.getItem("calibr8_token")
+      : null;
 
   const headers = new Headers(options.headers || {});
-  if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
-    headers.set('Content-Type', 'application/json');
+  if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
   }
   if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
   const response = await fetch(`${BASE_URL}${endpoint}`, {
@@ -362,14 +391,14 @@ export async function apiClient<T>(
     headers,
   });
 
-  const contentType = response.headers.get('content-type') || '';
-  const data = contentType.includes('application/json')
+  const contentType = response.headers.get("content-type") || "";
+  const data = contentType.includes("application/json")
     ? await response.json()
     : await response.text();
 
   if (!response.ok) {
-    if (response.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem('calibr8_token');
+    if (response.status === 401 && typeof window !== "undefined") {
+      localStorage.removeItem("calibr8_token");
       // Optional: window.location.href = '/login';
     }
     throw data; // Rejects with standard { success: false, code, message }
@@ -384,10 +413,12 @@ export async function apiClient<T>(
 ## 4. System & Health APIs
 
 ### 4.1 Root API Spec & Architecture
+
 - **Method & Path**: `GET /`
 - **Protected**: No
 - **Headers**: `Accept: application/json` (returns API manifest) or `Accept: text/html` (returns Developer Console).
 - **Success Response (200 OK)**:
+
 ```json
 {
   "service": "Calibr8 Backend API",
@@ -413,9 +444,11 @@ export async function apiClient<T>(
 ```
 
 ### 4.2 Health Check
+
 - **Method & Path**: `GET /health` or `GET /api/health`
 - **Protected**: No
 - **Success Response (200 OK)**:
+
 ```json
 {
   "status": "ok",
@@ -425,6 +458,7 @@ export async function apiClient<T>(
 ```
 
 ### 4.3 Ping Check
+
 - **Method & Path**: `GET /ping` or `GET /api/ping`
 - **Protected**: No
 - **Success Response (200 OK)**: Returns plain text `pong`.
@@ -434,11 +468,13 @@ export async function apiClient<T>(
 ## 5. Authentication APIs (`/api/auth`)
 
 ### 5.1 Register Account
+
 - **Method & Path**: `POST /api/auth/register`
 - **Protected**: No
 - **Rate Limit**: 10 requests / min / IP
 - **Headers**: `Content-Type: application/json`
 - **Request Body**:
+
 ```json
 {
   "email": "student@example.com",
@@ -447,12 +483,15 @@ export async function apiClient<T>(
   "role": "user"
 }
 ```
-*Validation Rules*:
+
+_Validation Rules_:
+
 - `email`: Required, valid email string. Normalized to lowercase.
 - `password`: Required, 8–72 characters, must not match email (case-insensitive).
 - `name`: Required, non-empty string.
 - `role`: Optional (`user` default). If `admin` is supplied, `ADMIN_SECRET` must be set in environment.
 - **Success Response (201 Created)**:
+
 ```json
 {
   "success": true,
@@ -472,6 +511,7 @@ export async function apiClient<T>(
   }
 }
 ```
+
 - **Error Responses**:
   - `400 Bad Request`: `{"success": false, "code": "WEAK_PASSWORD", "message": "Password must be at least 8 characters long."}`
   - `400 Bad Request`: `{"success": false, "code": "PASSWORD_EQUALS_EMAIL", "message": "Password must differ from the email address."}`
@@ -481,18 +521,22 @@ export async function apiClient<T>(
 ---
 
 ### 5.2 User Login
+
 - **Method & Path**: `POST /api/auth/login`
 - **Protected**: No
 - **Rate Limit**: 10 requests / min / IP
 - **Headers**: `Content-Type: application/json`
 - **Request Body**:
+
 ```json
 {
   "email": "student@example.com",
   "password": "StrongPassword123"
 }
 ```
+
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -512,6 +556,7 @@ export async function apiClient<T>(
   }
 }
 ```
+
 - **Error Responses**:
   - `400 Bad Request`: `{"success": false, "code": "VALIDATION_ERROR", "message": "email and password are required."}`
   - `401 Unauthorized`: `{"success": false, "code": "INVALID_CREDENTIALS", "message": "Invalid email or password."}`
@@ -519,9 +564,11 @@ export async function apiClient<T>(
 ---
 
 ### 5.3 Verify Auth Session (`/api/auth/me` or `/api/auth/verify`)
+
 - **Method & Path**: `GET /api/auth/me` (alias: `GET /api/auth/verify`)
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -544,9 +591,11 @@ export async function apiClient<T>(
 ---
 
 ### 5.4 Refresh JWT Token
+
 - **Method & Path**: `POST /api/auth/refresh`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -558,22 +607,27 @@ export async function apiClient<T>(
 ---
 
 ### 5.5 Change Password
+
 - **Method & Path**: `POST /api/auth/change-password`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Request Body**:
+
 ```json
 {
   "currentPassword": "OldPassword123",
   "newPassword": "NewStrongPassword456"
 }
 ```
+
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
   "message": "Password changed successfully."
 }
 ```
+
 - **Error Responses**:
   - `401 Unauthorized`: `{"success": false, "code": "INVALID_CURRENT_PASSWORD", "message": "Current password is incorrect."}`
   - `400 Bad Request`: `{"success": false, "code": "WEAK_PASSWORD", "message": "Password must be at least 8 characters long."}`
@@ -581,10 +635,12 @@ export async function apiClient<T>(
 ---
 
 ### 5.6 Logout & Token Revocation
+
 - **Method & Path**: `POST /api/auth/logout`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Behavior**: Extracts the unique JWT `jti` and permanently blacklists it until token expiration. Subsequent requests using this token receive `401 TOKEN_REVOKED`.
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -597,9 +653,11 @@ export async function apiClient<T>(
 ## 6. User Profile & Academic APIs (`/api/users`)
 
 ### 6.1 Get Profile Details
+
 - **Method & Path**: `GET /api/users/me` (alias: `GET /api/users/`)
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -644,15 +702,19 @@ export async function apiClient<T>(
 ---
 
 ### 6.2 Update Name
+
 - **Method & Path**: `PUT /api/users/me` (alias: `PUT /api/users/`)
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Request Body**:
+
 ```json
 {
   "name": "Alexander Mercer"
 }
 ```
+
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -669,16 +731,21 @@ export async function apiClient<T>(
 ---
 
 ### 6.3 Update Preferred Programming Language
+
 - **Method & Path**: `PATCH /api/users/me/language` (alias: `PATCH /api/users/language`)
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Request Body**:
+
 ```json
 {
   "language": "python"
 }
 ```
-*Valid values*: `cpp`, `c`, `java`, `python`, `javascript`.
+
+_Valid values_: `cpp`, `c`, `java`, `python`, `javascript`.
+
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -689,9 +756,11 @@ export async function apiClient<T>(
 ---
 
 ### 6.4 Update Academic Profile
+
 - **Method & Path**: `PATCH /api/users/me/academic` (alias: `PATCH /api/users/academic`)
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Request Body** (all fields optional, at least one required):
+
 ```json
 {
   "college": "AKGEC",
@@ -700,7 +769,9 @@ export async function apiClient<T>(
   "country": "India"
 }
 ```
+
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -721,9 +792,11 @@ export async function apiClient<T>(
 ---
 
 ### 6.5 Get Problem Solve Status for User
+
 - **Method & Path**: `GET /api/users/all`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -749,21 +822,33 @@ export async function apiClient<T>(
 ## 7. Topics & Categories APIs (`/api/topics`)
 
 ### 7.1 List All Calibration Topics
+
 - **Method & Path**: `GET /api/topics`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Query Parameters**:
   - `category` (optional): Filter to `'dsa'` or `'core'`.
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
   "count": 9,
   "topics": [
-    { "id": "t-1", "slug": "dsa-arrays", "name": "DSA - Arrays", "category": "DSA" },
+    {
+      "id": "t-1",
+      "slug": "dsa-arrays",
+      "name": "DSA - Arrays",
+      "category": "DSA"
+    },
     { "id": "t-6", "slug": "dbms", "name": "DBMS", "category": "CORE" }
   ],
   "dsaTopics": [
-    { "id": "t-1", "slug": "dsa-arrays", "name": "DSA - Arrays", "category": "DSA" }
+    {
+      "id": "t-1",
+      "slug": "dsa-arrays",
+      "name": "DSA - Arrays",
+      "category": "DSA"
+    }
   ],
   "coreTopics": [
     { "id": "t-6", "slug": "dbms", "name": "DBMS", "category": "CORE" }
@@ -774,19 +859,46 @@ export async function apiClient<T>(
 ---
 
 ### 7.2 List DSA Calibration Topics Specifically
+
 - **Method & Path**: `GET /api/topics/dsa`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
   "count": 5,
   "topics": [
-    { "id": "t-1", "slug": "dsa-arrays", "name": "DSA - Arrays", "category": "DSA" },
-    { "id": "t-2", "slug": "dsa-graphs-dp", "name": "DSA - Graphs & DP", "category": "DSA" },
-    { "id": "t-3", "slug": "dsa-linked-list", "name": "DSA - Linked List", "category": "DSA" },
-    { "id": "t-4", "slug": "dsa-stack-queue", "name": "DSA - Stack & Queue", "category": "DSA" },
-    { "id": "t-5", "slug": "dsa-trees", "name": "DSA - Trees", "category": "DSA" }
+    {
+      "id": "t-1",
+      "slug": "dsa-arrays",
+      "name": "DSA - Arrays",
+      "category": "DSA"
+    },
+    {
+      "id": "t-2",
+      "slug": "dsa-graphs-dp",
+      "name": "DSA - Graphs & DP",
+      "category": "DSA"
+    },
+    {
+      "id": "t-3",
+      "slug": "dsa-linked-list",
+      "name": "DSA - Linked List",
+      "category": "DSA"
+    },
+    {
+      "id": "t-4",
+      "slug": "dsa-stack-queue",
+      "name": "DSA - Stack & Queue",
+      "category": "DSA"
+    },
+    {
+      "id": "t-5",
+      "slug": "dsa-trees",
+      "name": "DSA - Trees",
+      "category": "DSA"
+    }
   ]
 }
 ```
@@ -794,9 +906,11 @@ export async function apiClient<T>(
 ---
 
 ### 7.3 List Structured DSA Categories
+
 - **Method & Path**: `GET /api/topics/categories` or `GET /api/topics/dsa/categories`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Success Response (200 OK)**:
+
 ```json
 [
   {
@@ -819,13 +933,15 @@ export async function apiClient<T>(
 ---
 
 ### 7.4 Get Problems in a DSA Category
+
 - **Method & Path**: `GET /api/topics/dsa/:slug/problems`
-- **Protected**: Yes (`Authorization: Bearer <token>`)
+- **Protected**: No
 - **Path Parameter**: `:slug` (DSA category slug, e.g., `arrays-and-hashing`)
 - **Query Parameters**:
   - `difficulty` (optional): `'Easy'`, `'Medium'`, or `'Hard'`.
   - `search` (optional): String keyword search on title or slug.
 - **Success Response (200 OK)**:
+
 ```json
 {
   "topic": {
@@ -850,10 +966,12 @@ export async function apiClient<T>(
 ---
 
 ### 7.5 Get Topic by Identifier (ID or Slug)
+
 - **Method & Path**: `GET /api/topics/:identifier`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Path Parameter**: `:identifier` (Topic ID e.g. `t-1` or slug e.g. `dsa-arrays`)
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -871,12 +989,15 @@ export async function apiClient<T>(
 ## 8. Onboarding & Calibration APIs (`/api/onboarding`)
 
 ### 8.1 Submit Skill Calibration
+
 - **Method & Path**: `POST /api/onboarding` (alias: `PUT /api/onboarding/levels`)
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Headers**: `Content-Type: application/json`
 
 #### Payload Modes:
+
 - **Mode 1: Granular Per-Topic Selection (Recommended)**:
+
 ```json
 {
   "topicSelections": [
@@ -886,25 +1007,32 @@ export async function apiClient<T>(
   ]
 }
 ```
+
 - **Mode 2: Global Preset across all topics**:
+
 ```json
 {
   "difficulty": "medium",
   "topicIds": "all"
 }
 ```
+
 - **Mode 3: 1-Click Beginner Preset**:
+
 ```json
 {
   "beginner": true
 }
 ```
-*Rating Calculation*:
+
+_Rating Calculation_:
+
 - Easy = 800
 - Medium / Mid = 1200
 - Hard / Advanced = 1600
 - Composite rating is the rounded average across calibrated topics.
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -927,9 +1055,11 @@ export async function apiClient<T>(
 ---
 
 ### 8.2 Get Onboarding Status
+
 - **Method & Path**: `GET /api/onboarding/status`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -950,15 +1080,19 @@ export async function apiClient<T>(
 ---
 
 ### 8.3 Update Onboarding Language Preference
+
 - **Method & Path**: `PATCH /api/onboarding/language`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Request Body**:
+
 ```json
 {
   "language": "python"
 }
 ```
+
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -971,12 +1105,14 @@ export async function apiClient<T>(
 ## 9. Problems Catalogue APIs (`/api/problems`)
 
 ### 9.1 List All Problems
+
 - **Method & Path**: `GET /api/problems`
-- **Protected**: Yes (`Authorization: Bearer <token>`)
+- **Protected**: No
 - **Query Parameters**:
   - `difficulty` (optional): `'Easy'`, `'Medium'`, or `'Hard'`.
   - `search` (optional): String matching problem number, title, or slug.
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -1002,11 +1138,13 @@ export async function apiClient<T>(
 ---
 
 ### 9.2 Get Problem Details & Starter Templates
+
 - **Method & Path**: `GET /api/problems/:slug`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Path Parameter**: `:slug` (e.g. `'two-sum-001'` or problem number integer `'1'`).
 - **Security Constraint**: Returns **visible / sample test cases ONLY**. Hidden verification cases are never exposed.
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -1044,17 +1182,39 @@ export async function apiClient<T>(
 ## 10. Code Execution Sandbox APIs (`/api/execution`)
 
 ### 10.1 List Supported Languages
+
 - **Method & Path**: `GET /api/execution/languages`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
   "languages": [
-    { "key": "python", "label": "Python", "version": "Python 3.10", "starterAvailable": true },
-    { "key": "javascript", "label": "JavaScript", "version": "Node.js 22", "starterAvailable": true },
-    { "key": "cpp", "label": "C++", "version": "GCC 13", "starterAvailable": true },
-    { "key": "java", "label": "Java", "version": "OpenJDK 17", "starterAvailable": true }
+    {
+      "key": "python",
+      "label": "Python",
+      "version": "Python 3.10",
+      "starterAvailable": true
+    },
+    {
+      "key": "javascript",
+      "label": "JavaScript",
+      "version": "Node.js 22",
+      "starterAvailable": true
+    },
+    {
+      "key": "cpp",
+      "label": "C++",
+      "version": "GCC 13",
+      "starterAvailable": true
+    },
+    {
+      "key": "java",
+      "label": "Java",
+      "version": "OpenJDK 17",
+      "starterAvailable": true
+    }
   ]
 }
 ```
@@ -1062,6 +1222,7 @@ export async function apiClient<T>(
 ---
 
 ### 10.2 Synchronous Run (Sample Testcases)
+
 - **Method & Path**: `POST /api/execution/runs`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Rate Limit**: 10 requests / min / user
@@ -1069,6 +1230,7 @@ export async function apiClient<T>(
   - `Authorization: Bearer <token>`
   - `Content-Type: application/json`
 - **Request Body**:
+
 ```json
 {
   "slug": "two-sum-001",
@@ -1076,8 +1238,11 @@ export async function apiClient<T>(
   "code": "class Solution:\n    def twoSum(self, nums, target):\n        print('debugging:', target)\n        lookup = {}\n        for i, n in enumerate(nums):\n            diff = target - n\n            if diff in lookup:\n                return [lookup[diff], i]\n            lookup[n] = i\n"
 }
 ```
-*Note*: Also accepts `problemId` in place of `slug`. Maximum code size is 64 KB.
+
+_Note_: Also accepts `problemId` in place of `slug`. Maximum code size is 64 KB.
+
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -1102,6 +1267,7 @@ export async function apiClient<T>(
 ---
 
 ### 10.3 Asynchronous Submit (Full Multi-Tier Judging)
+
 - **Method & Path**: `POST /api/execution/submissions`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Rate Limit**: 6 requests / min / user
@@ -1110,6 +1276,7 @@ export async function apiClient<T>(
   - `Content-Type: application/json`
   - `Idempotency-Key`: Optional UUID string to deduplicate requests.
 - **Request Body**:
+
 ```json
 {
   "slug": "two-sum-001",
@@ -1117,7 +1284,9 @@ export async function apiClient<T>(
   "code": "class Solution:\n    def twoSum(self, nums, target):\n        lookup = {}\n        for i, n in enumerate(nums):\n            diff = target - n\n            if diff in lookup:\n                return [lookup[diff], i]\n            lookup[n] = i\n"
 }
 ```
+
 - **Success Response (202 Accepted)**:
+
 ```json
 {
   "success": true,
@@ -1131,11 +1300,13 @@ export async function apiClient<T>(
 ---
 
 ### 10.4 Poll Submission Status
+
 - **Method & Path**: `GET /api/execution/submissions/:id`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Path Parameter**: `:id` (submissionId string from 10.3)
 - **Security Rule**: Owner-only. Non-owners receive `404 SUBMISSION_NOT_FOUND`.
 - **Success Response (200 OK - Finished)**:
+
 ```json
 {
   "success": true,
@@ -1162,10 +1333,12 @@ export async function apiClient<T>(
 ## 11. Social & GitHub OAuth APIs (`/api/social`)
 
 ### 11.1 Get GitHub Link URL
+
 - **Method & Path**: `GET /api/social/:provider/link-url`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Path Parameter**: `:provider` (`'github'`)
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -1176,6 +1349,7 @@ export async function apiClient<T>(
 ---
 
 ### 11.2 OAuth Callback
+
 - **Method & Path**: `GET /api/social/:provider/callback`
 - **Protected**: No (Invoked by GitHub OAuth redirect)
 - **Path Parameter**: `:provider` (`'github'`)
@@ -1187,10 +1361,12 @@ export async function apiClient<T>(
 ---
 
 ### 11.3 Unlink Social Account
+
 - **Method & Path**: `DELETE /api/social/:provider`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Path Parameter**: `:provider` (`'github'`)
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -1203,9 +1379,11 @@ export async function apiClient<T>(
 ## 12. CS Curriculum & Study Material APIs (`/api/study`)
 
 ### 12.1 List All Subjects
+
 - **Method & Path**: `GET /api/study/subjects`
 - **Protected**: No (Public)
 - **Success Response (200 OK)**:
+
 ```json
 [
   {
@@ -1259,10 +1437,12 @@ export async function apiClient<T>(
 ---
 
 ### 12.2 Get Subject Details & Chapters
+
 - **Method & Path**: `GET /api/study/subjects/:subjectSlug` (alias: `/api/study/subjects/:subjectSlug/chapters`)
 - **Protected**: No (Public)
 - **Path Parameter**: `:subjectSlug` (`'cn'`, `'dbms'`, `'oops'`, `'os'`, `'system-design'`)
 - **Success Response (200 OK)**:
+
 ```json
 {
   "id": "subj-dbms",
@@ -1284,10 +1464,12 @@ export async function apiClient<T>(
 ---
 
 ### 12.3 Get Topics in a Chapter
+
 - **Method & Path**: `GET /api/study/chapters/:chapterId/topics`
 - **Protected**: No (Public)
 - **Path Parameter**: `:chapterId` (e.g. `'chap-dbms-1'`)
 - **Success Response (200 OK)**:
+
 ```json
 [
   {
@@ -1302,11 +1484,13 @@ export async function apiClient<T>(
 ---
 
 ### 12.4 Get Study Topic Lesson & MCQs
+
 - **Method & Path**: `GET /api/study/topics/:topicSlug`
 - **Protected**: No (Public)
 - **Path Parameter**: `:topicSlug` (e.g. `'dbms-foundations-and-architecture'`)
 - **Anti-Cheat Policy**: `correctIndex` and `explanation` are filtered out so answers cannot be inspected client-side.
 - **Success Response (200 OK)**:
+
 ```json
 {
   "id": "top-dbms-1",
@@ -1324,7 +1508,12 @@ export async function apiClient<T>(
     {
       "id": "mcq-1",
       "question": "Which layer of the 3-Schema Architecture hides physical storage details from users?",
-      "options": ["Internal Level", "Conceptual Level", "External Level", "Physical Level"],
+      "options": [
+        "Internal Level",
+        "Conceptual Level",
+        "External Level",
+        "Physical Level"
+      ],
       "difficulty": "Easy",
       "order": 1
     }
@@ -1335,10 +1524,12 @@ export async function apiClient<T>(
 ---
 
 ### 12.5 Submit MCQ Answers
+
 - **Method & Path**: `POST /api/study/topics/:topicSlug/submit`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Path Parameter**: `:topicSlug`
 - **Request Body**:
+
 ```json
 {
   "answers": {
@@ -1347,8 +1538,11 @@ export async function apiClient<T>(
   }
 }
 ```
-*Note*: Keys are MCQ IDs, values are the 0-indexed option selected.
+
+_Note_: Keys are MCQ IDs, values are the 0-indexed option selected.
+
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -1372,9 +1566,11 @@ export async function apiClient<T>(
 ## 13. Themes & Personalization APIs (`/api/themes`)
 
 ### 13.1 List All Themes
+
 - **Method & Path**: `GET /api/themes`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -1409,9 +1605,11 @@ export async function apiClient<T>(
 ---
 
 ### 13.2 Get User Theme State
+
 - **Method & Path**: `GET /api/themes/me`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -1424,15 +1622,19 @@ export async function apiClient<T>(
 ---
 
 ### 13.3 Apply an Owned Theme
+
 - **Method & Path**: `PUT /api/themes/apply`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Request Body**:
+
 ```json
 {
   "slug": "cyberpunk"
 }
 ```
+
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -1440,6 +1642,7 @@ export async function apiClient<T>(
   "message": "Cyberpunk Neon applied"
 }
 ```
+
 - **Error Responses**:
   - `400 Bad Request`: `{"success": false, "code": "BAD_REQUEST", "message": "slug required"}`
   - `403 Forbidden`: `{"success": false, "code": "FORBIDDEN", "message": "You don't own this theme, buy first"}`
@@ -1448,6 +1651,7 @@ export async function apiClient<T>(
 ---
 
 ### 13.4 Purchase Theme with Coins
+
 - **Method & Path**: `POST /api/themes/:slug/buy`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Path Parameter**: `:slug` (e.g. `'cyberpunk'`)
@@ -1455,6 +1659,7 @@ export async function apiClient<T>(
   - Validates user has `>= theme.price` coins.
   - Decrements coins, links theme to `user_themes`, auto-applies theme.
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -1467,6 +1672,7 @@ export async function apiClient<T>(
   "coins": 20
 }
 ```
+
 - **Error Responses**:
   - `400 Bad Request`: `{"success": false, "code": "ALREADY_OWNED", "message": "Already owned"}`
   - `400 Bad Request`: `{"success": false, "code": "INSUFFICIENT_COINS", "message": "Not enough coins", "details": {"required": 100, "have": 40}}`
@@ -1477,6 +1683,7 @@ export async function apiClient<T>(
 ## 14. Rankings & Leaderboard APIs (`/api/rankings`)
 
 ### 14.1 Get Public Rankings
+
 - **Method & Path**: `GET /api/rankings`
 - **Protected**: No (Public)
 - **Query Parameters**:
@@ -1488,6 +1695,7 @@ export async function apiClient<T>(
   - `limit` (optional): Integer (1 to 100, default `50`).
 - **Security Policy**: Sensitive data (password hashes, tokens, emails) is strictly omitted.
 - **Success Response (200 OK)**:
+
 ```json
 {
   "success": true,
@@ -1532,14 +1740,18 @@ export async function apiClient<T>(
 ## 15. Rate Limits & Security Policy
 
 ### 15.1 Rate Limiting Windows
+
 The backend applies standard in-memory rate limiting to protect code evaluation resources and prevent brute-force attacks:
+
 - **Authentication endpoints** (`/api/auth/register`, `/api/auth/login`): **10 requests per minute per IP**.
 - **Code Run** (`/api/execution/runs`): **10 runs per minute per user**.
 - **Code Submission** (`/api/execution/submissions`): **6 submissions per minute per user**.
 - **Concurrent In-Flight Executions**: Maximum **2 active runs/submissions per user** simultaneously. If exceeded, returns `429 TOO_MANY_REQUESTS` with message `"Another execution is already running. Please wait."`.
 
 ### 15.2 Security Headers
+
 Every response includes security headers configured for modern web apps:
+
 - `Content-Security-Policy`: Restricts scripts, styles, fonts, and sets frame ancestors.
 - `X-Content-Type-Options`: `nosniff`
 - `X-Frame-Options`: `SAMEORIGIN`
