@@ -1,6 +1,17 @@
 import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
 
+const onboardingTopics = {
+  "dsa-arrays": "Arrays",
+  "dsa-strings": "Strings",
+  "dsa-recursion": "Recursion",
+  "dsa-graphs": "Graphs",
+  "dsa-sliding-window": "Sliding Window",
+  "dsa-dp": "DP",
+  "dsa-trees": "Trees",
+  "dsa-linked-list": "Linked List",
+};
+
 /**
  * POST /api/onboarding or PUT /api/onboarding/levels
  * Completes the authenticated user's onboarding calibration and sets topic difficulty levels.
@@ -41,41 +52,82 @@ export const onboard = async (req, res, next) => {
       }));
     }
 
-    let resolvedTopicIds = [];
-    const levelByTopicId = new Map();
+    let resolvedTopicIdentifiers = [];
+    const levelByTopicIdentifier = new Map();
 
     if (Array.isArray(topicSelections) && topicSelections.length > 0) {
-      resolvedTopicIds = topicSelections.map((item) => {
+      resolvedTopicIdentifiers = topicSelections.map((item) => {
         const id = typeof item === "string" ? item : item.topicId;
         const diff =
           typeof item === "object"
             ? item.difficulty || item.level || "easy"
             : "easy";
-        levelByTopicId.set(id, diff);
+        levelByTopicIdentifier.set(id, diff);
         return id;
       });
     } else if (Array.isArray(topicIds)) {
-      resolvedTopicIds = [...topicIds];
+      resolvedTopicIdentifiers = [...topicIds];
     }
 
     // If user requested "all" topics or provided difficulty without topicIds, select all topics
-    if (topicIds === "all" || (difficulty && resolvedTopicIds.length === 0)) {
+    if (
+      topicIds === "all" ||
+      (difficulty && resolvedTopicIdentifiers.length === 0)
+    ) {
       const allTopics = await prisma.topic.findMany();
-      resolvedTopicIds = allTopics.map((t) => t.id);
+      resolvedTopicIdentifiers = allTopics.map((topic) => topic.id);
     }
 
     // Validate that at least 1 topic is selected
-    if (!Array.isArray(resolvedTopicIds) || resolvedTopicIds.length < 1) {
+    if (
+      !Array.isArray(resolvedTopicIdentifiers) ||
+      resolvedTopicIdentifiers.length < 1
+    ) {
       throw new ApiError(400, "Please select at least 1 topic.");
     }
 
-    // Verify all topic IDs exist
-    const topics = await prisma.topic.findMany({
-      where: { id: { in: resolvedTopicIds } },
+    const uniqueTopicIdentifiers = [...new Set(resolvedTopicIdentifiers)];
+    const existingTopics = await prisma.topic.findMany({
+      where: {
+        OR: [
+          { id: { in: uniqueTopicIdentifiers } },
+          { slug: { in: uniqueTopicIdentifiers } },
+        ],
+      },
     });
-    if (topics.length !== resolvedTopicIds.length) {
+    const topicByIdentifier = new Map();
+    existingTopics.forEach((topic) => {
+      topicByIdentifier.set(topic.id, topic);
+      topicByIdentifier.set(topic.slug, topic);
+    });
+
+    for (const identifier of uniqueTopicIdentifiers) {
+      const name = onboardingTopics[identifier];
+      if (name && !topicByIdentifier.has(identifier)) {
+        const topic = await prisma.topic.upsert({
+          where: { slug: identifier },
+          update: { name, category: "DSA" },
+          create: { slug: identifier, name, category: "DSA" },
+        });
+        topicByIdentifier.set(topic.id, topic);
+        topicByIdentifier.set(topic.slug, topic);
+      }
+    }
+
+    const topics = uniqueTopicIdentifiers.map((identifier) =>
+      topicByIdentifier.get(identifier),
+    );
+    if (topics.some((topic) => !topic)) {
       throw new ApiError(400, "One or more topic IDs are invalid.");
     }
+
+    const resolvedTopicIds = topics.map((topic) => topic.id);
+    const levelByTopicId = new Map(
+      topics.map((topic, index) => [
+        topic.id,
+        levelByTopicIdentifier.get(uniqueTopicIdentifiers[index]),
+      ]),
+    );
 
     // Calculate rating and difficulty
     let rating = 800;
@@ -193,7 +245,9 @@ export const updateLanguage = async (req, res, next) => {
   try {
     const { language } = req.body;
     const allowed = ["cpp", "c", "java", "python", "javascript"];
-    const normalized = String(language || "").trim().toLowerCase();
+    const normalized = String(language || "")
+      .trim()
+      .toLowerCase();
 
     if (!allowed.includes(normalized)) {
       throw new ApiError(

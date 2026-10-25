@@ -1,18 +1,23 @@
-import prisma from '../src/config/db.js';
+import prisma from "../src/config/db.js";
 
 const topics = [
-  // 5 DSA Topics
-  { slug: 'dsa-arrays', name: 'DSA - Arrays', category: 'DSA' },
-  { slug: 'dsa-graphs-dp', name: 'DSA - Graphs & DP', category: 'DSA' },
-  { slug: 'dsa-linked-list', name: 'DSA - Linked List', category: 'DSA' },
-  { slug: 'dsa-stack-queue', name: 'DSA - Stack & Queue', category: 'DSA' },
-  { slug: 'dsa-trees', name: 'DSA - Trees', category: 'DSA' },
+  // Onboarding DSA Topics
+  { slug: "dsa-arrays", name: "DSA - Arrays", category: "DSA" },
+  { slug: "dsa-strings", name: "DSA - Strings", category: "DSA" },
+  { slug: "dsa-recursion", name: "DSA - Recursion", category: "DSA" },
+  { slug: "dsa-graphs", name: "DSA - Graphs", category: "DSA" },
+  { slug: "dsa-sliding-window", name: "DSA - Sliding Window", category: "DSA" },
+  { slug: "dsa-dp", name: "DSA - DP", category: "DSA" },
+  { slug: "dsa-graphs-dp", name: "DSA - Graphs & DP", category: "DSA" },
+  { slug: "dsa-linked-list", name: "DSA - Linked List", category: "DSA" },
+  { slug: "dsa-stack-queue", name: "DSA - Stack & Queue", category: "DSA" },
+  { slug: "dsa-trees", name: "DSA - Trees", category: "DSA" },
 
   // 4 CORE Topics
-  { slug: 'aptitude', name: 'Aptitude', category: 'CORE' },
-  { slug: 'dbms', name: 'DBMS', category: 'CORE' },
-  { slug: 'oops', name: 'OOPs', category: 'CORE' },
-  { slug: 'system-design', name: 'System Design', category: 'CORE' },
+  { slug: "aptitude", name: "Aptitude", category: "CORE" },
+  { slug: "dbms", name: "DBMS", category: "CORE" },
+  { slug: "oops", name: "OOPs", category: "CORE" },
+  { slug: "system-design", name: "System Design", category: "CORE" },
 ];
 
 async function main() {
@@ -30,7 +35,7 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error('❌ Seeding failed:', e.message);
+    console.error("❌ Seeding failed:", e.message);
     process.exit(1);
   })
   .finally(async () => {
