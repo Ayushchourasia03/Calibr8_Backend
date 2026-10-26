@@ -8,8 +8,10 @@ const onboardingTopics = {
   "dsa-graphs": "Graphs",
   "dsa-sliding-window": "Sliding Window",
   "dsa-dp": "DP",
+  "dsa-graphs-dp": "DSA - Graphs & DP",
   "dsa-trees": "Trees",
   "dsa-linked-list": "Linked List",
+  "dsa-stack-queue": "DSA - Stack & Queue",
 };
 
 /**

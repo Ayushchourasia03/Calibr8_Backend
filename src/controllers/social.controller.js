@@ -7,15 +7,15 @@ import { OAUTH_STATE_SECRET } from "../config/jwt.js";
  * Validates frontend redirect URL against an allow-list to prevent open redirect vulnerabilities.
  */
 function getSafeFrontendRedirect(targetUrl, req) {
-  const configured = (process.env.FRONTEND_URL || "http://localhost:3000")
+  const configured = (process.env.FRONTEND_URL || "http://localhost:5173")
     .split(",")
     .map((u) => u.trim().replace(/\/+$/, ""))
     .filter(Boolean);
 
   const allowedOrigins = [
     ...configured,
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
   ];
 
   if (req && req.get("host")) {
@@ -41,7 +41,7 @@ function getSafeFrontendRedirect(targetUrl, req) {
     }
   }
 
-  return allowedOrigins[0] || "http://localhost:3000";
+  return allowedOrigins[0] || "http://localhost:5173";
 }
 
 /**
