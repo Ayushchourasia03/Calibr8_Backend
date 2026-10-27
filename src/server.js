@@ -9,7 +9,7 @@ let shuttingDown = false;
 
 // Codebox engine check
 async function checkCodeboxEngine() {
-  const url = process.env.CODEBOX_URL || 'http://187.127.173.216';
+  const url = process.env.CODEBOX_URL ;
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);

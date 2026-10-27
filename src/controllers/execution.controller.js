@@ -1,15 +1,10 @@
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import crypto from "crypto";
 import prisma from "../config/db.js";
-import { executeCase, areOutputsEqual } from "../utils/codeRunner.js";
+import { executeCase, areOutputsEqual, buildSource } from "../utils/codeRunner.js";
+import { resolveProblem } from "../utils/problemResolver.js";
 import { ApiError } from "../utils/ApiError.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const PROBLEMS_DIR = path.resolve(__dirname, "../../problems");
-
-const CODEBOX_URL = process.env.CODEBOX_URL ;
+const CODEBOX_URL = process.env.CODEBOX_URL || "http://187.127.173.216";
 const CODEBOX_TOKEN = process.env.CODEBOX_TOKEN;
 const submissionCache = new Map();
 
@@ -64,24 +59,18 @@ export const getLanguages = async (req, res, next) => {
 };
 
 /**
- * Helper to run a testcase either via remote Codebox engine or local sandboxed runner
+ * Helper to run a testcase either via remote Codebox engine or local sandboxed runner.
+ * Automatically injects the function driver wrapper so users only provide their solution method.
  */
-async function runSingleTestCase({
-  language,
-  code,
-  stdin,
-  timeLimit = 3000,
-  memoryLimit = 256,
-}) {
+async function runSingleTestCase({ language, code, stdin, timeLimit = 3000, memoryLimit = 256 }) {
+  const marker = `__CALIBR8_MARK_${crypto.randomBytes(6).toString("hex")}__`;
+  const fullCode = buildSource(language, code, marker);
+
   // If CODEBOX_TOKEN is configured and remote VPS is accessible, attempt remote execution
   if (CODEBOX_TOKEN && CODEBOX_URL) {
     try {
-      const sourceCode =
-        language === "cpp"
-          ? `#include <bits/stdc++.h>\nusing namespace std;\n#line 1\n${code}`
-          : code;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), timeLimit + 2000);
+      const timeout = setTimeout(() => controller.abort(), timeLimit + 2500);
 
       const langMap = { python: 71, javascript: 63, cpp: 54, java: 62 };
       const res = await fetch(`${CODEBOX_URL}/submissions?wait=true`, {
@@ -91,7 +80,7 @@ async function runSingleTestCase({
           "X-Auth-Token": CODEBOX_TOKEN,
         },
         body: JSON.stringify({
-          source_code: sourceCode,
+          source_code: fullCode,
           language_id: langMap[language] || 71,
           stdin: stdin || "",
           cpu_time_limit: Math.ceil(timeLimit / 1000),
@@ -103,33 +92,45 @@ async function runSingleTestCase({
 
       if (res.ok) {
         const data = await res.json();
-        const judgeStatus = data.status;
-        const statusDescription =
-          judgeStatus?.description || judgeStatus || "OK";
-        const executionCompleted =
-          judgeStatus?.id === 3 ||
-          judgeStatus?.id === 4 ||
-          statusDescription === "Accepted" ||
-          statusDescription === "Wrong Answer" ||
-          statusDescription === "OK";
+        const rawStdout = data.stdout || "";
+        const lines = rawStdout.split("\n");
+        let markerLineIdx = -1;
+        let actual = "";
+
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const line = lines[i];
+          if (line.includes(marker)) {
+            markerLineIdx = i;
+            actual = line.slice(line.indexOf(marker) + marker.length).trim();
+            break;
+          }
+        }
+
+        let studentStdout = "";
+        if (markerLineIdx !== -1) {
+          studentStdout = lines.filter((_, idx) => idx !== markerLineIdx).join("\n").trim();
+        } else {
+          studentStdout = rawStdout.trim();
+        }
+
+        const isCompileError = data.status?.id === 6 || Boolean(data.compile_output);
+        const isRuntimeError = data.status?.id >= 7 && data.status?.id <= 12;
+
         return {
-          status: executionCompleted ? "OK" : statusDescription,
-          studentStdout: data.stdout || "",
-          actual: (data.stdout || "").trim(),
+          status: isCompileError ? "Compilation Error" : (isRuntimeError ? "Runtime Error" : "OK"),
+          studentStdout,
+          actual: actual || (markerLineIdx === -1 ? rawStdout.trim() : ""),
           errorText: data.stderr || data.compile_output || null,
           timeMs: Math.round(parseFloat(data.time || "0") * 1000),
           memoryKb: data.memory || 0,
         };
       }
     } catch (e) {
-      console.warn(
-        "[Codebox VPS] Remote call failed, using sandbox runner:",
-        e.message,
-      );
+      console.warn("[Codebox VPS] Remote call failed, using sandbox runner:", e.message);
     }
   }
 
-  // Fallback to in-process sandboxed runner (Python 3 & Node.js)
+  // Local sandboxed runner (Python 3 & Node.js 22)
   return await executeCase({
     language,
     code,
@@ -140,110 +141,6 @@ async function runSingleTestCase({
 }
 
 /**
- * Helper to find problem by slug, ID, or problem number with testcases and templates
- */
-async function resolveProblem(slugOrId) {
-  if (!slugOrId) return null;
-  const isNum = /^\d+$/.test(String(slugOrId));
-  const include = {
-    testcases: { orderBy: { testIndex: "asc" } },
-    templates: true,
-  };
-
-  let problem = null;
-  try {
-    if (isNum) {
-      problem = await prisma.problem.findUnique({
-        where: { problemNumber: Number(slugOrId) },
-        include,
-      });
-    } else {
-      problem = await prisma.problem.findUnique({
-        where: { slug: String(slugOrId) },
-        include,
-      });
-    }
-
-    if (!problem) {
-      const all = await prisma.problem.findMany({ include });
-      const target = String(slugOrId).toLowerCase();
-      problem = all.find(
-        (p) =>
-          p.slug.toLowerCase() === target ||
-          p.slug.replace(/-\d+$/, "").toLowerCase() === target ||
-          String(p.id) === String(slugOrId),
-      );
-    }
-  } catch (dbErr) {
-    console.warn("[Execution] DB notice:", dbErr.message);
-  }
-
-  // If problem is not in DB or has no testcases, read from local /problems/*.json
-  if (!problem || !problem.testcases || problem.testcases.length === 0) {
-    try {
-      const targetSlug = String(slugOrId).toLowerCase();
-      if (fs.existsSync(PROBLEMS_DIR)) {
-        const files = fs
-          .readdirSync(PROBLEMS_DIR)
-          .filter((f) => f.endsWith(".json"));
-        let matchFile = files.find(
-          (f) => f.replace(".json", "").toLowerCase() === targetSlug,
-        );
-        if (!matchFile) {
-          matchFile = files.find(
-            (f) =>
-              f.replace(/-\d+\.json$/, "").toLowerCase() === targetSlug ||
-              f.replace(".json", "").toLowerCase().includes(targetSlug),
-          );
-        }
-        if (matchFile) {
-          const raw = fs.readFileSync(
-            path.join(PROBLEMS_DIR, matchFile),
-            "utf-8",
-          );
-          const data = JSON.parse(raw);
-          const tcs = (data.testcases || []).map((tc, idx) => ({
-            testIndex: tc.testIndex ?? idx,
-            isVisible: tc.isVisible ?? tc.visible ?? true,
-            stdinSmall: String(tc.stdinSmall ?? tc.input ?? ""),
-            expectedSmall: String(tc.expectedSmall ?? tc.output ?? ""),
-            input: String(tc.input ?? tc.stdinSmall ?? ""),
-            output: String(tc.output ?? tc.expectedSmall ?? ""),
-          }));
-          const tmpls = Object.entries(data.templates || {}).map(
-            ([lang, code]) => ({
-              language: lang,
-              code: String(code),
-            }),
-          );
-
-          if (!problem) {
-            problem = {
-              id: `prob-${matchFile.replace(".json", "")}`,
-              slug: data.slug || matchFile.replace(".json", ""),
-              title: data.title || matchFile.replace(".json", ""),
-              description: data.description || data.title,
-              difficulty: data.difficulty || "Easy",
-              timeLimit: data.timeLimit || data.time_limit || 1000,
-              memoryLimit: data.memoryLimit || data.memory_limit || 256,
-              testcases: tcs,
-              templates: tmpls,
-            };
-          } else {
-            problem.testcases = tcs;
-            if (!problem.templates || problem.templates.length === 0) {
-              problem.templates = tmpls;
-            }
-          }
-        }
-      }
-    } catch (_) {}
-  }
-
-  return problem;
-}
-
-/**
  * POST /api/execution/runs or POST /api/problems/:slug/run
  * Executes code against sample (VISIBLE) test cases only.
  * Synchronous execution.
@@ -251,13 +148,7 @@ async function resolveProblem(slugOrId) {
 export const runCode = async (req, res, next) => {
   try {
     const slug = req.params?.slug || req.body?.slug || req.body?.problemId;
-    const {
-      language = "python",
-      code,
-      source_code,
-      sourceCode,
-      stdin,
-    } = req.body;
+    const { language = "python", code, source_code, sourceCode, stdin } = req.body;
     const studentCode = code || source_code || sourceCode;
 
     if (!studentCode || studentCode.trim().length === 0) {
@@ -265,11 +156,7 @@ export const runCode = async (req, res, next) => {
     }
 
     if (Buffer.byteLength(studentCode, "utf-8") > 64 * 1024) {
-      throw new ApiError(
-        413,
-        "Code exceeds maximum allowable size (64 KB).",
-        "CODE_TOO_LARGE",
-      );
+      throw new ApiError(413, "Code exceeds maximum allowable size (64 KB).", "CODE_TOO_LARGE");
     }
 
     // If custom stdin is provided without a problem, or for ad-hoc custom testing
@@ -318,11 +205,7 @@ export const runCode = async (req, res, next) => {
     }
 
     if (visibleCases.length === 0) {
-      throw new ApiError(
-        400,
-        "No sample test cases configured for this problem.",
-        "NO_TESTCASES",
-      );
+      throw new ApiError(400, "No sample test cases configured for this problem.", "NO_TESTCASES");
     }
 
     const results = [];
@@ -442,11 +325,9 @@ async function evaluateAllTestcases(problem, language, code) {
       passedCount++;
     } else {
       // Map failure status
-      if (failureType === "Time Limit Exceeded")
-        finalStatus = "TIME_LIMIT_EXCEEDED";
+      if (failureType === "Time Limit Exceeded") finalStatus = "TIME_LIMIT_EXCEEDED";
       else if (failureType === "Runtime Error") finalStatus = "RUNTIME_ERROR";
-      else if (failureType === "Compilation Error")
-        finalStatus = "COMPILATION_ERROR";
+      else if (failureType === "Compilation Error") finalStatus = "COMPILATION_ERROR";
       else finalStatus = "WRONG_ANSWER";
 
       // SECURITY: Reveal input/expected ONLY if it was a visible sample test
@@ -497,13 +378,7 @@ async function evaluateAllTestcases(problem, language, code) {
 export const submitSolution = async (req, res, next) => {
   try {
     const slug = req.params?.slug || req.body?.slug || req.body?.problemId;
-    const {
-      language = "python",
-      code,
-      source_code,
-      sourceCode,
-      wait,
-    } = req.body;
+    const { language = "python", code, source_code, sourceCode, wait } = req.body;
     const studentCode = code || source_code || sourceCode;
     const userId = req.user?.id || null;
 
@@ -512,11 +387,7 @@ export const submitSolution = async (req, res, next) => {
     }
 
     if (Buffer.byteLength(studentCode, "utf-8") > 64 * 1024) {
-      throw new ApiError(
-        413,
-        "Code exceeds maximum allowable size (64 KB).",
-        "CODE_TOO_LARGE",
-      );
+      throw new ApiError(413, "Code exceeds maximum allowable size (64 KB).", "CODE_TOO_LARGE");
     }
 
     const problem = await resolveProblem(slug);
@@ -565,11 +436,7 @@ export const submitSolution = async (req, res, next) => {
 
     // Function to run the evaluation
     const runEvaluation = async () => {
-      const evaluation = await evaluateAllTestcases(
-        problem,
-        language,
-        studentCode,
-      );
+      const evaluation = await evaluateAllTestcases(problem, language, studentCode);
       let updated = {
         ...submission,
         status: evaluation.status,
@@ -631,12 +498,10 @@ export const submitSolution = async (req, res, next) => {
         status: "ERROR",
         verdict: "ERROR",
       });
-      prisma.submission
-        .update({
-          where: { id: submission.id },
-          data: { status: "ERROR" },
-        })
-        .catch(() => {});
+      prisma.submission.update({
+        where: { id: submission.id },
+        data: { status: "ERROR" },
+      }).catch(() => {});
     });
 
     res.status(202).json({
@@ -682,12 +547,7 @@ export const getSubmissionStatus = async (req, res, next) => {
     }
 
     // If authenticated user, verify ownership (allow admin or owner)
-    if (
-      req.user?.id &&
-      submission.userId &&
-      submission.userId !== req.user.id &&
-      req.user.role !== "admin"
-    ) {
+    if (req.user?.id && submission.userId && submission.userId !== req.user.id && req.user.role !== "admin") {
       throw new ApiError(404, "Submission not found.", "SUBMISSION_NOT_FOUND");
     }
 

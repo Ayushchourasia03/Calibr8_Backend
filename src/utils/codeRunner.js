@@ -29,9 +29,9 @@ export function normalizeOutput(val) {
     // Not valid JSON directly
   }
 
-  // Handle boolean strings
-  if (clean.toLowerCase() === 'true') return 'true';
-  if (clean.toLowerCase() === 'false') return 'false';
+  // Handle boolean strings & yes/no
+  if (clean.toLowerCase() === 'true' || clean.toLowerCase() === 'yes') return 'true';
+  if (clean.toLowerCase() === 'false' || clean.toLowerCase() === 'no') return 'false';
 
   // Handle space-separated numbers (e.g. "0 1" or "[0, 1]")
   const spaceParts = clean.split(/\s+/).filter(Boolean);
@@ -59,6 +59,8 @@ export function areOutputsEqual(actualRaw, expectedRaw) {
     const a = JSON.parse(normActual);
     const b = JSON.parse(normExpected);
     if (JSON.stringify(a) === JSON.stringify(b)) return true;
+    if (Array.isArray(a) && a.length === 1 && (JSON.stringify(a[0]) === JSON.stringify(b) || String(a[0]) === String(b))) return true;
+    if (Array.isArray(b) && b.length === 1 && (JSON.stringify(b[0]) === JSON.stringify(a) || String(b[0]) === String(a))) return true;
   } catch {}
 
   // Plain trimmed string check
@@ -116,17 +118,21 @@ try:
     _final_args = _parsed_lines
 
     # Adaptive argument resolution for competitive programming inputs
-    # E.g., if input has [length, array, target] but function only expects (nums, target)
     if len(_parsed_lines) > _expected_count and _expected_count > 0:
-        if len(_parsed_lines) == _expected_count + 1 and isinstance(_parsed_lines[1], list):
-            _final_args = _parsed_lines[1:]
-        elif len(_parsed_lines) == _expected_count + 1 and isinstance(_parsed_lines[0], int):
+        if len(_parsed_lines) == _expected_count + 1 and isinstance(_parsed_lines[0], int):
+            if _expected_count == 1 and not isinstance(_parsed_lines[1], list):
+                _final_args = [[_parsed_lines[1]]]
+            else:
+                _final_args = _parsed_lines[1:]
+        elif len(_parsed_lines) == _expected_count + 1 and isinstance(_parsed_lines[1], list):
             _final_args = _parsed_lines[1:]
 
     # If function expects 1 argument and multiple parsed items exist
     if _expected_count == 1 and len(_final_args) > 1:
         if isinstance(_final_args[0], int) and isinstance(_final_args[1], list):
             _final_args = [_final_args[1]]
+        elif isinstance(_final_args[0], int) and _final_args[0] == 1:
+            _final_args = [[_final_args[1]]]
 
     _result = _fn(*_final_args)
     print(_MARK + json.dumps(_result))
@@ -186,9 +192,13 @@ try {
   let _finalArgs = _parsed;
 
   if (_expectedCount > 0 && _parsed.length > _expectedCount) {
-    if (_parsed.length === _expectedCount + 1 && Array.isArray(_parsed[1])) {
-      _finalArgs = _parsed.slice(1);
-    } else if (_parsed.length === _expectedCount + 1 && typeof _parsed[0] === 'number') {
+    if (_parsed.length === _expectedCount + 1 && typeof _parsed[0] === 'number') {
+      if (_expectedCount === 1 && !Array.isArray(_parsed[1])) {
+        _finalArgs = [[_parsed[1]]];
+      } else {
+        _finalArgs = _parsed.slice(1);
+      }
+    } else if (_parsed.length === _expectedCount + 1 && Array.isArray(_parsed[1])) {
       _finalArgs = _parsed.slice(1);
     }
   }
@@ -196,6 +206,8 @@ try {
   if (_expectedCount === 1 && _finalArgs.length > 1) {
     if (typeof _finalArgs[0] === 'number' && Array.isArray(_finalArgs[1])) {
       _finalArgs = [_finalArgs[1]];
+    } else if (typeof _finalArgs[0] === 'number' && _finalArgs[0] === 1) {
+      _finalArgs = [[_finalArgs[1]]];
     }
   }
 
@@ -209,7 +221,23 @@ try {
     return studentCode + driver;
   }
 
-  // Fallback for compiled languages (Java, C++)
+  if (lang === 'cpp') {
+    let prefix = '';
+    if (!studentCode.includes('#include')) {
+      prefix = `#include <iostream>\n#include <vector>\n#include <string>\n#include <sstream>\n#include <unordered_map>\n#include <map>\n#include <set>\n#include <unordered_set>\n#include <algorithm>\n#include <cmath>\nusing namespace std;\n\n`;
+    }
+    return prefix + studentCode;
+  }
+
+  if (lang === 'java') {
+    let prefix = '';
+    if (!studentCode.includes('import java.')) {
+      prefix = `import java.util.*;\nimport java.io.*;\n\n`;
+    }
+    return prefix + studentCode;
+  }
+
+  // Fallback
   return studentCode;
 }
 
