@@ -37,10 +37,11 @@ router.use("/api/onboarding", onboardingRouter);
 router.use("/api/problems", problemRouter);
 router.use("/api/social", socialRouter);
 router.use("/api/study", studyRouter);
-router.use("/api/execution", executionRouter);
+
 router.use("/api/themes", themeRouter);
 router.use("/api/admin", adminRouter);
 router.use("/api/rankings", rankingRouter);
+router.use('/api/execute', executionRouter);
 
 // Root endpoint: API documentation & interactive developer dashboard
 router.get("/", (req, res) => {
