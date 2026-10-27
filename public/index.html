@@ -687,13 +687,13 @@
 
         // Topics
         { id: "top-1", category: "topics", method: "GET", path: "/api/topics", auth: true, desc: "List all calibration topics (DSA + Core)", query: { category: "" } },
-        { id: "top-2", category: "topics", method: "GET", path: "/api/topics/dsa", auth: true, desc: "List DSA calibration topics specifically" },
+        { id: "top-2", category: "topics", method: "GET", path: "/api/topics/dsa", auth: false, desc: "List DSA calibration topics currently stored in the database" },
         { id: "top-3", category: "topics", method: "GET", path: "/api/topics/categories", auth: true, desc: "List all structured DSA topic categories" },
         { id: "top-4", category: "topics", method: "GET", path: "/api/topics/dsa/:slug/problems", auth: true, desc: "List problems grouped by DSA topic category", pathParams: { slug: "arrays-and-hashing" }, query: { difficulty: "", search: "" } },
         { id: "top-5", category: "topics", method: "GET", path: "/api/topics/:identifier", auth: true, desc: "Get specific topic by ID or unique slug", pathParams: { identifier: "dsa-arrays" } },
 
         // Onboarding
-        { id: "onb-1", category: "onboarding", method: "POST", path: "/api/onboarding", auth: true, desc: "Complete onboarding skill calibration", body: { difficulty: "medium", topicIds: "all" } },
+        { id: "onb-1", category: "onboarding", method: "POST", path: "/api/onboarding", auth: true, desc: "Calibrate every DSA topic currently stored in the database at medium difficulty", body: { difficulty: "medium", topicIds: "all" } },
         { id: "onb-2", category: "onboarding", method: "PUT", path: "/api/onboarding/levels", auth: true, desc: "Update topic levels alias", body: { beginner: true } },
         { id: "onb-3", category: "onboarding", method: "GET", path: "/api/onboarding/status", auth: true, desc: "Get onboarding calibration status and topic levels" },
         { id: "onb-4", category: "onboarding", method: "PATCH", path: "/api/onboarding/language", auth: true, desc: "Set language preference during onboarding", body: { language: "cpp" } },
@@ -1195,29 +1195,40 @@
 
       /* DSA Level Calibration Tab */
       async function loadTopics() {
+        const container = document.getElementById("topicsContainer");
+        container.innerHTML = '<div style="color:var(--text-muted);">Loading DSA topics from the database...</div>';
         try {
           const res = await fetch("/api/topics/dsa", {
             headers: authToken ? { "Authorization": "Bearer " + authToken } : {}
           });
+          if (!res.ok) {
+            const error = await res.json().catch(() => ({}));
+            throw new Error(error.message || "Request failed with status " + res.status);
+          }
           const data = await res.json();
-          dsaTopicList = data.topics || data.dsaTopics || [];
+          dsaTopicList = Array.isArray(data.topics) ? data.topics : [];
+          Object.keys(selectedLevels).forEach(id => {
+            if (!dsaTopicList.some(topic => topic.id === id)) delete selectedLevels[id];
+          });
           renderTopics();
         } catch (e) {
-          // fallback default topics
-          dsaTopicList = [
-            { id: "t-1", slug: "dsa-arrays", name: "DSA - Arrays", category: "DSA" },
-            { id: "t-2", slug: "dsa-graphs-dp", name: "DSA - Graphs & DP", category: "DSA" },
-            { id: "t-3", slug: "dsa-linked-list", name: "DSA - Linked List", category: "DSA" },
-            { id: "t-4", slug: "dsa-stack-queue", name: "DSA - Stack & Queue", category: "DSA" },
-            { id: "t-5", slug: "dsa-trees", name: "DSA - Trees", category: "DSA" }
-          ];
-          renderTopics();
+          dsaTopicList = [];
+          container.innerHTML =
+            '<div style="color:#ef4444;">Failed to load DSA topics from the database: ' +
+            escapeHtml(e.message) +
+            ' <button class="btn btn-secondary" onclick="loadTopics()">Retry</button></div>';
         }
       }
 
       function renderTopics() {
         const container = document.getElementById("topicsContainer");
         container.innerHTML = "";
+
+        if (!dsaTopicList.length) {
+          container.innerHTML = '<div style="color:var(--text-muted);">No DSA topics are currently stored in the database.</div>';
+          document.getElementById("projectedRating").textContent = "-";
+          return;
+        }
 
         dsaTopicList.forEach(t => {
           if (!selectedLevels[t.id]) selectedLevels[t.id] = "easy";
@@ -1263,9 +1274,13 @@
           switchTab("authTab");
           return;
         }
-        const topicSelections = Object.entries(selectedLevels).map(([tId, diff]) => ({
-          topicId: tId,
-          difficulty: diff
+        if (!dsaTopicList.length) {
+          alert("Load at least one DSA topic from the database before saving calibration.");
+          return;
+        }
+        const topicSelections = dsaTopicList.map(topic => ({
+          topicId: topic.id,
+          difficulty: selectedLevels[topic.id] || "easy"
         }));
         try {
           const res = await fetch("/api/onboarding", {
@@ -1276,8 +1291,11 @@
             },
             body: JSON.stringify({ topicSelections })
           });
-          const data = await res.json();
+          const data = await res.json().catch(() => ({}));
           logConsole("POST /api/onboarding", data);
+          if (!res.ok) {
+            throw new Error(data.message || "Request failed with status " + res.status);
+          }
           alert("Calibration saved successfully!");
           fetchProfile();
         } catch (e) {
