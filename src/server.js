@@ -7,20 +7,43 @@ const PORT = 3000;
 let server;
 let shuttingDown = false;
 
+// Codebox engine check
+async function checkCodeboxEngine() {
+  const url = process.env.CODEBOX_URL || 'http://187.127.173.216';
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    
+    const res = await fetch(`${url}/health`, { signal: controller.signal });
+    clearTimeout(timeout);
+    
+    if (res.ok) {
+      const data = await res.json();
+      console.log(`✅ Successfully connected to Codebox exec engine (${data.status}) at ${url}`);
+    } else {
+      console.log(`❌ Codebox OFF - Engine returned ${res.status} at ${url}`);
+    }
+  } catch (err) {
+    console.log(`❌ Codebox OFF - Exec engine down at ${url} (${err.message})`);
+    console.log(`   👉 VPS pe jaake 'cd /opt/codebox && docker compose up -d' chala de mere bhai`);
+  }
+}
+
 async function startServer() {
   if (process.env.DATABASE_URL) {
     try {
       await prisma.$connect();
       console.log('✅ Connected to database');
     } catch (error) {
-      console.warn('⚠️ Database connection warning:', error.message);
+      console.warn('⚠ Database connection warning:', error.message);
     }
   } else {
-    console.warn('ℹ️ DATABASE_URL is not set. Set DATABASE_URL in .env to connect to your PostgreSQL database.');
+    console.warn('ℹ DATABASE_URL is not set. Set DATABASE_URL in .env to connect to your PostgreSQL database.');
   }
 
-  server = app.listen(PORT, '0.0.0.0', () => {
+  server = app.listen(PORT, '0.0.0.0', async () => {
     console.log(`🚀 Server running at http://0.0.0.0:${PORT}`);
+    await checkCodeboxEngine();
   });
 
   server.on('error', (error) => {
@@ -37,7 +60,7 @@ async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
 
-  console.log(`\n⚠️ ${signal} received. Shutting down gracefully...`);
+  console.log(`\n⚠ ${signal} received. Shutting down gracefully...`);
 
   if (server?.listening) {
     server.close();
@@ -47,7 +70,7 @@ async function shutdown(signal) {
     await prisma.$disconnect();
     console.log('🔌 Database disconnected');
   } catch (error) {
-    console.error('⚠️ Database disconnect error:', error.message);
+    console.error('⚠ Database disconnect error:', error.message);
   }
 
   console.log('✅ Shutdown complete');
