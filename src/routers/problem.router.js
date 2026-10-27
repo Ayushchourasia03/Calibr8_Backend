@@ -4,7 +4,11 @@ import {
   getProblemBySlug,
   addProblem,
 } from "../controllers/problem.controller.js";
-import { protect, requireAdmin } from "../middlewares/auth.middleware.js";
+import {
+  runCode,
+  submitSolution,
+} from "../controllers/execution.controller.js";
+import { protect, requireAdmin, optionalAuth } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
@@ -16,5 +20,12 @@ router.post("/", protect, requireAdmin, addProblem);
 
 // GET /api/problems/:slug - problem detail with visible testcases & starter templates
 router.get("/:slug", getProblemBySlug);
+
+// Execution endpoints at problem scope:
+// POST /api/problems/:slug/run - run visible test cases
+router.post("/:slug/run", optionalAuth, runCode);
+
+// POST /api/problems/:slug/submit - submit solution for full tier judging
+router.post("/:slug/submit", optionalAuth, submitSolution);
 
 export default router;
