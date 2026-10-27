@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROBLEMS_DIR = path.resolve(__dirname, "../../problems");
 
-const CODEBOX_URL = process.env.CODEBOX_URL || "http://187.127.173.216";
+const CODEBOX_URL = process.env.CODEBOX_URL ;
 const CODEBOX_TOKEN = process.env.CODEBOX_TOKEN;
 const submissionCache = new Map();
 
@@ -103,8 +103,17 @@ async function runSingleTestCase({
 
       if (res.ok) {
         const data = await res.json();
+        const judgeStatus = data.status;
+        const statusDescription =
+          judgeStatus?.description || judgeStatus || "OK";
+        const executionCompleted =
+          judgeStatus?.id === 3 ||
+          judgeStatus?.id === 4 ||
+          statusDescription === "Accepted" ||
+          statusDescription === "Wrong Answer" ||
+          statusDescription === "OK";
         return {
-          status: data.status?.description || data.status || "OK",
+          status: executionCompleted ? "OK" : statusDescription,
           studentStdout: data.stdout || "",
           actual: (data.stdout || "").trim(),
           errorText: data.stderr || data.compile_output || null,
