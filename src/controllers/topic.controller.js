@@ -18,14 +18,10 @@ export const getAllTopics = async (req, res, next) => {
 
     // Split topics into DSA and Core
     const dsaTopics = all.filter(
-      (t) =>
-        (t.category && t.category.toUpperCase() === "DSA") ||
-        (t.slug && t.slug.toLowerCase().startsWith("dsa")),
+      (t) => t.category && t.category.toUpperCase() === "DSA",
     );
     const coreTopics = all.filter(
-      (t) =>
-        !(t.category && t.category.toUpperCase() === "DSA") &&
-        !(t.slug && t.slug.toLowerCase().startsWith("dsa")),
+      (t) => !t.category || t.category.toUpperCase() !== "DSA",
     );
 
     // Apply category filter if requested
@@ -58,15 +54,10 @@ export const getAllTopics = async (req, res, next) => {
  */
 export const getDsaTopics = async (req, res, next) => {
   try {
-    const all = await prisma.topic.findMany({
+    const dsaTopics = await prisma.topic.findMany({
+      where: { category: { equals: "DSA", mode: "insensitive" } },
       orderBy: { name: "asc" },
     });
-
-    const dsaTopics = all.filter(
-      (t) =>
-        (t.category && t.category.toUpperCase() === "DSA") ||
-        (t.slug && t.slug.toLowerCase().startsWith("dsa")),
-    );
 
     res.status(200).json({
       success: true,

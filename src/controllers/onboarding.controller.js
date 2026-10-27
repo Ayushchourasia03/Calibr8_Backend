@@ -1,19 +1,6 @@
 import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
 
-const onboardingTopics = {
-  "dsa-arrays": "Arrays",
-  "dsa-strings": "Strings",
-  "dsa-recursion": "Recursion",
-  "dsa-graphs": "Graphs",
-  "dsa-sliding-window": "Sliding Window",
-  "dsa-dp": "DP",
-  "dsa-graphs-dp": "DSA - Graphs & DP",
-  "dsa-trees": "Trees",
-  "dsa-linked-list": "Linked List",
-  "dsa-stack-queue": "DSA - Stack & Queue",
-};
-
 /**
  * POST /api/onboarding or PUT /api/onboarding/levels
  * Completes the authenticated user's onboarding calibration and sets topic difficulty levels.
@@ -71,13 +58,15 @@ export const onboard = async (req, res, next) => {
       resolvedTopicIdentifiers = [...topicIds];
     }
 
-    // If user requested "all" topics or provided difficulty without topicIds, select all topics
+    // If user requested "all" topics or provided difficulty without topicIds, select all DSA topics
     if (
       topicIds === "all" ||
       (difficulty && resolvedTopicIdentifiers.length === 0)
     ) {
-      const allTopics = await prisma.topic.findMany();
-      resolvedTopicIdentifiers = allTopics.map((topic) => topic.id);
+      const dsaTopics = await prisma.topic.findMany({
+        where: { category: { equals: "DSA", mode: "insensitive" } },
+      });
+      resolvedTopicIdentifiers = dsaTopics.map((topic) => topic.id);
     }
 
     // Validate that at least 1 topic is selected
@@ -91,6 +80,7 @@ export const onboard = async (req, res, next) => {
     const uniqueTopicIdentifiers = [...new Set(resolvedTopicIdentifiers)];
     const existingTopics = await prisma.topic.findMany({
       where: {
+        category: { equals: "DSA", mode: "insensitive" },
         OR: [
           { id: { in: uniqueTopicIdentifiers } },
           { slug: { in: uniqueTopicIdentifiers } },
@@ -102,19 +92,6 @@ export const onboard = async (req, res, next) => {
       topicByIdentifier.set(topic.id, topic);
       topicByIdentifier.set(topic.slug, topic);
     });
-
-    for (const identifier of uniqueTopicIdentifiers) {
-      const name = onboardingTopics[identifier];
-      if (name && !topicByIdentifier.has(identifier)) {
-        const topic = await prisma.topic.upsert({
-          where: { slug: identifier },
-          update: { name, category: "DSA" },
-          create: { slug: identifier, name, category: "DSA" },
-        });
-        topicByIdentifier.set(topic.id, topic);
-        topicByIdentifier.set(topic.slug, topic);
-      }
-    }
 
     const topics = uniqueTopicIdentifiers.map((identifier) =>
       topicByIdentifier.get(identifier),
