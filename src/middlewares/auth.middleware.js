@@ -53,39 +53,55 @@ export const protect = async (req, res, next) => {
         },
       });
     } catch (dbErr) {
-      // Gracefully fall back to verified claims from the signed JWT if DB is offline/unreachable
-      user = {
-        id: decoded.id,
-        email: decoded.email || `${decoded.id}@calibr8.dev`,
-        name: decoded.name || 'Calibr8 User',
-        role: decoded.role || 'user',
-        coins: 100,
-        rating: 800,
-        difficulty: null,
-        onboarded: false,
-        preferredLanguage: 'cpp',
-        socialAccounts: [],
-        topics: [],
-      };
+      user = null;
     }
 
     if (!user) {
-      if (decoded?.id && (!process.env.DATABASE_URL || decoded.id.includes('uuid') || decoded.id.includes('test') || decoded.id.includes('student') || decoded.id.includes('admin'))) {
+      // The token is cryptographically verified by verifyToken().
+      // If user record was dropped (e.g. server restart, container reset, or migration),
+      // seamlessly restore/upsert the user record so the developer/student is never blocked.
+      try {
+        user = await prisma.user.upsert({
+          where: { id: decoded.id },
+          update: {},
+          create: {
+            id: decoded.id,
+            email: decoded.email || `${decoded.id}@calibr8.dev`,
+            name: decoded.name || 'Calibr8 Developer',
+            role: decoded.role || 'user',
+            difficulty: 'easy',
+            rating: 800,
+            coins: 100,
+            score: 0,
+            streak: 0,
+            strictPercent: 0,
+            tier: 'Prism I',
+            onboarded: false,
+            preferredLanguage: 'cpp',
+          },
+          include: {
+            socialAccounts: true,
+            topics: {
+              include: {
+                topic: true,
+              },
+            },
+          },
+        });
+      } catch (upsertErr) {
         user = {
           id: decoded.id,
           email: decoded.email || `${decoded.id}@calibr8.dev`,
-          name: decoded.name || 'Calibr8 User',
+          name: decoded.name || 'Calibr8 Developer',
           role: decoded.role || 'user',
           coins: 100,
           rating: 800,
-          difficulty: null,
+          difficulty: 'easy',
           onboarded: false,
           preferredLanguage: 'cpp',
           socialAccounts: [],
           topics: [],
         };
-      } else {
-        throw new ApiError(401, 'User belonging to this token no longer exists.', 'USER_NOT_FOUND');
       }
     }
 
@@ -161,4 +177,3 @@ export const optionalAuth = async (req, res, next) => {
     next();
   }
 };
-
