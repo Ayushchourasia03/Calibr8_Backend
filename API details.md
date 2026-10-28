@@ -26,6 +26,7 @@
 13. [Themes & Personalization APIs (`/api/themes`)](#13-themes--personalization-apis-apithemes)
 14. [Rankings & Leaderboard APIs (`/api/rankings`)](#14-rankings--leaderboard-apis-apirankings)
 15. [Rate Limits & Security Policy](#15-rate-limits--security-policy)
+16. [Zero-Config Resilience & In-Memory Database Architecture](#16-zero-config-resilience--in-memory-database-architecture)
 
 ---
 
@@ -988,27 +989,80 @@ _Valid values_: `cpp`, `c`, `java`, `python`, `javascript`.
 
 ## 8. Onboarding & Calibration APIs (`/api/onboarding`)
 
+The Onboarding and Calibration subsystem is responsible for calibrating a student's baseline skill level across Data Structures and Algorithms (DSA) topics upon initial sign-up or profile re-evaluation. It dynamically calculates an initial Elo-style skill rating, sets topic-specific difficulty levels in the database, marks `user.onboarded = true`, and unlocks personalized problem recommendations.
+
+```
++--------------------------------------------------------------------------------------------------+
+|                                    ONBOARDING CALIBRATION FLOW                                   |
++--------------------------------------------------------------------------------------------------+
+|                                                                                                  |
+|   Student Signs Up / Logs In                                                                     |
+|               |                                                                                  |
+|               v                                                                                  |
+|   GET /api/topics/dsa  -------------->  Receives active DSA topics (Arrays, Trees, Graphs, ...)   |
+|               |                                                                                  |
+|               v                                                                                  |
+|   Selects Topic Difficulty Levels                                                                |
+|     - Option A: Per-Topic Slider (Easy / Mid / Hard)                                             |
+|     - Option B: Global Preset (e.g. All Medium)                                                  |
+|     - Option C: 1-Click Beginner Preset (All Easy -> 800 Rating)                                 |
+|               |                                                                                  |
+|               v                                                                                  |
+|   POST /api/onboarding (Bearer JWT)                                                              |
+|               |                                                                                  |
+|               +---> 1. Token Signature Verification (HMAC-SHA256)                                |
+|               +---> 2. Session Auto-Healing (Restores user if DB restarted or unseeded)           |
+|               +---> 3. Topic Identifier Resolution (Maps IDs or Slugs to validated topic records)|
+|               +---> 4. Rating Calculation:                                                       |
+|               |        Total = SUM(Topic Ratings), Avg = Round(Total / N)                        |
+|               |        Easy = 800 | Medium = 1200 | Hard = 1600                                  |
+|               +---> 5. Atomic DB Transaction:                                                    |
+|               |        - UPDATE User: { difficulty, rating, onboarded: true }                    |
+|               |        - DELETE existing UserTopic associations for userId                       |
+|               |        - INSERT fresh UserTopic rows with assigned levels                        |
+|               v                                                                                  |
+|   200 OK Response: Updated User Profile with Calibrated Topics & Rating                          |
++--------------------------------------------------------------------------------------------------+
+```
+
+---
+
 ### 8.1 Submit Skill Calibration
 
-- **Method & Path**: `POST /api/onboarding` (alias: `PUT /api/onboarding/levels`)
-- **Protected**: Yes (`Authorization: Bearer <token>`)
-- **Headers**: `Content-Type: application/json`
+- **Method & Route**: `POST /api/onboarding`  
+- **Route Alias**: `PUT /api/onboarding/levels`  
+- **Authentication**: Required (`Authorization: Bearer <jwt-token>`)  
+- **Content-Type**: `application/json`  
+- **Rate Limit**: 20 requests per minute per authenticated user  
 
-#### Payload Modes:
+#### Request Body Schemas (3 Supported Modes)
 
-- **Mode 1: Granular Per-Topic Selection (Recommended)**:
+The endpoint is polymorphic and intelligently processes three distinct payload paradigms:
+
+#### Mode 1: Granular Per-Topic Selection (Recommended for Full UIs)
+Allows setting individual skill levels per DSA topic:
 
 ```json
 {
   "topicSelections": [
-    { "topicId": "t-1", "difficulty": "easy" },
-    { "topicId": "t-2", "difficulty": "medium" },
-    { "topicId": "t-3", "difficulty": "hard" }
+    { "topicId": "top-1", "difficulty": "easy" },
+    { "topicId": "top-2", "difficulty": "medium" },
+    { "topicId": "top-3", "difficulty": "medium" },
+    { "topicId": "top-4", "difficulty": "hard" },
+    { "topicId": "top-5", "difficulty": "easy" },
+    { "topicId": "top-6", "difficulty": "hard" },
+    { "topicId": "top-7", "difficulty": "medium" },
+    { "topicId": "top-8", "difficulty": "easy" },
+    { "topicId": "top-9", "difficulty": "medium" },
+    { "topicId": "top-10", "difficulty": "easy" }
   ]
 }
 ```
 
-- **Mode 2: Global Preset across all topics**:
+*Alternative Alias for Mode 1*: Also accepts `topicLevels: [{ topicId, level }]` or string array `topicSelections: ["top-1", "top-2"]` (defaults to easy).
+
+#### Mode 2: Global Preset across All Topics
+Applies a single target difficulty to all active DSA topics in the database:
 
 ```json
 {
@@ -1017,7 +1071,8 @@ _Valid values_: `cpp`, `c`, `java`, `python`, `javascript`.
 }
 ```
 
-- **Mode 3: 1-Click Beginner Preset**:
+#### Mode 3: 1-Click Beginner Preset (Fast Track)
+Instantly calibrates all DSA topics to `easy` and assigns a beginner baseline rating of 800:
 
 ```json
 {
@@ -1025,28 +1080,80 @@ _Valid values_: `cpp`, `c`, `java`, `python`, `javascript`.
 }
 ```
 
-_Rating Calculation_:
+---
 
-- Easy = 800
-- Medium / Mid = 1200
-- Hard / Advanced = 1600
-- Composite rating is the rounded average across calibrated topics.
-- **Success Response (200 OK)**:
+#### Field Specifications & Constraints
+
+| Field | Type | Required | Allowed Values | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `topicSelections` | `Array<Object>` | Optional (Mode 1) | Array of `{ topicId: string, difficulty: string }` | Detailed calibration per topic. `topicId` can be the topic ID or topic slug. |
+| `topicSelections[].topicId` | `string` | Required if item is obj | Valid topic ID (`top-1`, `top-2`, etc.) or slug (`dsa-arrays`, `dsa-dp`) | Must reference an existing topic in the database. |
+| `topicSelections[].difficulty` | `string` | Optional | `easy`, `beginner`, `medium`, `mid`, `intermediate`, `hard`, `advanced` | Skill level for this topic. Normalized case-insensitively. |
+| `topicIds` | `string \| string[]` | Optional (Mode 2) | `"all"` or `["top-1", "top-2"]` | Calibrates specified topics or all topics if `"all"`. |
+| `difficulty` | `string` | Optional (Mode 2) | `easy`, `medium`, `hard` | Global difficulty to apply when `topicIds` is `"all"`. |
+| `beginner` | `boolean` | Optional (Mode 3) | `true` or `false` | When `true`, automatically assigns `difficulty = "easy"` and `topicIds = "all"`. |
+| `topicLevels` | `Array<Object>` | Optional | Array of `{ topicId, level }` | Alias supported for backward compatibility with frontend clients. |
+
+---
+
+#### Calibration Scoring & Rating Mathematics
+
+1. **Difficulty Normalization**:
+   - `easy`, `beginner` $\rightarrow$ normalized to `"easy"` (Score = 800)
+   - `medium`, `mid`, `intermediate` $\rightarrow$ normalized to `"medium"` (Score = 1200)
+   - `hard`, `advanced` $\rightarrow$ normalized to `"hard"` (Score = 1600)
+
+2. **Composite Rating Formula**:
+   $$\text{Rating} = \text{round}\left( \frac{\sum_{i=1}^{N} \text{Score}(\text{topic}_i)}{N} \right)$$
+   Where $N$ is the number of calibrated topics (must be $\ge 1$).
+
+3. **Overall Profile Difficulty Tier**:
+   - $\text{Rating} \ge 1400 \implies \text{User Difficulty} = \text{"hard"}$
+   - $1000 \le \text{Rating} < 1400 \implies \text{User Difficulty} = \text{"medium"}$
+   - $\text{Rating} < 1000 \implies \text{User Difficulty} = \text{"easy"}$
+
+---
+
+#### Success Response (`200 OK`)
 
 ```json
 {
   "success": true,
-  "message": "Onboarding completed successfully.",
   "user": {
-    "id": "u-45a8-bc91-2309",
+    "id": "usr-1740001234",
     "email": "student@example.com",
-    "name": "Alex Mercer",
+    "name": "Demo Student",
     "difficulty": "medium",
-    "rating": 1200,
+    "rating": 1160,
     "onboarded": true,
+    "preferredLanguage": "cpp",
+    "createdAt": "2026-10-24T12:00:00.000Z",
+    "updatedAt": "2026-10-24T12:05:00.000Z",
     "topics": [
-      { "topicId": "t-1", "level": "easy" },
-      { "topicId": "t-2", "level": "medium" }
+      {
+        "id": "ut-1740001235",
+        "userId": "usr-1740001234",
+        "topicId": "top-1",
+        "level": "medium",
+        "topic": {
+          "id": "top-1",
+          "slug": "dsa-arrays",
+          "name": "DSA - Arrays",
+          "category": "DSA"
+        }
+      },
+      {
+        "id": "ut-1740001236",
+        "userId": "usr-1740001234",
+        "topicId": "top-2",
+        "level": "hard",
+        "topic": {
+          "id": "top-2",
+          "slug": "dsa-strings",
+          "name": "DSA - Strings",
+          "category": "DSA"
+        }
+      }
     ]
   }
 }
@@ -1054,26 +1161,98 @@ _Rating Calculation_:
 
 ---
 
+#### Error Responses & Resolution
+
+| HTTP Status | Error Code | Cause | Resolution |
+| :--- | :--- | :--- | :--- |
+| `400 Bad Request` | `VALIDATION_ERROR` | Empty topic list or no topics selected (`"Please select at least 1 topic."`). | Send at least one topic in `topicSelections` or pass `beginner: true`. |
+| `400 Bad Request` | `VALIDATION_ERROR` | Topic ID or slug does not exist (`"One or more topic IDs are invalid."`). | Query `GET /api/topics/dsa` first to obtain valid active IDs and slugs. |
+| `400 Bad Request` | `VALIDATION_ERROR` | Invalid difficulty string provided. | Use `easy`, `medium`, or `hard`. |
+| `401 Unauthorized` | `UNAUTHORIZED` | Missing `Authorization: Bearer <token>` header. | Authenticate via `POST /api/auth/login` or `POST /api/auth/register` and attach token. |
+| `401 Unauthorized` | `TOKEN_EXPIRED` | JWT token has passed its expiration time. | Call `POST /api/auth/refresh` or re-authenticate. |
+| `401 Unauthorized` | `TOKEN_REVOKED` | Token was explicitly revoked via `POST /api/auth/logout`. | Re-authenticate to receive a new active token. |
+
+---
+
+#### Client Implementation Example (cURL & TypeScript)
+
+**cURL Request**:
+```bash
+curl -X POST http://localhost:3000/api/onboarding \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "topicSelections": [
+      { "topicId": "dsa-arrays", "difficulty": "easy" },
+      { "topicId": "dsa-dp", "difficulty": "medium" },
+      { "topicId": "dsa-trees", "difficulty": "hard" }
+    ]
+  }'
+```
+
+**TypeScript / React Integration Hook**:
+```typescript
+interface TopicSelection {
+  topicId: string;
+  difficulty: "easy" | "medium" | "hard";
+}
+
+export async function submitCalibration(selections: TopicSelection[], token: string) {
+  const response = await fetch("/api/onboarding", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+    },
+    body: JSON.stringify({ topicSelections: selections }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Calibration failed with status ${response.status}`);
+  }
+
+  const result = await response.json();
+  return result.user;
+}
+```
+
+---
+
 ### 8.2 Get Onboarding Status
 
-- **Method & Path**: `GET /api/onboarding/status`
-- **Protected**: Yes (`Authorization: Bearer <token>`)
-- **Success Response (200 OK)**:
+Checks whether the current authenticated user has completed initial onboarding calibration and retrieves their assigned topic levels.
+
+- **Method & Route**: `GET /api/onboarding/status`  
+- **Authentication**: Required (`Authorization: Bearer <jwt-token>`)  
+- **Success Response (`200 OK`)**:
 
 ```json
 {
   "success": true,
-  "onboarded": true,
-  "difficulty": "medium",
-  "rating": 1200,
-  "topicLevels": [
-    {
-      "topicId": "t-1",
-      "slug": "dsa-arrays",
-      "name": "DSA - Arrays",
-      "level": "easy"
-    }
-  ]
+  "user": {
+    "id": "usr-1740001234",
+    "email": "student@example.com",
+    "name": "Demo Student",
+    "difficulty": "medium",
+    "rating": 1200,
+    "onboarded": true,
+    "preferredLanguage": "cpp",
+    "topics": [
+      {
+        "id": "ut-1",
+        "userId": "usr-1740001234",
+        "topicId": "top-1",
+        "level": "medium",
+        "topic": {
+          "id": "top-1",
+          "slug": "dsa-arrays",
+          "name": "DSA - Arrays",
+          "category": "DSA"
+        }
+      }
+    ]
+  }
 }
 ```
 
@@ -1081,22 +1260,41 @@ _Rating Calculation_:
 
 ### 8.3 Update Onboarding Language Preference
 
-- **Method & Path**: `PATCH /api/onboarding/language`
-- **Protected**: Yes (`Authorization: Bearer <token>`)
+Allows setting or changing the student's preferred programming language during onboarding or afterwards.
+
+- **Method & Route**: `PATCH /api/onboarding/language`  
+- **Authentication**: Required (`Authorization: Bearer <jwt-token>`)  
+- **Content-Type**: `application/json`  
 - **Request Body**:
 
 ```json
 {
-  "language": "python"
+  "language": "cpp"
 }
 ```
 
-- **Success Response (200 OK)**:
+*Allowed Language Keys*:
+- `cpp` (C++ / GCC 13)
+- `c` (C / GCC 13)
+- `java` (Java / OpenJDK 17)
+- `python` (Python 3.10)
+- `javascript` (JavaScript / Node.js 22)
+
+- **Success Response (`200 OK`)**:
 
 ```json
 {
   "success": true,
-  "language": "python"
+  "language": "cpp"
+}
+```
+
+- **Error Response (`400 Bad Request`)**:
+```json
+{
+  "success": false,
+  "code": "VALIDATION_ERROR",
+  "message": "Invalid language. Allowed options: cpp, c, java, python, javascript"
 }
 ```
 
@@ -1756,3 +1954,72 @@ Every response includes security headers configured for modern web apps:
 - `X-Content-Type-Options`: `nosniff`
 - `X-Frame-Options`: `SAMEORIGIN`
 - `Referrer-Policy`: `strict-origin-when-cross-origin`
+
+---
+
+## 16. Zero-Config Resilience & In-Memory Database Architecture
+
+Calibr8 features a resilient dual-tier database layer engineered to run seamlessly across all environments—from instant zero-dependency local development and container preview sandboxes to production PostgreSQL/Neon deployments.
+
+### 16.1 Architecture Overview
+
+```
+                      +-----------------------------+
+                      | Incoming API / HTTP Request |
+                      +-----------------------------+
+                                     |
+                                     v
+                        +-------------------------+
+                        |  Auth Middleware        |
+                        |  (JWT Token Validation) |
+                        +-------------------------+
+                                     |
+                                     v
+                       +---------------------------+
+                       |    Is DATABASE_URL set?   |
+                       +---------------------------+
+                               /           \
+                       YES    /             \    NO
+                             v               v
+                +---------------------+   +---------------------------+
+                | PrismaClient Engine |   | Transparent Model Proxy   |
+                | (PostgreSQL / Neon) |   | (InMemoryStore Fallback)  |
+                +---------------------+   +---------------------------+
+                             |                           |
+                  (On Connection Error)                  |
+                             +---------------------------+
+                                           |
+                                           v
+                       +---------------------------------------+
+                       | InMemoryStore Features:               |
+                       | - 14 Calibrated Topics (DSA & Core)   |
+                       | - 6 Personalization Themes            |
+                       | - Pre-seeded Demo Student Account:    |
+                       |   student@example.com                 |
+                       |   PW: StrongPassword123 (100 coins)   |
+                       | - Full CS Curriculum (5 Subjects,     |
+                       |   75+ Chapters, 150+ Topics & MCQs)   |
+                       | - Multi-tier Code Evaluation Sandbox  |
+                       +---------------------------------------+
+```
+
+### 16.2 Session Auto-Healing & Token Resilience
+
+When running in ephemeral containers or development sandboxes where memory is refreshed on server restarts:
+1. **Cryptographic Integrity**: When a client presents an `Authorization: Bearer <jwt-token>`, `protect` verifies the HMAC-SHA256 signature against `JWT_SECRET`.
+2. **Auto-Restoration**: If the database was restarted or wiped and the user record is not found in memory or PostgreSQL, the middleware **automatically provisions and restores the user record** via `prisma.user.upsert`.
+3. **No Dead Sessions**: Clients and test suites never get blocked with `USER_NOT_FOUND` or `"User belonging to this token no longer exists"`. Session continuity is preserved indefinitely.
+
+### 16.3 Pre-Seeded Demo Credentials
+
+For immediate exploration and manual endpoint testing, the backend is pre-seeded with:
+
+- **Email**: `student@example.com`
+- **Password**: `StrongPassword123`
+- **Pre-Configured State**:
+  - Rating: `800` (Prism I Tier)
+  - Coins: `100` (Enough to buy themes)
+  - Role: `user`
+  - Active Theme: `default` (Calibr8 Dark)
+- **1-Click Authentication**: Available directly on the Interactive Dashboard (`/`) via the `⚡ 1-Click Demo Login` button.
+
