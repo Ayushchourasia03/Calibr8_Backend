@@ -39,9 +39,30 @@
     }
   ],
   "templates": {
-    "cpp": "class Solution {\npublic:\n    ListNode* addTwoNumbers(ListNode* l1, ListNode* l2) {\n        // write code here\n    }\n};",
-    "java": "class Solution {\n    public ListNode addTwoNumbers(ListNode l1, ListNode l2) {\n        // write code here\n    }\n}",
-    "python": "class Solution:\n    def addTwoNumbers(self, l1: Optional[ListNode], l2: Optional[ListNode]) -> Optional[ListNode]:\n        # write code here\n        pass",
-    "javascript": "class Solution {\n    addTwoNumbers(l1, l2) {\n        // write code here\n    }\n}"
+    "cpp": {
+      "userTemplate": "ListNode* addTwoNumbers(ListNode* l1, ListNode* l2) {\n    // write code here\n}",
+      "header": "#include <bits/stdc++.h>\nusing namespace std;\n\nstruct ListNode {\n    int val;\n    ListNode* next;\n    ListNode() : val(0), next(nullptr) {}\n    ListNode(int x) : val(x), next(nullptr) {}\n    ListNode(int x, ListNode *next) : val(x), next(next) {}\n};\n",
+      "footer": "\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    int n, m;\n    if (!(cin >> n >> m)) return 0;\n    ListNode dummy1(0), dummy2(0);\n    ListNode* curr1 = &dummy1;\n    for (int i = 0; i < n; i++) {\n        int v; cin >> v;\n        curr1->next = new ListNode(v);\n        curr1 = curr1->next;\n    }\n    ListNode* curr2 = &dummy2;\n    for (int i = 0; i < m; i++) {\n        int v; cin >> v;\n        curr2->next = new ListNode(v);\n        curr2 = curr2->next;\n    }\n    ListNode* res = addTwoNumbers(dummy1.next, dummy2.next);\n    bool first = true;\n    while (res) {\n        if (!first) cout << \" \";\n        cout << res->val;\n        first = false;\n        res = res->next;\n    }\n    cout << \"\\n\";\n    return 0;\n}\n"
+    },
+    "c": {
+      "userTemplate": "struct ListNode* addTwoNumbers(struct ListNode* l1, struct ListNode* l2) {\n    // write code here\n}",
+      "header": "#include <stdio.h>\n#include <stdlib.h>\n\nstruct ListNode {\n    int val;\n    struct ListNode* next;\n};\n\nstatic struct ListNode* createListNode(int val) {\n    struct ListNode* n = (struct ListNode*)malloc(sizeof(struct ListNode));\n    n->val = val;\n    n->next = NULL;\n    return n;\n}\n",
+      "footer": "\nint main() {\n    int n, m;\n    if (scanf(\"%d %d\", &n, &m) != 2) return 0;\n    struct ListNode dummy1 = {0, NULL};\n    struct ListNode* curr1 = &dummy1;\n    for (int i = 0; i < n; i++) {\n        int v; scanf(\"%d\", &v);\n        curr1->next = createListNode(v);\n        curr1 = curr1->next;\n    }\n    struct ListNode dummy2 = {0, NULL};\n    struct ListNode* curr2 = &dummy2;\n    for (int i = 0; i < m; i++) {\n        int v; scanf(\"%d\", &v);\n        curr2->next = createListNode(v);\n        curr2 = curr2->next;\n    }\n    struct ListNode* res = addTwoNumbers(dummy1.next, dummy2.next);\n    int first = 1;\n    while (res) {\n        if (!first) printf(\" \");\n        printf(\"%d\", res->val);\n        first = 0;\n        res = res->next;\n    }\n    printf(\"\\n\");\n    return 0;\n}\n"
+    },
+    "python": {
+      "userTemplate": "def addTwoNumbers(l1, l2):\n    # write code here\n    pass",
+      "header": "import sys\n\nclass ListNode:\n    def __init__(self, val=0, next=None):\n        self.val = val\n        self.next = next\n",
+      "footer": "\ndef main():\n    raw = sys.stdin.read().strip()\n    if not raw:\n        return\n    lines = [l.strip() for l in raw.split('\\n') if l.strip()]\n    if len(lines) < 3:\n        return\n    parts1 = lines[0].split()\n    n = int(parts1[0])\n    m = int(parts1[1])\n    vals1 = [int(x) for x in lines[1].split()]\n    vals2 = [int(x) for x in lines[2].split()]\n    d1 = ListNode(0)\n    c1 = d1\n    for v in vals1:\n        c1.next = ListNode(v)\n        c1 = c1.next\n    d2 = ListNode(0)\n    c2 = d2\n    for v in vals2:\n        c2.next = ListNode(v)\n        c2 = c2.next\n    res = addTwoNumbers(d1.next, d2.next)\n    out = []\n    while res:\n        out.append(str(res.val))\n        res = res.next\n    print(' '.join(out))\n\nif __name__ == '__main__':\n    main()\n"
+    },
+    "javascript": {
+      "userTemplate": "function addTwoNumbers(l1, l2) {\n    // write code here\n}",
+      "header": "const fs = require('fs');\n\nclass ListNode {\n    constructor(val = 0, next = null) {\n        this.val = val;\n        this.next = next;\n    }\n}\n",
+      "footer": "\nfunction main() {\n    const raw = fs.readFileSync(0, 'utf8').trim();\n    if (!raw) return;\n    const lines = raw.split('\\n').map(l => l.trim()).filter(Boolean);\n    if (lines.length < 3) return;\n    const vals1 = lines[1].split(/\\s+/).map(Number);\n    const vals2 = lines[2].split(/\\s+/).map(Number);\n    const d1 = new ListNode(0);\n    let c1 = d1;\n    for (const v of vals1) {\n        c1.next = new ListNode(v);\n        c1 = c1.next;\n    }\n    const d2 = new ListNode(0);\n    let c2 = d2;\n    for (const v of vals2) {\n        c2.next = new ListNode(v);\n        c2 = c2.next;\n    }\n    const fn = (typeof addTwoNumbers === 'function') ? addTwoNumbers : (new Solution()).addTwoNumbers;\n    let res = fn(d1.next, d2.next);\n    const out = [];\n    while (res) {\n        out.push(res.val);\n        res = res.next;\n    }\n    console.log(out.join(' '));\n}\nmain();\n"
+    },
+    "java": {
+      "userTemplate": "class Solution {\n    public ListNode addTwoNumbers(ListNode l1, ListNode l2) {\n        // write code here\n        return null;\n    }\n}",
+      "header": "import java.util.*;\nimport java.io.*;\n\nclass ListNode {\n    int val;\n    ListNode next;\n    ListNode() {}\n    ListNode(int val) { this.val = val; }\n    ListNode(int val, ListNode next) { this.val = val; this.next = next; }\n}\n",
+      "footer": "\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        if (!sc.hasNextInt()) return;\n        int n = sc.nextInt();\n        int m = sc.nextInt();\n        ListNode d1 = new ListNode(0);\n        ListNode c1 = d1;\n        for (int i = 0; i < n; i++) {\n            c1.next = new ListNode(sc.nextInt());\n            c1 = c1.next;\n        }\n        ListNode d2 = new ListNode(0);\n        ListNode c2 = d2;\n        for (int i = 0; i < m; i++) {\n            c2.next = new ListNode(sc.nextInt());\n            c2 = c2.next;\n        }\n        Solution sol = new Solution();\n        ListNode res = sol.addTwoNumbers(d1.next, d2.next);\n        boolean first = true;\n        while (res != null) {\n            if (!first) System.out.print(\" \");\n            System.out.print(res.val);\n            first = false;\n            res = res.next;\n        }\n        System.out.println();\n    }\n}\n"
+    }
   }
 }

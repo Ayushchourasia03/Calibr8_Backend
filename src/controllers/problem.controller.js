@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
+import { getUserTemplate } from "../utils/codeBuilder.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -263,7 +264,12 @@ export const getProblemBySlug = async (req, res, next) => {
       );
     }
 
-    const templates = problem.templatesMap || {};
+    const rawTemplates = problem.templatesMap || {};
+    const userTemplates = {};
+    for (const lang of Object.keys(rawTemplates)) {
+      userTemplates[lang] = getUserTemplate(problem, lang);
+    }
+
     const visibleTestcases = (problem.testcases || [])
       .filter((testcase) => testcase.isVisible === true)
       .map((testcase) => ({
@@ -287,7 +293,8 @@ export const getProblemBySlug = async (req, res, next) => {
         timeLimit: problem.timeLimit,
         memoryLimit: problem.memoryLimit,
         testcases: visibleTestcases,
-        templates,
+        templates: userTemplates,
+        userTemplates,
         templatesArray: problem.templates || [],
       },
     });
@@ -307,18 +314,22 @@ export const getProblemStarterTemplate = async (req, res, next) => {
       );
     }
 
-    const templates = problem.templatesMap || {};
     const language = String(req.query.language || "")
       .trim()
       .toLowerCase();
+    
     if (!language) {
+      const userTemplates = {};
+      for (const lang of Object.keys(problem.templatesMap || {})) {
+        userTemplates[lang] = getUserTemplate(problem, lang);
+      }
       return res
         .status(200)
-        .json({ success: true, data: { slug: problem.slug, templates } });
+        .json({ success: true, data: { slug: problem.slug, templates: userTemplates } });
     }
 
-    const template = templates[language];
-    if (template === undefined) {
+    const template = getUserTemplate(problem, language);
+    if (!template) {
       throw new ApiError(
         404,
         `No ${language} template found for this problem.`,

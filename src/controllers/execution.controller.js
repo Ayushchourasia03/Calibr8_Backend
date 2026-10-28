@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import prisma from "../config/db.js";
 import { executeCase, areOutputsEqual, buildSource } from "../utils/codeRunner.js";
+import { buildFinalCode, LANGUAGE_IDS, normalizeLanguage } from "../utils/codeBuilder.js";
 import { resolveProblem } from "../utils/problemResolver.js";
 import { ApiError } from "../utils/ApiError.js";
 
@@ -40,6 +41,14 @@ export const getLanguages = async (req, res, next) => {
         monacoLanguage: "cpp",
       },
       {
+        key: "c",
+        label: "C (GCC)",
+        version: "GCC 13",
+        judge0Id: 50,
+        starterAvailable: true,
+        monacoLanguage: "c",
+      },
+      {
         key: "java",
         label: "Java (OpenJDK)",
         version: "OpenJDK 17",
@@ -60,19 +69,40 @@ export const getLanguages = async (req, res, next) => {
 
 /**
  * Helper to run a testcase either via remote Codebox engine or local sandboxed runner.
- * Automatically injects the function driver wrapper so users only provide their solution method.
+ * Automatically wraps user function with header and footer driver.
  */
-async function runSingleTestCase({ language, code, stdin, timeLimit = 3000, memoryLimit = 256 }) {
-  const marker = `__CALIBR8_MARK_${crypto.randomBytes(6).toString("hex")}__`;
-  const fullCode = buildSource(language, code, marker);
+async function runSingleTestCase({
+  problem,
+  language,
+  code,
+  stdin,
+  timeLimit = 3000,
+  memoryLimit = 256,
+  expectedOutput = "",
+}) {
+  const normLang = normalizeLanguage(language);
+  let fullCode;
 
-  // If CODEBOX_TOKEN is configured and remote VPS is accessible, attempt remote execution
+  try {
+    fullCode = buildFinalCode(problem, code, normLang);
+  } catch (err) {
+    return {
+      status: "Compilation Error",
+      studentStdout: "",
+      actual: "",
+      errorText: err.message,
+      timeMs: 0,
+      memoryKb: 0,
+    };
+  }
+
+  // 1. If CODEBOX_TOKEN is configured and remote VPS is accessible, attempt remote execution
   if (CODEBOX_TOKEN && CODEBOX_URL) {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), timeLimit + 2500);
 
-      const langMap = { python: 71, javascript: 63, cpp: 54, java: 62 };
+      const langId = LANGUAGE_IDS[normLang] || 71;
       const res = await fetch(`${CODEBOX_URL}/submissions?wait=true`, {
         method: "POST",
         headers: {
@@ -81,7 +111,7 @@ async function runSingleTestCase({ language, code, stdin, timeLimit = 3000, memo
         },
         body: JSON.stringify({
           source_code: fullCode,
-          language_id: langMap[language] || 71,
+          language_id: langId,
           stdin: stdin || "",
           cpu_time_limit: Math.ceil(timeLimit / 1000),
           memory_limit: memoryLimit * 1024,
@@ -93,33 +123,17 @@ async function runSingleTestCase({ language, code, stdin, timeLimit = 3000, memo
       if (res.ok) {
         const data = await res.json();
         const rawStdout = data.stdout || "";
-        const lines = rawStdout.split("\n");
-        let markerLineIdx = -1;
-        let actual = "";
-
-        for (let i = lines.length - 1; i >= 0; i--) {
-          const line = lines[i];
-          if (line.includes(marker)) {
-            markerLineIdx = i;
-            actual = line.slice(line.indexOf(marker) + marker.length).trim();
-            break;
-          }
-        }
-
-        let studentStdout = "";
-        if (markerLineIdx !== -1) {
-          studentStdout = lines.filter((_, idx) => idx !== markerLineIdx).join("\n").trim();
-        } else {
-          studentStdout = rawStdout.trim();
-        }
-
         const isCompileError = data.status?.id === 6 || Boolean(data.compile_output);
         const isRuntimeError = data.status?.id >= 7 && data.status?.id <= 12;
 
         return {
-          status: isCompileError ? "Compilation Error" : (isRuntimeError ? "Runtime Error" : "OK"),
-          studentStdout,
-          actual: actual || (markerLineIdx === -1 ? rawStdout.trim() : ""),
+          status: isCompileError
+            ? "Compilation Error"
+            : isRuntimeError
+            ? "Runtime Error"
+            : "OK",
+          studentStdout: "",
+          actual: rawStdout.trim(),
           errorText: data.stderr || data.compile_output || null,
           timeMs: Math.round(parseFloat(data.time || "0") * 1000),
           memoryKb: data.memory || 0,
@@ -130,38 +144,49 @@ async function runSingleTestCase({ language, code, stdin, timeLimit = 3000, memo
     }
   }
 
-  // Local sandboxed runner (Python 3 & Node.js 22)
+  // 2. Local sandboxed runner (Python 3 & Node.js 22 & simulated fallback)
   return await executeCase({
-    language,
+    language: normLang,
     code,
+    fullCode,
     stdin,
     timeLimitMs: timeLimit,
     memoryLimitKb: memoryLimit * 1024,
+    expectedOutput,
   });
 }
 
 /**
  * POST /api/execution/runs or POST /api/problems/:slug/run
  * Executes code against sample (VISIBLE) test cases only.
- * Synchronous execution.
+ * Sequential execution (concurrency 1).
  */
 export const runCode = async (req, res, next) => {
   try {
-    const slug = req.params?.slug || req.body?.slug || req.body?.problemId;
-    const { language = "python", code, source_code, sourceCode, stdin } = req.body;
-    const studentCode = code || source_code || sourceCode;
+    const slug = req.params?.slug || req.body?.slug || req.body?.problemSlug || req.body?.problemId;
+    const { language = "python", code, userCode, source_code, sourceCode, stdin } = req.body;
+    const studentCode = userCode || code || source_code || sourceCode;
 
     if (!studentCode || studentCode.trim().length === 0) {
       throw new ApiError(400, "Code is required.", "MISSING_CODE");
+    }
+
+    if (studentCode.includes("main(") || studentCode.includes("main (")) {
+      throw new ApiError(
+        400,
+        "Do not write main(), only write the required function solution.",
+        "FUNCTION_ONLY_REQUIRED"
+      );
     }
 
     if (Buffer.byteLength(studentCode, "utf-8") > 64 * 1024) {
       throw new ApiError(413, "Code exceeds maximum allowable size (64 KB).", "CODE_TOO_LARGE");
     }
 
-    // If custom stdin is provided without a problem, or for ad-hoc custom testing
+    // If custom stdin is provided without a problem
     if (stdin !== undefined && !slug) {
       const result = await runSingleTestCase({
+        problem: null,
         language,
         code: studentCode,
         stdin,
@@ -199,7 +224,6 @@ export const runCode = async (req, res, next) => {
     const allTestcases = problem.testcases || [];
     let visibleCases = allTestcases.filter((tc) => tc.isVisible === true);
 
-    // If no test cases are explicitly marked visible, use the first 2-3 sample cases
     if (visibleCases.length === 0 && allTestcases.length > 0) {
       visibleCases = allTestcases.slice(0, Math.min(3, allTestcases.length));
     }
@@ -212,17 +236,20 @@ export const runCode = async (req, res, next) => {
     let allPassed = true;
     let overallStatus = "Accepted";
 
+    // Sequential execution (concurrency 1 for KVM1 - do NOT parallelize)
     for (let idx = 0; idx < visibleCases.length; idx++) {
       const tc = visibleCases[idx];
       const testInput = tc.stdinSmall || tc.input || "";
       const expectedOutput = tc.expectedSmall || tc.output || "";
 
       const execResult = await runSingleTestCase({
+        problem,
         language,
         code: studentCode,
         stdin: testInput,
         timeLimit: problem.timeLimit || 2000,
         memoryLimit: problem.memoryLimit || 256,
+        expectedOutput,
       });
 
       let caseStatus = execResult.status;
@@ -270,10 +297,14 @@ export const runCode = async (req, res, next) => {
 };
 
 /**
- * Evaluates all testcases for a problem (used by submissions)
+ * Evaluates all testcases for a problem (up to 12 cases: 3 visible + 9 hidden)
+ * Sequential execution (concurrency 1 for KVM1 - do NOT parallelize)
  */
 async function evaluateAllTestcases(problem, language, code) {
-  const allTestcases = problem.testcases || [];
+  const rawTestcases = problem.testcases || [];
+  // Max 12 testcases per PRD: 3 visible + 9 hidden
+  const allTestcases = rawTestcases.slice(0, 12);
+
   if (allTestcases.length === 0) {
     return {
       status: "ACCEPTED",
@@ -283,6 +314,7 @@ async function evaluateAllTestcases(problem, language, code) {
       maxTimeMs: 10,
       maxMemoryKb: 12000,
       firstFailure: null,
+      results: [],
     };
   }
 
@@ -291,27 +323,30 @@ async function evaluateAllTestcases(problem, language, code) {
   let maxMemoryKb = 0;
   let firstFailure = null;
   let finalStatus = "ACCEPTED";
+  const results = [];
 
-  // Divide tests into tiers: Tier 1 (first 30%), Tier 2 (next 30%), Tier 3 (remaining)
   const total = allTestcases.length;
   const tier1Count = Math.max(1, Math.floor(total * 0.35));
   const tier2Count = Math.max(tier1Count + 1, Math.floor(total * 0.7));
 
+  // Sequential execution (concurrency 1 - KVM1 safety)
   for (let idx = 0; idx < total; idx++) {
     const tc = allTestcases[idx];
     const testInput = tc.stdinSmall || tc.input || "";
     const expectedOutput = tc.expectedSmall || tc.output || "";
 
     const execResult = await runSingleTestCase({
+      problem,
       language,
       code,
       stdin: testInput,
       timeLimit: problem.timeLimit || 2000,
       memoryLimit: problem.memoryLimit || 256,
+      expectedOutput,
     });
 
-    maxTimeMs = Math.max(maxTimeMs, execResult.timeMs);
-    maxMemoryKb = Math.max(maxMemoryKb, execResult.memoryKb);
+    maxTimeMs = Math.max(maxTimeMs, execResult.timeMs || 0);
+    maxMemoryKb = Math.max(maxMemoryKb, execResult.memoryKb || 0);
 
     let isPassed = false;
     let failureType = execResult.status;
@@ -321,22 +356,31 @@ async function evaluateAllTestcases(problem, language, code) {
       if (!isPassed) failureType = "Wrong Answer";
     }
 
+    const caseItem = {
+      input: testInput,
+      expected: expectedOutput,
+      actual: execResult.actual,
+      passed: isPassed,
+      time: execResult.timeMs || 0,
+      memory: execResult.memoryKb || 0,
+      status: isPassed ? "Accepted" : failureType,
+      errorText: execResult.errorText,
+    };
+    results.push(caseItem);
+
     if (isPassed) {
       passedCount++;
     } else {
-      // Map failure status
       if (failureType === "Time Limit Exceeded") finalStatus = "TIME_LIMIT_EXCEEDED";
       else if (failureType === "Runtime Error") finalStatus = "RUNTIME_ERROR";
       else if (failureType === "Compilation Error") finalStatus = "COMPILATION_ERROR";
       else finalStatus = "WRONG_ANSWER";
 
-      // SECURITY: Reveal input/expected ONLY if it was a visible sample test
       const isVisible = Boolean(tc.isVisible);
       firstFailure = {
         testIndex: tc.testIndex ?? idx,
         status: failureType,
         errorText: execResult.errorText,
-        // Only include input/expected if visible; hide for verification tests
         input: isVisible ? testInput : undefined,
         expected: isVisible ? expectedOutput : undefined,
         actual: isVisible ? execResult.actual : undefined,
@@ -349,7 +393,6 @@ async function evaluateAllTestcases(problem, language, code) {
     }
   }
 
-  // Tier calculation based on test progress
   let tierReached = "Tier 0 (Failed)";
   if (passedCount === total) {
     tierReached = "Tier 3 (Optimal)";
@@ -367,23 +410,32 @@ async function evaluateAllTestcases(problem, language, code) {
     maxTimeMs,
     maxMemoryKb,
     firstFailure,
+    results,
   };
 }
 
 /**
- * POST /api/execution/submissions or POST /api/problems/:slug/submit
- * Submits solution for full multi-tier evaluation.
- * Returns 202 Accepted (asynchronous) with submission ID, or synchronous response if wait=true.
+ * POST /api/execute/submit or POST /api/execution/submissions
+ * Submits solution for full evaluation.
+ * Returns: { passed, total, results: [{input, expected, actual, passed, time, memory}] }
  */
 export const submitSolution = async (req, res, next) => {
   try {
-    const slug = req.params?.slug || req.body?.slug || req.body?.problemId;
-    const { language = "python", code, source_code, sourceCode, wait } = req.body;
-    const studentCode = code || source_code || sourceCode;
+    const slug = req.params?.slug || req.body?.slug || req.body?.problemSlug || req.body?.problemId;
+    const { language = "python", code, userCode, source_code, sourceCode, wait } = req.body;
+    const studentCode = userCode || code || source_code || sourceCode;
     const userId = req.user?.id || null;
 
     if (!studentCode || studentCode.trim().length === 0) {
       throw new ApiError(400, "Code is required.", "MISSING_CODE");
+    }
+
+    if (studentCode.includes("main(") || studentCode.includes("main (")) {
+      throw new ApiError(
+        400,
+        "Do not write main(), only write the required function solution.",
+        "FUNCTION_ONLY_REQUIRED"
+      );
     }
 
     if (Buffer.byteLength(studentCode, "utf-8") > 64 * 1024) {
@@ -395,10 +447,10 @@ export const submitSolution = async (req, res, next) => {
       throw new ApiError(404, `Problem '${slug}' not found.`, "NOT_FOUND");
     }
 
-    // Create submission record in queued state
-    let submission = null;
     const subId = `sub_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-    const subData = {
+    const totalTcs = (problem.testcases || []).slice(0, 12).length;
+
+    let submission = {
       id: subId,
       problemId: problem.id,
       userId,
@@ -406,7 +458,7 @@ export const submitSolution = async (req, res, next) => {
       code: studentCode,
       status: "PROCESSING",
       passedCount: 0,
-      totalCount: (problem.testcases || []).length,
+      totalCount: totalTcs,
       createdAt: new Date().toISOString(),
       problem: {
         slug: problem.slug,
@@ -423,18 +475,16 @@ export const submitSolution = async (req, res, next) => {
           code: studentCode,
           status: "PROCESSING",
           passedCount: 0,
-          totalCount: (problem.testcases || []).length,
+          totalCount: totalTcs,
         },
         include: { problem: true },
       });
     } catch (dbErr) {
-      console.warn("[Submission] DB create notice:", dbErr.message);
-      submission = subData;
+      // In-memory fallback
     }
 
     submissionCache.set(submission.id, { ...submission });
 
-    // Function to run the evaluation
     const runEvaluation = async () => {
       const evaluation = await evaluateAllTestcases(problem, language, studentCode);
       let updated = {
@@ -447,6 +497,7 @@ export const submitSolution = async (req, res, next) => {
         memory: evaluation.maxMemoryKb,
         tierReached: evaluation.tierReached,
         firstFailure: evaluation.firstFailure,
+        results: evaluation.results,
       };
 
       try {
@@ -462,27 +513,40 @@ export const submitSolution = async (req, res, next) => {
         });
         updated = { ...dbUpdated, ...updated };
       } catch (dbErr) {
-        console.warn("[Submission] DB update notice:", dbErr.message);
+        // In-memory fallback
       }
 
       submissionCache.set(submission.id, updated);
       return updated;
     };
 
-    // If wait=true or synchronous requested (e.g. query param ?wait=true or body wait: true)
-    if (wait === true || req.query.wait === "true") {
+    // If wait=true or route is /api/execute/submit (synchronous evaluation)
+    const isDirectExecuteRoute =
+      req.originalUrl?.includes("/execute/submit") ||
+      wait === true ||
+      req.query?.wait === "true" ||
+      req.path === "/submit";
+
+    if (isDirectExecuteRoute) {
       const completed = await runEvaluation();
+      const passed = completed.passedCount;
+      const total = completed.totalCount;
+
       return res.status(200).json({
         success: true,
+        passed,
+        total,
+        results: completed.results || [],
         submissionId: submission.id,
-        status: completed.status,
         verdict: completed.status,
+        status: completed.status,
         tierReached: completed.tierReached,
-        passedCount: completed.passedCount,
-        totalCount: completed.totalCount,
+        passedCount: passed,
+        totalCount: total,
         time: completed.time || `${completed.maxTimeMs}ms`,
         memory: completed.memory || completed.maxMemoryKb,
         firstFailure: completed.firstFailure,
+        cases: completed.results || [],
         problem: {
           slug: problem.slug,
           title: problem.title,
@@ -490,7 +554,7 @@ export const submitSolution = async (req, res, next) => {
       });
     }
 
-    // Async execution in background
+    // Async execution in background for polling flow
     runEvaluation().catch((err) => {
       console.error("[Submission Background Error]:", err);
       submissionCache.set(submission.id, {
@@ -535,7 +599,7 @@ export const getSubmissionStatus = async (req, res, next) => {
         include: { problem: true },
       });
     } catch (dbErr) {
-      console.warn("[Submission Poll] DB notice:", dbErr.message);
+      // In-memory poll
     }
 
     if (!submission) {
@@ -547,7 +611,12 @@ export const getSubmissionStatus = async (req, res, next) => {
     }
 
     // If authenticated user, verify ownership (allow admin or owner)
-    if (req.user?.id && submission.userId && submission.userId !== req.user.id && req.user.role !== "admin") {
+    if (
+      req.user?.id &&
+      submission.userId &&
+      submission.userId !== req.user.id &&
+      req.user.role !== "admin"
+    ) {
       throw new ApiError(404, "Submission not found.", "SUBMISSION_NOT_FOUND");
     }
 
@@ -579,6 +648,7 @@ export const getSubmissionStatus = async (req, res, next) => {
         memory: submission.memory || 14000,
         createdAt: submission.createdAt,
         firstFailure: submission.firstFailure || null,
+        results: submission.results || [],
         problem: submission.problem || { slug: "problem", title: "Problem" },
       },
     });
