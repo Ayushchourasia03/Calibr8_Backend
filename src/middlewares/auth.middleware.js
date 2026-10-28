@@ -119,3 +119,46 @@ export const requireAdmin = (req, res, next) => {
 
   next();
 };
+
+/**
+ * Optional authentication middleware: attaches user if valid token present,
+ * but allows unauthenticated playground/sandbox access.
+ */
+export const optionalAuth = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return next();
+    }
+
+    const token = authHeader.split(' ')[1];
+    if (!token) return next();
+
+    const decoded = verifyToken(token);
+    const revoked = await isTokenBlacklisted(token, decoded);
+    if (revoked) return next();
+
+    let user = null;
+    try {
+      user = await prisma.user.findUnique({
+        where: { id: decoded.id },
+      });
+    } catch (_) {}
+
+    if (!user) {
+      user = {
+        id: decoded.id,
+        email: decoded.email || `${decoded.id}@calibr8.dev`,
+        name: decoded.name || 'Calibr8 User',
+        role: decoded.role || 'user',
+      };
+    }
+
+    req.token = token;
+    req.user = user;
+    next();
+  } catch (_) {
+    next();
+  }
+};
+

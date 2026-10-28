@@ -476,6 +476,130 @@
       .pill-btn.active-easy { background: rgba(16, 185, 129, 0.25); color: #34d399; border-color: #10b981; }
       .pill-btn.active-mid { background: rgba(245, 158, 11, 0.25); color: #fbbf24; border-color: #f59e0b; }
       .pill-btn.active-hard { background: rgba(239, 68, 68, 0.25); color: #f87171; border-color: #ef4444; }
+
+      /* Code Execution Sandbox UI */
+      .sandbox-grid {
+        display: grid;
+        grid-template-columns: 1fr 1.25fr;
+        gap: 1.25rem;
+      }
+      @media (max-width: 960px) {
+        .sandbox-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .problem-pane {
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+        padding: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        max-height: 780px;
+        overflow-y: auto;
+      }
+      .editor-pane {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      .code-editor-box {
+        background: #060913;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      }
+      .editor-topbar {
+        background: #0f172a;
+        padding: 0.5rem 0.85rem;
+        border-bottom: 1px solid var(--card-border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+      .code-textarea {
+        background: #060913;
+        color: #f8fafc;
+        border: none;
+        outline: none;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        font-size: 0.88rem;
+        line-height: 1.5;
+        padding: 1rem;
+        min-height: 320px;
+        resize: vertical;
+        width: 100%;
+        tab-size: 4;
+        white-space: pre;
+      }
+      .case-tabs {
+        display: flex;
+        gap: 0.4rem;
+        margin-bottom: 0.75rem;
+        overflow-x: auto;
+      }
+      .case-tab-btn {
+        background: #1e293b;
+        color: #cbd5e1;
+        border: 1px solid var(--border-color);
+        padding: 0.35rem 0.75rem;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        white-space: nowrap;
+      }
+      .case-tab-btn.active {
+        background: #3b82f6;
+        color: #fff;
+        border-color: #3b82f6;
+      }
+      .case-tab-btn.passed {
+        border-color: rgba(16, 185, 129, 0.5);
+      }
+      .case-tab-btn.failed {
+        border-color: rgba(239, 68, 68, 0.5);
+      }
+      .verdict-banner {
+        padding: 0.85rem 1.1rem;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 0.95rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 0.85rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+      .verdict-banner.accepted {
+        background: rgba(16, 185, 129, 0.15);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+      }
+      .verdict-banner.failed {
+        background: rgba(239, 68, 68, 0.15);
+        color: #f87171;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+      }
+      .diff-badge {
+        font-size: 0.72rem;
+        font-weight: 700;
+        padding: 0.2rem 0.55rem;
+        border-radius: 4px;
+        display: inline-block;
+      }
+      .diff-easy { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+      .diff-medium { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+      .diff-hard { background: rgba(239, 68, 68, 0.2); color: #f87171; }
     </style>
   </head>
   <body>
@@ -517,6 +641,9 @@
       <div class="tabs">
         <button class="tab-btn active" id="btnTabExplorer" onclick="switchTab('explorerTab')">
           🚀 All APIs Console (45 Endpoints)
+        </button>
+        <button class="tab-btn" id="btnTabCodeSandbox" onclick="switchTab('codeSandboxTab')">
+          ⚡ Code Sandbox (Run & Submit)
         </button>
         <button class="tab-btn" id="btnTabAuth" onclick="switchTab('authTab')">
           🔐 Auth & Profile
@@ -648,6 +775,130 @@
         </div>
       </div>
 
+      <!-- TAB 5: Code Execution Sandbox (Run & Submit Tester) -->
+      <div id="codeSandboxTab" class="tab-content">
+        <!-- Top Toolbar -->
+        <div class="card" style="margin-bottom: 1rem; padding: 1rem 1.25rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <!-- Problem Selector -->
+            <div style="display: flex; align-items: center; gap: 0.75rem; flex: 1; min-width: 280px;">
+              <span style="font-weight: 700; font-size: 0.88rem; color: #cbd5e1;">Problem:</span>
+              <select id="sandboxProblemSelect" onchange="onSandboxProblemChange(this.value)" style="flex: 1; font-weight: 600;">
+                <option value="two-sum-001">#1 Two Sum (Easy)</option>
+              </select>
+            </div>
+
+            <!-- Language Selector -->
+            <div style="display: flex; align-items: center; gap: 0.6rem;">
+              <span style="font-weight: 700; font-size: 0.88rem; color: #cbd5e1;">Language:</span>
+              <select id="sandboxLangSelect" onchange="onSandboxLanguageChange(this.value)" style="font-weight: 600; min-width: 140px;">
+                <option value="python">Python 3 (3.10)</option>
+                <option value="javascript">JavaScript (Node 22)</option>
+                <option value="cpp">C++ (GCC 13)</option>
+                <option value="java">Java (OpenJDK 17)</option>
+              </select>
+            </div>
+
+            <!-- Quick Preset Buttons -->
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <button class="btn btn-secondary" onclick="loadDemoSolution('correct')" title="Load working algorithm that passes all testcases">
+                ⚡ Load Working Solution
+              </button>
+              <button class="btn btn-secondary" onclick="loadDemoSolution('wrong')" title="Load buggy solution to test Wrong Answer detection">
+                🐞 Load Buggy Solution
+              </button>
+              <button class="btn btn-secondary" onclick="resetToStarterTemplate()" title="Reset to original starter function signature">
+                🔄 Reset Template
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Two-Column Problem & Editor Grid -->
+        <div class="sandbox-grid">
+          <!-- Left Column: Problem Statement & Sample Cases -->
+          <div class="problem-pane">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+              <h2 id="sbProblemTitle" style="font-size: 1.2rem; font-weight: 700; color: #fff;">Two Sum</h2>
+              <span id="sbProblemDifficulty" class="diff-badge diff-easy">Easy</span>
+            </div>
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; font-size: 0.75rem; color: var(--text-muted);">
+              <span>⏱️ Time Limit: <strong id="sbTimeLimit">1000ms</strong></span>
+              <span>•</span>
+              <span>💾 Memory Limit: <strong id="sbMemoryLimit">256MB</strong></span>
+            </div>
+
+            <div id="sbProblemDescription" style="font-size: 0.85rem; line-height: 1.6; color: #cbd5e1; margin-bottom: 1.25rem; white-space: pre-wrap;">
+              Loading problem statement...
+            </div>
+
+            <h3 style="font-size: 0.9rem; font-weight: 700; margin-bottom: 0.6rem; color: #94a3b8;">Visible Sample Cases</h3>
+            <div id="sbSampleTestcases" style="display: flex; flex-direction: column; gap: 0.6rem;">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+
+          <!-- Right Column: Code Editor & Execution Results -->
+          <div class="editor-pane">
+            <!-- Code Editor Box -->
+            <div class="code-editor-box">
+              <div class="editor-topbar">
+                <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                  <span style="font-size: 0.82rem; font-weight: 700; color: #38bdf8;" id="sbEditorFileName">solution.py</span>
+                  <span style="font-size: 0.72rem; background: rgba(59, 130, 246, 0.2); color: #93c5fd; padding: 0.15rem 0.45rem; border-radius: 4px; font-weight: 600;">Function-Only Template</span>
+                  <span style="font-size: 0.72rem; color: var(--text-muted);">(Type only inside the method body)</span>
+                </div>
+                <div style="display: flex; gap: 0.5rem;">
+                  <span id="sbLineCount" style="font-size: 0.75rem; color: var(--text-muted);">0 lines</span>
+                </div>
+              </div>
+              <textarea id="sbCodeEditor" class="code-textarea" spellcheck="false" placeholder="Type or paste your solution function here..."></textarea>
+            </div>
+
+            <!-- Execution Action Buttons -->
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+              <div style="display: flex; gap: 0.6rem;">
+                <button class="btn btn-secondary" id="btnRunVisible" onclick="handleRunVisibleCases()" style="font-size: 0.9rem; padding: 0.65rem 1.2rem; font-weight: 700;">
+                  ▶ Run (Visible Tests)
+                </button>
+                <button class="btn btn-success" id="btnSubmitAll" onclick="handleSubmitAllCases()" style="font-size: 0.9rem; padding: 0.65rem 1.3rem; font-weight: 700;">
+                  🚀 Submit (All Tests)
+                </button>
+              </div>
+              <div>
+                <button class="btn btn-secondary" onclick="toggleCustomInputBox()" style="font-size: 0.78rem;">
+                  🧪 Custom Input Stdin
+                </button>
+              </div>
+            </div>
+
+            <!-- Optional Custom Input Box -->
+            <div id="sbCustomInputContainer" style="display: none; background: #0b1120; border: 1px solid var(--border-color); border-radius: 8px; padding: 0.75rem;">
+              <div style="font-size: 0.8rem; font-weight: 600; margin-bottom: 0.35rem; color: #94a3b8;">Custom Stdin (one argument per line):</div>
+              <textarea id="sbCustomStdin" style="width: 100%; min-height: 70px; background: #060913; font-family: monospace; font-size: 0.8rem; padding: 0.5rem;" placeholder="e.g.:&#10;4&#10;2 7 11 15&#10;9"></textarea>
+              <button class="btn btn-secondary" style="margin-top: 0.5rem; font-size: 0.78rem;" onclick="handleRunCustomStdin()">Run with Custom Input</button>
+            </div>
+
+            <!-- Execution Results Box -->
+            <div class="card" id="sbResultsCard" style="display: none; margin-bottom: 0;">
+              <!-- Overall Verdict Banner -->
+              <div id="sbVerdictBanner" class="verdict-banner accepted">
+                <span id="sbVerdictText">Accepted</span>
+                <span id="sbVerdictMeta" style="font-size: 0.8rem; font-weight: 500;">Runtime: 45ms</span>
+              </div>
+
+              <!-- Case Tabs Bar (For Run) -->
+              <div id="sbCaseTabsBar" class="case-tabs"></div>
+
+              <!-- Active Case Output Detail -->
+              <div id="sbActiveCaseDetail" style="background: #090e1a; border: 1px solid var(--card-border); border-radius: 8px; padding: 0.85rem; font-size: 0.82rem;">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <script>
@@ -743,6 +994,7 @@
         renderApis();
         loadCurriculum();
         loadTopics();
+        initSandbox();
       });
 
       function switchTab(tabId) {
@@ -750,6 +1002,7 @@
         document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
         const map = {
           explorerTab: "btnTabExplorer",
+          codeSandboxTab: "btnTabCodeSandbox",
           authTab: "btnTabAuth",
           curriculumTab: "btnTabCurriculum",
           dsaTab: "btnTabDsa"
@@ -1300,6 +1553,478 @@
           fetchProfile();
         } catch (e) {
           alert("Error saving calibration: " + e.message);
+        }
+      }
+
+      /* ============================================================
+         Interactive Code Execution Sandbox (Run & Submit) Controller
+         ============================================================ */
+      let sbProblemsList = [];
+      let sbCurrentProblem = null;
+      let sbCurrentLanguage = "python";
+      let sbRunCases = [];
+      let sbActiveCaseIndex = 0;
+
+      async function initSandbox() {
+        // Setup Tab key handler in code editor textarea
+        const editor = document.getElementById("sbCodeEditor");
+        if (editor) {
+          editor.addEventListener("keydown", function(e) {
+            if (e.key === "Tab") {
+              e.preventDefault();
+              const start = this.selectionStart;
+              const end = this.selectionEnd;
+              this.value = this.value.substring(0, start) + "    " + this.value.substring(end);
+              this.selectionStart = this.selectionEnd = start + 4;
+              updateEditorLineCount();
+            }
+          });
+          editor.addEventListener("input", updateEditorLineCount);
+        }
+
+        // Fetch problems list
+        try {
+          const res = await fetch("/api/problems");
+          if (res.ok) {
+            const json = await res.json();
+            sbProblemsList = json.data || [];
+            populateProblemDropdown(sbProblemsList);
+
+            // Default to two-sum-001 or first problem
+            const target = sbProblemsList.find(p => p.slug.includes("two-sum")) || sbProblemsList[0];
+            if (target) {
+              document.getElementById("sandboxProblemSelect").value = target.slug;
+              await onSandboxProblemChange(target.slug);
+            }
+          }
+        } catch (e) {
+          console.warn("Failed loading sandbox problems:", e.message);
+        }
+      }
+
+      function updateEditorLineCount() {
+        const editor = document.getElementById("sbCodeEditor");
+        const countSpan = document.getElementById("sbLineCount");
+        if (editor && countSpan) {
+          const lines = (editor.value || "").split("\n").length;
+          countSpan.textContent = lines + (lines === 1 ? " line" : " lines");
+        }
+      }
+
+      function populateProblemDropdown(problems) {
+        const select = document.getElementById("sandboxProblemSelect");
+        if (!select) return;
+        select.innerHTML = "";
+
+        problems.forEach(p => {
+          const opt = document.createElement("option");
+          opt.value = p.slug;
+          opt.textContent = "#" + p.problemNumber + " " + p.title + " (" + p.difficulty + ")";
+          select.appendChild(opt);
+        });
+      }
+
+      async function onSandboxProblemChange(slug) {
+        try {
+          document.getElementById("sbProblemDescription").textContent = "Loading problem statement...";
+          const res = await fetch("/api/problems/" + encodeURIComponent(slug));
+          if (!res.ok) throw new Error("Could not fetch problem details.");
+          const json = await res.json();
+          sbCurrentProblem = json.data;
+          renderSandboxProblem(sbCurrentProblem);
+        } catch (e) {
+          document.getElementById("sbProblemDescription").textContent = "Error: " + e.message;
+        }
+      }
+
+      function renderSandboxProblem(p) {
+        if (!p) return;
+        document.getElementById("sbProblemTitle").textContent = "#" + p.problemNumber + " " + p.title;
+        
+        // Difficulty badge
+        const diffBadge = document.getElementById("sbProblemDifficulty");
+        diffBadge.textContent = p.difficulty;
+        diffBadge.className = "diff-badge " + (
+          p.difficulty.toLowerCase() === "easy" ? "diff-easy" :
+          p.difficulty.toLowerCase() === "hard" ? "diff-hard" : "diff-medium"
+        );
+
+        document.getElementById("sbTimeLimit").textContent = (p.timeLimit || 1000) + "ms";
+        document.getElementById("sbMemoryLimit").textContent = (p.memoryLimit || 256) + "MB";
+        document.getElementById("sbProblemDescription").textContent = p.description || p.title;
+
+        // Render visible sample cases
+        const sampleBox = document.getElementById("sbSampleTestcases");
+        sampleBox.innerHTML = "";
+        const cases = p.testcases || [];
+        if (!cases.length) {
+          sampleBox.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem;">No visible sample cases provided.</div>';
+        } else {
+          cases.forEach((tc, i) => {
+            const card = document.createElement("div");
+            card.style.background = "#0b1120";
+            card.style.border = "1px solid var(--border-color)";
+            card.style.borderRadius = "6px";
+            card.style.padding = "0.6rem 0.8rem";
+            card.style.fontSize = "0.78rem";
+            card.style.fontFamily = "monospace";
+
+            card.innerHTML =
+              '<div style="color:#94a3b8; font-weight:700; margin-bottom:0.25rem;">Sample Case ' + (i + 1) + '</div>' +
+              '<div style="color:#cbd5e1; margin-bottom:0.2rem;"><strong>Input:</strong> <span style="color:#38bdf8;">' + escapeHtml(tc.input || tc.stdinSmall || "") + '</span></div>' +
+              '<div style="color:#cbd5e1;"><strong>Expected:</strong> <span style="color:#34d399;">' + escapeHtml(tc.output || tc.expectedSmall || "") + '</span></div>';
+            sampleBox.appendChild(card);
+          });
+        }
+
+        // Set code template
+        applyTemplateForLanguage();
+        // Hide previous results
+        document.getElementById("sbResultsCard").style.display = "none";
+      }
+
+      function onSandboxLanguageChange(lang) {
+        sbCurrentLanguage = lang;
+        const fileNames = {
+          python: "solution.py",
+          javascript: "solution.js",
+          cpp: "solution.cpp",
+          java: "solution.java"
+        };
+        document.getElementById("sbEditorFileName").textContent = fileNames[lang] || "solution.txt";
+        applyTemplateForLanguage();
+      }
+
+      function applyTemplateForLanguage() {
+        if (!sbCurrentProblem) return;
+        const templates = sbCurrentProblem.templates || {};
+        const code = templates[sbCurrentLanguage] || getDefaultTemplate(sbCurrentLanguage, sbCurrentProblem.slug);
+        const editor = document.getElementById("sbCodeEditor");
+        editor.value = code;
+        updateEditorLineCount();
+      }
+
+      function getDefaultTemplate(lang, slug) {
+        if (lang === "python") {
+          return "class Solution:\n    def " + (slug.replace(/-\d+$/, "").replace(/-/g, "_") || "solve") + "(self, *args):\n        # Write your code here\n        pass\n";
+        }
+        if (lang === "javascript") {
+          return "class Solution {\n    " + (slug.replace(/-\d+$/, "").replace(/-([a-z])/g, (g) => g[1].toUpperCase()) || "solve") + "(...args) {\n        // Write your code here\n    }\n}\n";
+        }
+        if (lang === "cpp") {
+          return "class Solution {\npublic:\n    // Write your code here\n};\n";
+        }
+        return "class Solution {\n    // Write your code here\n}\n";
+      }
+
+      function resetToStarterTemplate() {
+        applyTemplateForLanguage();
+      }
+
+      function loadDemoSolution(type) {
+        if (!sbCurrentProblem) return;
+        const slug = sbCurrentProblem.slug.toLowerCase();
+        const editor = document.getElementById("sbCodeEditor");
+
+        if (type === "wrong") {
+          if (sbCurrentLanguage === "python") {
+            editor.value = "class Solution:\n    def twoSum(self, nums, target):\n        # Deliberate wrong answer for testing\n        print('Debugging student output: nums =', nums)\n        return [-1, -1]\n";
+          } else if (sbCurrentLanguage === "javascript") {
+            editor.value = "class Solution {\n    twoSum(nums, target) {\n        console.log('Debugging student print:', target);\n        return [-1, -1];\n    }\n}\n";
+          } else {
+            editor.value = "// Deliberate wrong answer\nreturn {};";
+          }
+          updateEditorLineCount();
+          return;
+        }
+
+        // Correct solutions
+        if (slug.includes("two-sum")) {
+          if (sbCurrentLanguage === "python") {
+            editor.value = "class Solution:\n    def twoSum(self, nums, target):\n        lookup = {}\n        for i, n in enumerate(nums):\n            diff = target - n\n            if diff in lookup:\n                return [lookup[diff], i]\n            lookup[n] = i\n";
+          } else if (sbCurrentLanguage === "javascript") {
+            editor.value = "class Solution {\n    twoSum(nums, target) {\n        const map = new Map();\n        for (let i = 0; i < nums.length; i++) {\n            const diff = target - nums[i];\n            if (map.has(diff)) {\n                return [map.get(diff), i];\n            }\n            map.set(nums[i], i);\n        }\n    }\n}\n";
+          } else if (sbCurrentLanguage === "cpp") {
+            editor.value = "class Solution {\npublic:\n    vector<int> twoSum(vector<int>& nums, int target) {\n        unordered_map<int, int> m;\n        for (int i = 0; i < nums.size(); i++) {\n            if (m.count(target - nums[i])) return {m[target - nums[i]], i};\n            m[nums[i]] = i;\n        }\n        return {};\n    }\n};\n";
+          } else {
+            editor.value = "class Solution {\n    public int[] twoSum(int[] nums, int target) {\n        Map<Integer, Integer> map = new HashMap<>();\n        for (int i = 0; i < nums.length; i++) {\n            if (map.containsKey(target - nums[i])) return new int[]{map.get(target - nums[i]), i};\n            map.put(nums[i], i);\n        }\n        return new int[]{};\n    }\n}\n";
+          }
+        } else if (slug.includes("contains-duplicate")) {
+          if (sbCurrentLanguage === "python") {
+            editor.value = "class Solution:\n    def containsDuplicate(self, nums):\n        return len(nums) != len(set(nums))\n";
+          } else {
+            editor.value = "class Solution {\n    containsDuplicate(nums) {\n        return new Set(nums).size !== nums.length;\n    }\n}\n";
+          }
+        } else if (slug.includes("palindrome")) {
+          if (sbCurrentLanguage === "python") {
+            editor.value = "class Solution:\n    def isPalindrome(self, s):\n        cleaned = [c.lower() for c in str(s) if c.isalnum()]\n        return cleaned == cleaned[::-1]\n";
+          } else {
+            editor.value = "class Solution {\n    isPalindrome(s) {\n        const clean = String(s).toLowerCase().replace(/[^a-z0-9]/g, '');\n        return clean === clean.split('').reverse().join('');\n    }\n}\n";
+          }
+        } else {
+          // Generic fallback for any other problem
+          if (sbCurrentLanguage === "python") {
+            editor.value = "class Solution:\n    def solve(self, *args):\n        # Working solution demo\n        return True\n";
+          } else {
+            editor.value = "class Solution {\n    solve(...args) {\n        return true;\n    }\n}\n";
+          }
+        }
+        updateEditorLineCount();
+      }
+
+      function toggleCustomInputBox() {
+        const box = document.getElementById("sbCustomInputContainer");
+        box.style.display = box.style.display === "none" ? "block" : "none";
+      }
+
+      // --- RUN VISIBLE TESTCASES ---
+      async function handleRunVisibleCases() {
+        const code = document.getElementById("sbCodeEditor").value;
+        const slug = sbCurrentProblem ? sbCurrentProblem.slug : "two-sum-001";
+        const runBtn = document.getElementById("btnRunVisible");
+        
+        runBtn.disabled = true;
+        runBtn.innerHTML = '⏳ Running...';
+
+        const resultsCard = document.getElementById("sbResultsCard");
+        resultsCard.style.display = "block";
+        const banner = document.getElementById("sbVerdictBanner");
+        banner.className = "verdict-banner";
+        banner.style.background = "#1e293b";
+        banner.style.color = "#94a3b8";
+        document.getElementById("sbVerdictText").textContent = "Executing sample testcases...";
+        document.getElementById("sbVerdictMeta").textContent = "Communicating with execution engine...";
+
+        try {
+          const res = await fetch("/api/execution/runs", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(authToken ? { "Authorization": "Bearer " + authToken } : {})
+            },
+            body: JSON.stringify({
+              slug,
+              language: sbCurrentLanguage,
+              code
+            })
+          });
+
+          const data = await res.json();
+          logConsole("POST /api/execution/runs", data);
+
+          if (!res.ok) {
+            banner.className = "verdict-banner failed";
+            document.getElementById("sbVerdictText").textContent = data.code || "Execution Error";
+            document.getElementById("sbVerdictMeta").textContent = data.message || "Failed to execute code";
+            document.getElementById("sbCaseTabsBar").innerHTML = "";
+            document.getElementById("sbActiveCaseDetail").innerHTML = '<div style="color:#ef4444;">' + escapeHtml(data.message || "Execution failed") + '</div>';
+            return;
+          }
+
+          sbRunCases = data.cases || [];
+          const allPassed = data.status === "Accepted" && data.passedCount === data.totalCount;
+
+          banner.className = "verdict-banner " + (allPassed ? "accepted" : "failed");
+          document.getElementById("sbVerdictText").textContent = allPassed
+            ? "Accepted — All " + data.totalCount + " Sample Testcases Passed!"
+            : (data.status || "Wrong Answer") + " (" + data.passedCount + "/" + data.totalCount + " Passed)";
+
+          const totalTime = sbRunCases.reduce((acc, c) => acc + (c.timeMs || 0), 0);
+          document.getElementById("sbVerdictMeta").textContent = "Passed: " + data.passedCount + "/" + data.totalCount + " • Time: " + totalTime + "ms";
+
+          renderCaseTabs();
+        } catch (e) {
+          banner.className = "verdict-banner failed";
+          document.getElementById("sbVerdictText").textContent = "Client Request Failed";
+          document.getElementById("sbVerdictMeta").textContent = e.message;
+        } finally {
+          runBtn.disabled = false;
+          runBtn.innerHTML = '▶ Run (Visible Tests)';
+        }
+      }
+
+      function renderCaseTabs() {
+        const tabsBar = document.getElementById("sbCaseTabsBar");
+        tabsBar.innerHTML = "";
+
+        sbRunCases.forEach((c, idx) => {
+          const btn = document.createElement("button");
+          btn.className = "case-tab-btn " + (c.passed ? "passed" : "failed") + (idx === 0 ? " active" : "");
+          btn.innerHTML = (c.passed ? "🟢" : "🔴") + " Case " + (idx + 1);
+          btn.onclick = () => selectCaseTab(idx);
+          tabsBar.appendChild(btn);
+        });
+
+        sbActiveCaseIndex = 0;
+        renderActiveCaseDetail();
+      }
+
+      function selectCaseTab(idx) {
+        sbActiveCaseIndex = idx;
+        const btns = document.querySelectorAll(".case-tab-btn");
+        btns.forEach((b, i) => {
+          if (i === idx) b.classList.add("active");
+          else b.classList.remove("active");
+        });
+        renderActiveCaseDetail();
+      }
+
+      function renderActiveCaseDetail() {
+        const container = document.getElementById("sbActiveCaseDetail");
+        const c = sbRunCases[sbActiveCaseIndex];
+        if (!c) {
+          container.innerHTML = "No case output available.";
+          return;
+        }
+
+        container.innerHTML =
+          '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">' +
+            '<span style="font-weight:700; color:' + (c.passed ? '#34d399' : '#f87171') + ';">Status: ' + escapeHtml(c.status) + '</span>' +
+            '<span style="color:var(--text-muted); font-size:0.75rem;">⏱ ' + (c.timeMs || 0) + 'ms • 💾 ' + (c.memoryKb || 0) + ' KB</span>' +
+          '</div>' +
+          '<div style="margin-bottom:0.5rem;"><strong style="color:#94a3b8;">Input:</strong><pre style="background:#060913; padding:0.4rem 0.6rem; border-radius:4px; margin-top:0.2rem; color:#f8fafc; font-family:monospace;">' + escapeHtml(c.input || "") + '</pre></div>' +
+          '<div style="margin-bottom:0.5rem;"><strong style="color:#94a3b8;">Expected Output:</strong><pre style="background:#060913; padding:0.4rem 0.6rem; border-radius:4px; margin-top:0.2rem; color:#34d399; font-family:monospace;">' + escapeHtml(c.expected || "") + '</pre></div>' +
+          '<div style="margin-bottom:0.5rem;"><strong style="color:#94a3b8;">Actual Output:</strong><pre style="background:#060913; padding:0.4rem 0.6rem; border-radius:4px; margin-top:0.2rem; color:' + (c.passed ? '#34d399' : '#f87171') + '; font-family:monospace;">' + escapeHtml(c.actual || "") + '</pre></div>' +
+          (c.studentStdout ? '<div style="margin-bottom:0.5rem;"><strong style="color:#38bdf8;">Captured Student Prints (stdout):</strong><pre style="background:#060913; padding:0.4rem 0.6rem; border-radius:4px; margin-top:0.2rem; color:#38bdf8; font-family:monospace;">' + escapeHtml(c.studentStdout) + '</pre></div>' : '') +
+          (c.errorText ? '<div style="margin-top:0.5rem;"><strong style="color:#ef4444;">Error Message / Stderr:</strong><pre style="background:#1f0e13; color:#fca5a5; padding:0.5rem; border-radius:4px; margin-top:0.2rem; font-family:monospace;">' + escapeHtml(c.errorText) + '</pre></div>' : '');
+      }
+
+      // --- SUBMIT ALL TESTCASES (MULTI-TIER EVALUATION) ---
+      async function handleSubmitAllCases() {
+        const code = document.getElementById("sbCodeEditor").value;
+        const slug = sbCurrentProblem ? sbCurrentProblem.slug : "two-sum-001";
+        const submitBtn = document.getElementById("btnSubmitAll");
+
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '⏳ Submitting...';
+
+        const resultsCard = document.getElementById("sbResultsCard");
+        resultsCard.style.display = "block";
+        const banner = document.getElementById("sbVerdictBanner");
+        banner.className = "verdict-banner";
+        banner.style.background = "#1e293b";
+        banner.style.color = "#94a3b8";
+        document.getElementById("sbVerdictText").textContent = "Evaluating all test cases across tiers...";
+        document.getElementById("sbVerdictMeta").textContent = "Running complete multi-tier test suite...";
+        document.getElementById("sbCaseTabsBar").innerHTML = "";
+
+        try {
+          const res = await fetch("/api/execution/submissions?wait=true", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(authToken ? { "Authorization": "Bearer " + authToken } : {})
+            },
+            body: JSON.stringify({
+              slug,
+              language: sbCurrentLanguage,
+              code,
+              wait: true
+            })
+          });
+
+          const data = await res.json();
+          logConsole("POST /api/execution/submissions", data);
+
+          if (!res.ok) {
+            banner.className = "verdict-banner failed";
+            document.getElementById("sbVerdictText").textContent = data.code || "Submission Error";
+            document.getElementById("sbVerdictMeta").textContent = data.message || "Failed to evaluate submission";
+            return;
+          }
+
+          const isAccepted = data.verdict === "ACCEPTED" || data.status === "ACCEPTED";
+          banner.className = "verdict-banner " + (isAccepted ? "accepted" : "failed");
+          document.getElementById("sbVerdictText").textContent = isAccepted
+            ? "🎉 ACCEPTED — " + (data.tierReached || "Tier 3 (Optimal)")
+            : "❌ " + (data.verdict || "WRONG ANSWER") + " — " + (data.tierReached || "Tier 0");
+
+          document.getElementById("sbVerdictMeta").textContent =
+            "Passed: " + data.passedCount + "/" + data.totalCount + " • Time: " + (data.time || "45ms");
+
+          const detail = document.getElementById("sbActiveCaseDetail");
+          if (isAccepted) {
+            detail.innerHTML =
+              '<div style="color:#34d399; font-weight:700; font-size:1rem; margin-bottom:0.5rem;">Congratulations! All ' + data.totalCount + ' evaluation test cases passed!</div>' +
+              '<div style="color:#cbd5e1; font-size:0.85rem; line-height:1.6;">' +
+                '<div>🎯 <strong>Tier Reached:</strong> <span style="color:#38bdf8;">' + escapeHtml(data.tierReached || "Tier 3 (Optimal)") + '</span></div>' +
+                '<div>⏱ <strong>Max Execution Time:</strong> ' + escapeHtml(data.time || "45ms") + '</div>' +
+                '<div>💾 <strong>Memory Footprint:</strong> ' + (data.memory || 14000) + ' KB</div>' +
+                '<div>🧩 <strong>Submission ID:</strong> <code>' + escapeHtml(data.submissionId || "sub-completed") + '</code></div>' +
+              '</div>';
+          } else {
+            const fail = data.firstFailure || {};
+            detail.innerHTML =
+              '<div style="color:#f87171; font-weight:700; font-size:0.95rem; margin-bottom:0.5rem;">' + (fail.message || "Failed during verification tests.") + '</div>' +
+              '<div style="color:#cbd5e1; font-size:0.85rem; line-height:1.6;">' +
+                '<div>📊 <strong>Tests Passed:</strong> ' + data.passedCount + ' of ' + data.totalCount + ' total test cases</div>' +
+                '<div>🎯 <strong>Tier Reached:</strong> ' + escapeHtml(data.tierReached || "Tier 0") + '</div>' +
+                (fail.input ? '<div><strong>Sample Input:</strong><pre style="background:#060913; padding:0.4rem; color:#f8fafc; font-family:monospace; margin-top:0.2rem;">' + escapeHtml(fail.input) + '</pre></div>' : '') +
+                (fail.expected ? '<div><strong>Expected Output:</strong><pre style="background:#060913; padding:0.4rem; color:#34d399; font-family:monospace; margin-top:0.2rem;">' + escapeHtml(fail.expected) + '</pre></div>' : '') +
+                (fail.actual ? '<div><strong>Your Output:</strong><pre style="background:#060913; padding:0.4rem; color:#f87171; font-family:monospace; margin-top:0.2rem;">' + escapeHtml(fail.actual) + '</pre></div>' : '') +
+                (fail.errorText ? '<div><strong>Error:</strong><pre style="background:#1f0e13; padding:0.4rem; color:#fca5a5; font-family:monospace; margin-top:0.2rem;">' + escapeHtml(fail.errorText) + '</pre></div>' : '') +
+              '</div>';
+          }
+        } catch (e) {
+          banner.className = "verdict-banner failed";
+          document.getElementById("sbVerdictText").textContent = "Submission Request Failed";
+          document.getElementById("sbVerdictMeta").textContent = e.message;
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '🚀 Submit (All Tests)';
+        }
+      }
+
+      async function handleRunCustomStdin() {
+        const code = document.getElementById("sbCodeEditor").value;
+        const stdin = document.getElementById("sbCustomStdin").value;
+        const resultsCard = document.getElementById("sbResultsCard");
+        resultsCard.style.display = "block";
+        const banner = document.getElementById("sbVerdictBanner");
+        banner.className = "verdict-banner";
+        banner.style.background = "#1e293b";
+        banner.style.color = "#94a3b8";
+        document.getElementById("sbVerdictText").textContent = "Executing custom stdin...";
+        document.getElementById("sbVerdictMeta").textContent = "Running single case...";
+
+        try {
+          const res = await fetch("/api/execution/runs", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(authToken ? { "Authorization": "Bearer " + authToken } : {})
+            },
+            body: JSON.stringify({
+              language: sbCurrentLanguage,
+              code,
+              stdin
+            })
+          });
+          const data = await res.json();
+          logConsole("POST /api/execution/runs (Custom Input)", data);
+
+          if (!res.ok) {
+            banner.className = "verdict-banner failed";
+            document.getElementById("sbVerdictText").textContent = data.code || "Error";
+            document.getElementById("sbVerdictMeta").textContent = data.message || "Custom execution failed";
+            return;
+          }
+
+          const c = (data.cases || [])[0] || {};
+          banner.className = "verdict-banner " + (c.status === "Accepted" ? "accepted" : "failed");
+          document.getElementById("sbVerdictText").textContent = "Custom Run: " + (c.status || "Completed");
+          document.getElementById("sbVerdictMeta").textContent = "Time: " + (c.timeMs || 0) + "ms";
+
+          document.getElementById("sbCaseTabsBar").innerHTML = "";
+          document.getElementById("sbActiveCaseDetail").innerHTML =
+            '<div style="margin-bottom:0.5rem;"><strong style="color:#94a3b8;">Custom Stdin:</strong><pre style="background:#060913; padding:0.4rem; color:#f8fafc; font-family:monospace; margin-top:0.2rem;">' + escapeHtml(stdin) + '</pre></div>' +
+            '<div style="margin-bottom:0.5rem;"><strong style="color:#94a3b8;">Function Return Output:</strong><pre style="background:#060913; padding:0.4rem; color:#34d399; font-family:monospace; margin-top:0.2rem;">' + escapeHtml(c.actual || "") + '</pre></div>' +
+            (c.studentStdout ? '<div style="margin-bottom:0.5rem;"><strong style="color:#38bdf8;">Student Stdout Prints:</strong><pre style="background:#060913; padding:0.4rem; color:#38bdf8; font-family:monospace; margin-top:0.2rem;">' + escapeHtml(c.studentStdout) + '</pre></div>' : '') +
+            (c.errorText ? '<div><strong style="color:#ef4444;">Error Text:</strong><pre style="background:#1f0e13; padding:0.4rem; color:#fca5a5; font-family:monospace; margin-top:0.2rem;">' + escapeHtml(c.errorText) + '</pre></div>' : '');
+        } catch (e) {
+          banner.className = "verdict-banner failed";
+          document.getElementById("sbVerdictText").textContent = "Error";
+          document.getElementById("sbVerdictMeta").textContent = e.message;
         }
       }
     </script>
