@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import prisma from "../config/db.js";
 import { executeCase, areOutputsEqual, buildSource } from "../utils/codeRunner.js";
-import { buildFinalCode, LANGUAGE_IDS, normalizeLanguage } from "../utils/codeBuilder.js";
+import { buildFinalCode, LANGUAGE_IDS, normalizeLanguage, SUPPORTED_LANGUAGES } from "../utils/codeBuilder.js";
 import { resolveProblem } from "../utils/problemResolver.js";
 import { ApiError } from "../utils/ApiError.js";
 
@@ -75,25 +75,38 @@ async function runSingleTestCase({
   problem,
   language,
   code,
+  fullCode: providedFullCode,
   stdin,
   timeLimit = 3000,
   memoryLimit = 256,
   expectedOutput = "",
 }) {
   const normLang = normalizeLanguage(language);
-  let fullCode;
-
-  try {
-    fullCode = buildFinalCode(problem, code, normLang);
-  } catch (err) {
+  if (!normLang) {
     return {
       status: "Compilation Error",
       studentStdout: "",
       actual: "",
-      errorText: err.message,
+      errorText: `Unsupported language: '${language}'. Supported languages: ${SUPPORTED_LANGUAGES.join(", ")}.`,
       timeMs: 0,
       memoryKb: 0,
     };
+  }
+
+  let fullCode = providedFullCode;
+  if (!fullCode) {
+    try {
+      fullCode = buildFinalCode(problem, code, normLang);
+    } catch (err) {
+      return {
+        status: "Compilation Error",
+        studentStdout: "",
+        actual: "",
+        errorText: err.message,
+        timeMs: 0,
+        memoryKb: 0,
+      };
+    }
   }
 
   // 1. If CODEBOX_TOKEN is configured and remote VPS is accessible, attempt remote execution
@@ -102,7 +115,7 @@ async function runSingleTestCase({
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), timeLimit + 2500);
 
-      const langId = LANGUAGE_IDS[normLang] || 71;
+      const langId = LANGUAGE_IDS[normLang] || 54;
       const res = await fetch(`${CODEBOX_URL}/submissions?wait=true`, {
         method: "POST",
         headers: {
@@ -144,7 +157,7 @@ async function runSingleTestCase({
     }
   }
 
-  // 2. Local sandboxed runner (Python 3 & Node.js 22 & simulated fallback)
+  // 2. Sandboxed compiler and runner (C++, C, Java, Python 3, Node.js)
   return await executeCase({
     language: normLang,
     code,
@@ -164,19 +177,22 @@ async function runSingleTestCase({
 export const runCode = async (req, res, next) => {
   try {
     const slug = req.params?.slug || req.body?.slug || req.body?.problemSlug || req.body?.problemId;
-    const { language = "python", code, userCode, source_code, sourceCode, stdin } = req.body;
+    const rawLang = req.body?.language ?? req.body?.lang ?? req.query?.language ?? "cpp";
+    const normLang = normalizeLanguage(rawLang);
+
+    if (!normLang) {
+      throw new ApiError(
+        422,
+        `Unsupported language: '${rawLang}'. Supported languages: ${SUPPORTED_LANGUAGES.join(", ")}.`,
+        "UNSUPPORTED_LANGUAGE"
+      );
+    }
+
+    const { code, userCode, source_code, sourceCode, stdin } = req.body;
     const studentCode = userCode || code || source_code || sourceCode;
 
     if (!studentCode || studentCode.trim().length === 0) {
       throw new ApiError(400, "Code is required.", "MISSING_CODE");
-    }
-
-    if (studentCode.includes("main(") || studentCode.includes("main (")) {
-      throw new ApiError(
-        400,
-        "Do not write main(), only write the required function solution.",
-        "FUNCTION_ONLY_REQUIRED"
-      );
     }
 
     if (Buffer.byteLength(studentCode, "utf-8") > 64 * 1024) {
@@ -187,7 +203,7 @@ export const runCode = async (req, res, next) => {
     if (stdin !== undefined && !slug) {
       const result = await runSingleTestCase({
         problem: null,
-        language,
+        language: normLang,
         code: studentCode,
         stdin,
       });
@@ -220,6 +236,9 @@ export const runCode = async (req, res, next) => {
       throw new ApiError(404, `Problem '${slug}' not found.`, "NOT_FOUND");
     }
 
+    // Validate function-only submission and build executable source upfront
+    const fullCode = buildFinalCode(problem, studentCode, normLang);
+
     // Filter to strictly VISIBLE testcases only
     const allTestcases = problem.testcases || [];
     let visibleCases = allTestcases.filter((tc) => tc.isVisible === true);
@@ -244,8 +263,9 @@ export const runCode = async (req, res, next) => {
 
       const execResult = await runSingleTestCase({
         problem,
-        language,
+        language: normLang,
         code: studentCode,
+        fullCode,
         stdin: testInput,
         timeLimit: problem.timeLimit || 2000,
         memoryLimit: problem.memoryLimit || 256,
@@ -300,7 +320,8 @@ export const runCode = async (req, res, next) => {
  * Evaluates all testcases for a problem (up to 12 cases: 3 visible + 9 hidden)
  * Sequential execution (concurrency 1 for KVM1 - do NOT parallelize)
  */
-async function evaluateAllTestcases(problem, language, code) {
+async function evaluateAllTestcases(problem, language, code, providedFullCode) {
+  const normLang = normalizeLanguage(language) || "cpp";
   const rawTestcases = problem.testcases || [];
   // Max 12 testcases per PRD: 3 visible + 9 hidden
   const allTestcases = rawTestcases.slice(0, 12);
@@ -317,6 +338,8 @@ async function evaluateAllTestcases(problem, language, code) {
       results: [],
     };
   }
+
+  const fullCode = providedFullCode || buildFinalCode(problem, code, normLang);
 
   let passedCount = 0;
   let maxTimeMs = 0;
@@ -337,8 +360,9 @@ async function evaluateAllTestcases(problem, language, code) {
 
     const execResult = await runSingleTestCase({
       problem,
-      language,
+      language: normLang,
       code,
+      fullCode,
       stdin: testInput,
       timeLimit: problem.timeLimit || 2000,
       memoryLimit: problem.memoryLimit || 256,
@@ -422,20 +446,23 @@ async function evaluateAllTestcases(problem, language, code) {
 export const submitSolution = async (req, res, next) => {
   try {
     const slug = req.params?.slug || req.body?.slug || req.body?.problemSlug || req.body?.problemId;
-    const { language = "python", code, userCode, source_code, sourceCode, wait } = req.body;
+    const rawLang = req.body?.language ?? req.body?.lang ?? req.query?.language ?? "cpp";
+    const normLang = normalizeLanguage(rawLang);
+
+    if (!normLang) {
+      throw new ApiError(
+        422,
+        `Unsupported language: '${rawLang}'. Supported languages: ${SUPPORTED_LANGUAGES.join(", ")}.`,
+        "UNSUPPORTED_LANGUAGE"
+      );
+    }
+
+    const { code, userCode, source_code, sourceCode, wait } = req.body;
     const studentCode = userCode || code || source_code || sourceCode;
     const userId = req.user?.id || null;
 
     if (!studentCode || studentCode.trim().length === 0) {
       throw new ApiError(400, "Code is required.", "MISSING_CODE");
-    }
-
-    if (studentCode.includes("main(") || studentCode.includes("main (")) {
-      throw new ApiError(
-        400,
-        "Do not write main(), only write the required function solution.",
-        "FUNCTION_ONLY_REQUIRED"
-      );
     }
 
     if (Buffer.byteLength(studentCode, "utf-8") > 64 * 1024) {
@@ -447,6 +474,9 @@ export const submitSolution = async (req, res, next) => {
       throw new ApiError(404, `Problem '${slug}' not found.`, "NOT_FOUND");
     }
 
+    // Validate function-only submission and build executable source upfront
+    const fullCode = buildFinalCode(problem, studentCode, normLang);
+
     const subId = `sub_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     const totalTcs = (problem.testcases || []).slice(0, 12).length;
 
@@ -454,7 +484,7 @@ export const submitSolution = async (req, res, next) => {
       id: subId,
       problemId: problem.id,
       userId,
-      language,
+      language: normLang,
       code: studentCode,
       status: "PROCESSING",
       passedCount: 0,
@@ -471,7 +501,7 @@ export const submitSolution = async (req, res, next) => {
         data: {
           problemId: problem.id,
           userId,
-          language,
+          language: normLang,
           code: studentCode,
           status: "PROCESSING",
           passedCount: 0,
@@ -486,7 +516,7 @@ export const submitSolution = async (req, res, next) => {
     submissionCache.set(submission.id, { ...submission });
 
     const runEvaluation = async () => {
-      const evaluation = await evaluateAllTestcases(problem, language, studentCode);
+      const evaluation = await evaluateAllTestcases(problem, normLang, studentCode, fullCode);
       let updated = {
         ...submission,
         status: evaluation.status,

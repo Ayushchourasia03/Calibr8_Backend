@@ -780,33 +780,49 @@
         <!-- Top Toolbar -->
         <div class="card" style="margin-bottom: 1rem; padding: 1rem 1.25rem;">
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-            <!-- Problem Selector -->
-            <div style="display: flex; align-items: center; gap: 0.75rem; flex: 1; min-width: 280px;">
+            <!-- Problem Selector & Manual ID Input -->
+            <div style="display: flex; align-items: center; gap: 0.6rem; flex: 1; min-width: 320px; flex-wrap: wrap;">
               <span style="font-weight: 700; font-size: 0.88rem; color: #cbd5e1;">Problem:</span>
-              <select id="sandboxProblemSelect" onchange="onSandboxProblemChange(this.value)" style="flex: 1; font-weight: 600;">
+              <select id="sandboxProblemSelect" onchange="onSandboxProblemSelectChange(this.value)" style="flex: 1; min-width: 180px; font-weight: 600;">
                 <option value="two-sum-001">#1 Two Sum (Easy)</option>
               </select>
+              <div style="display: flex; align-items: center; gap: 0.35rem;">
+                <input id="sandboxProblemInput" type="text" placeholder="Or enter slug/ID..." style="width: 170px; font-size: 0.8rem; font-family: monospace;" value="two-sum-001" onkeydown="if(event.key==='Enter') loadProblemByInput()" />
+                <button class="btn btn-secondary" onclick="loadProblemByInput()" style="padding: 0.45rem 0.7rem; font-size: 0.78rem;" title="Load entered problem ID">Load</button>
+              </div>
             </div>
 
             <!-- Language Selector -->
             <div style="display: flex; align-items: center; gap: 0.6rem;">
               <span style="font-weight: 700; font-size: 0.88rem; color: #cbd5e1;">Language:</span>
-              <select id="sandboxLangSelect" onchange="onSandboxLanguageChange(this.value)" style="font-weight: 600; min-width: 140px;">
+              <select id="sandboxLangSelect" onchange="onSandboxLanguageChange(this.value)" style="font-weight: 600; min-width: 150px;">
+                <option value="cpp">C++ (g++ 12)</option>
+                <option value="c">C (gcc 12)</option>
+                <option value="java">Java (OpenJDK 17)</option>
                 <option value="python">Python 3 (3.10)</option>
                 <option value="javascript">JavaScript (Node 22)</option>
-                <option value="cpp">C++ (GCC 13)</option>
-                <option value="c">C (GCC 13)</option>
-                <option value="java">Java (OpenJDK 17)</option>
+              </select>
+            </div>
+
+            <!-- Action Selector (Run vs Submit) -->
+            <div style="display: flex; align-items: center; gap: 0.6rem;">
+              <span style="font-weight: 700; font-size: 0.88rem; color: #cbd5e1;">Action:</span>
+              <select id="sandboxActionSelect" onchange="onSandboxActionChange(this.value)" style="font-weight: 600; min-width: 165px; background: #0f172a; border-color: #3b82f6;">
+                <option value="run">▶ Run (Visible Cases)</option>
+                <option value="submit">🚀 Submit (All Cases)</option>
               </select>
             </div>
 
             <!-- Quick Preset Buttons -->
             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
               <button class="btn btn-secondary" onclick="loadDemoSolution('correct')" title="Load working algorithm that passes all testcases">
-                ⚡ Load Working Solution
+                ⚡ Working Solution
+              </button>
+              <button class="btn btn-secondary" onclick="loadDemoSolution('compile_error')" title="Load code with syntax error to test compiler diagnostics">
+                ⚠️ Syntax Error
               </button>
               <button class="btn btn-secondary" onclick="loadDemoSolution('wrong')" title="Load buggy solution to test Wrong Answer detection">
-                🐞 Load Buggy Solution
+                🐞 Buggy Solution
               </button>
               <button class="btn btn-secondary" onclick="resetToStarterTemplate()" title="Reset to original starter function signature">
                 🔄 Reset Template
@@ -845,9 +861,9 @@
             <div class="code-editor-box">
               <div class="editor-topbar">
                 <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-                  <span style="font-size: 0.82rem; font-weight: 700; color: #38bdf8;" id="sbEditorFileName">solution.py</span>
+                  <span style="font-size: 0.82rem; font-weight: 700; color: #38bdf8;" id="sbEditorFileName">solution.cpp</span>
                   <span style="font-size: 0.72rem; background: rgba(59, 130, 246, 0.2); color: #93c5fd; padding: 0.15rem 0.45rem; border-radius: 4px; font-weight: 600;">Function-Only Template</span>
-                  <span style="font-size: 0.72rem; color: var(--text-muted);">(Type only inside the method body)</span>
+                  <span style="font-size: 0.72rem; color: var(--text-muted);">(Write only the required function/method)</span>
                 </div>
                 <div style="display: flex; gap: 0.5rem;">
                   <span id="sbLineCount" style="font-size: 0.75rem; color: var(--text-muted);">0 lines</span>
@@ -856,19 +872,26 @@
               <textarea id="sbCodeEditor" class="code-textarea" spellcheck="false" placeholder="Type or paste your solution function here..."></textarea>
             </div>
 
-            <!-- Execution Action Buttons -->
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
-              <div style="display: flex; gap: 0.6rem;">
-                <button class="btn btn-secondary" id="btnRunVisible" onclick="handleRunVisibleCases()" style="font-size: 0.9rem; padding: 0.65rem 1.2rem; font-weight: 700;">
-                  ▶ Run (Visible Tests)
+            <!-- Execution Action Bar -->
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; background: #0f172a; padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border-color);">
+              <div style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
+                <!-- Primary Unified Execute Button -->
+                <button class="btn btn-success" id="btnExecuteUnified" onclick="handleExecuteUnified()" style="font-size: 0.92rem; padding: 0.65rem 1.4rem; font-weight: 700; background: #2563eb; box-shadow: 0 2px 10px rgba(37, 99, 235, 0.4);">
+                  ⚡ Execute
                 </button>
-                <button class="btn btn-success" id="btnSubmitAll" onclick="handleSubmitAllCases()" style="font-size: 0.9rem; padding: 0.65rem 1.3rem; font-weight: 700;">
+                <button class="btn btn-secondary" id="btnRunVisible" onclick="handleRunVisibleCases()" style="font-size: 0.85rem; padding: 0.55rem 1rem;">
+                  ▶ Run (Visible)
+                </button>
+                <button class="btn btn-secondary" id="btnSubmitAll" onclick="handleSubmitAllCases()" style="font-size: 0.85rem; padding: 0.55rem 1rem;">
                   🚀 Submit (All Tests)
                 </button>
               </div>
-              <div>
+              <div style="display: flex; gap: 0.5rem; align-items: center;">
                 <button class="btn btn-secondary" onclick="toggleCustomInputBox()" style="font-size: 0.78rem;">
-                  🧪 Custom Input Stdin
+                  🧪 Custom Stdin
+                </button>
+                <button class="btn btn-secondary" onclick="toggleRequestPreview()" style="font-size: 0.78rem;" id="btnToggleReqPreview">
+                  📡 Request Preview
                 </button>
               </div>
             </div>
@@ -880,12 +903,39 @@
               <button class="btn btn-secondary" style="margin-top: 0.5rem; font-size: 0.78rem;" onclick="handleRunCustomStdin()">Run with Custom Input</button>
             </div>
 
+            <!-- Live HTTP Request Preview Panel -->
+            <div id="sbRequestPreviewContainer" style="background: #090e1a; border: 1px solid var(--card-border); border-radius: 8px; padding: 0.85rem; font-size: 0.8rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <span style="font-weight: 700; color: #94a3b8;">API Request Preview:</span>
+                  <span id="sbPreviewMethodBadge" class="method post">POST</span>
+                  <span id="sbPreviewEndpoint" style="font-family: monospace; color: #38bdf8; font-weight: 600;">/api/execution/runs</span>
+                </div>
+                <span style="font-size: 0.72rem; color: var(--text-muted);">Payload auto-updates on edit</span>
+              </div>
+              <pre id="sbRequestPreviewJson" style="background: #060913; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.6rem 0.8rem; font-family: monospace; font-size: 0.76rem; color: #cbd5e1; max-height: 160px; overflow-y: auto; margin: 0;"></pre>
+            </div>
+
             <!-- Execution Results Box -->
             <div class="card" id="sbResultsCard" style="display: none; margin-bottom: 0;">
+              <!-- Response HTTP Metadata (Status & Latency) -->
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; font-size: 0.78rem;">
+                <span id="sbHttpStatusBadge" style="font-family: monospace; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 4px; background: rgba(59, 130, 246, 0.2); color: #60a5fa;">HTTP 200 OK</span>
+                <span id="sbLatencyBadge" style="color: var(--text-muted);">Latency: --</span>
+              </div>
+
               <!-- Overall Verdict Banner -->
               <div id="sbVerdictBanner" class="verdict-banner accepted">
                 <span id="sbVerdictText">Accepted</span>
                 <span id="sbVerdictMeta" style="font-size: 0.8rem; font-weight: 500;">Runtime: 45ms</span>
+              </div>
+
+              <!-- Dedicated Compilation Error / Diagnostics Panel -->
+              <div id="sbCompilationErrorBox" style="display: none; background: #1f0b12; border: 1px solid #ef4444; border-radius: 8px; padding: 0.85rem; margin-bottom: 0.85rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; color: #f87171; font-weight: 700; font-size: 0.88rem; margin-bottom: 0.4rem;">
+                  <span>⚠️ Compilation / Diagnostics Error</span>
+                </div>
+                <pre id="sbCompilationErrorText" style="background: #090306; color: #fca5a5; padding: 0.6rem 0.8rem; border-radius: 6px; font-family: monospace; font-size: 0.78rem; line-height: 1.45; white-space: pre-wrap; margin: 0; border: 1px solid rgba(239, 68, 68, 0.3); max-height: 240px; overflow-y: auto;"></pre>
               </div>
 
               <!-- Case Tabs Bar (For Run) -->
@@ -1562,7 +1612,7 @@
          ============================================================ */
       let sbProblemsList = [];
       let sbCurrentProblem = null;
-      let sbCurrentLanguage = "python";
+      let sbCurrentLanguage = "cpp";
       let sbRunCases = [];
       let sbActiveCaseIndex = 0;
 
@@ -1578,10 +1628,18 @@
               this.value = this.value.substring(0, start) + "    " + this.value.substring(end);
               this.selectionStart = this.selectionEnd = start + 4;
               updateEditorLineCount();
+              updateRequestPreview();
             }
           });
-          editor.addEventListener("input", updateEditorLineCount);
+          editor.addEventListener("input", () => {
+            updateEditorLineCount();
+            updateRequestPreview();
+          });
         }
+
+        // Set initial language selector
+        const langSelect = document.getElementById("sandboxLangSelect");
+        if (langSelect) langSelect.value = sbCurrentLanguage;
 
         // Fetch problems list
         try {
@@ -1591,10 +1649,15 @@
             sbProblemsList = json.data || [];
             populateProblemDropdown(sbProblemsList);
 
-            // Default to two-sum-001 or first problem
-            const target = sbProblemsList.find(p => p.slug.includes("two-sum")) || sbProblemsList[0];
+            // Default to add-two-numbers if available, else two-sum
+            const target = sbProblemsList.find(p => p.slug.includes("add-two-numbers")) ||
+                           sbProblemsList.find(p => p.slug.includes("two-sum")) ||
+                           sbProblemsList[0];
             if (target) {
-              document.getElementById("sandboxProblemSelect").value = target.slug;
+              const pSelect = document.getElementById("sandboxProblemSelect");
+              if (pSelect) pSelect.value = target.slug;
+              const pInput = document.getElementById("sandboxProblemInput");
+              if (pInput) pInput.value = target.slug;
               await onSandboxProblemChange(target.slug);
             }
           }
@@ -1620,16 +1683,35 @@
         problems.forEach(p => {
           const opt = document.createElement("option");
           opt.value = p.slug;
-          opt.textContent = "#" + p.problemNumber + " " + p.title + " (" + p.difficulty + ")";
+          opt.textContent = "#" + (p.problemNumber || "") + " " + p.title + " (" + p.difficulty + ")";
           select.appendChild(opt);
         });
+      }
+
+      function onSandboxProblemSelectChange(slug) {
+        const pInput = document.getElementById("sandboxProblemInput");
+        if (pInput) pInput.value = slug;
+        onSandboxProblemChange(slug);
+      }
+
+      function loadProblemByInput() {
+        const input = document.getElementById("sandboxProblemInput");
+        if (!input) return;
+        const slug = input.value.trim();
+        if (!slug) return;
+        const select = document.getElementById("sandboxProblemSelect");
+        if (select) {
+          const matchingOpt = Array.from(select.options).find(o => o.value === slug);
+          if (matchingOpt) select.value = slug;
+        }
+        onSandboxProblemChange(slug);
       }
 
       async function onSandboxProblemChange(slug) {
         try {
           document.getElementById("sbProblemDescription").textContent = "Loading problem statement...";
           const res = await fetch("/api/problems/" + encodeURIComponent(slug));
-          if (!res.ok) throw new Error("Could not fetch problem details.");
+          if (!res.ok) throw new Error("Could not fetch problem details (" + res.status + ")");
           const json = await res.json();
           sbCurrentProblem = json.data;
           renderSandboxProblem(sbCurrentProblem);
@@ -1640,7 +1722,7 @@
 
       function renderSandboxProblem(p) {
         if (!p) return;
-        document.getElementById("sbProblemTitle").textContent = "#" + p.problemNumber + " " + p.title;
+        document.getElementById("sbProblemTitle").textContent = "#" + (p.problemNumber || "") + " " + p.title;
         
         // Difficulty badge
         const diffBadge = document.getElementById("sbProblemDifficulty");
@@ -1682,6 +1764,7 @@
         applyTemplateForLanguage();
         // Hide previous results
         document.getElementById("sbResultsCard").style.display = "none";
+        updateRequestPreview();
       }
 
       function onSandboxLanguageChange(lang) {
@@ -1695,18 +1778,37 @@
         };
         document.getElementById("sbEditorFileName").textContent = fileNames[lang] || "solution.txt";
         applyTemplateForLanguage();
+        updateRequestPreview();
+      }
+
+      function onSandboxActionChange() {
+        updateRequestPreview();
       }
 
       function applyTemplateForLanguage() {
         if (!sbCurrentProblem) return;
         const templates = sbCurrentProblem.templates || {};
-        const code = templates[sbCurrentLanguage] || getDefaultTemplate(sbCurrentLanguage, sbCurrentProblem.slug);
+        let code = templates[sbCurrentLanguage] || "";
+        if (typeof code === "object" && code !== null) {
+          code = code.userTemplate || code.code || "";
+        }
+        if (!code) {
+          code = getDefaultTemplate(sbCurrentLanguage, sbCurrentProblem.slug);
+        }
         const editor = document.getElementById("sbCodeEditor");
         editor.value = code;
         updateEditorLineCount();
+        updateRequestPreview();
       }
 
       function getDefaultTemplate(lang, slug) {
+        if (slug.includes("add-two-numbers")) {
+          if (lang === "cpp") return "ListNode* addTwoNumbers(ListNode* l1, ListNode* l2) {\n    // Write your solution here\n    \n}\n";
+          if (lang === "c") return "struct ListNode* addTwoNumbers(struct ListNode* l1, struct ListNode* l2) {\n    // Write your solution here\n    \n}\n";
+          if (lang === "java") return "class Solution {\n    public ListNode addTwoNumbers(ListNode l1, ListNode l2) {\n        // Write your solution here\n        \n    }\n}\n";
+          if (lang === "python") return "class Solution:\n    def addTwoNumbers(self, l1: Optional[ListNode], l2: Optional[ListNode]) -> Optional[ListNode]:\n        # Write your solution here\n        pass\n";
+          if (lang === "javascript") return "class Solution {\n    addTwoNumbers(l1, l2) {\n        // Write your solution here\n        \n    }\n}\n";
+        }
         if (lang === "python") {
           return "class Solution:\n    def " + (slug.replace(/-\d+$/, "").replace(/-/g, "_") || "solve") + "(self, *args):\n        # Write your code here\n        pass\n";
         }
@@ -1723,55 +1825,110 @@
         applyTemplateForLanguage();
       }
 
+      function toggleRequestPreview() {
+        const box = document.getElementById("sbRequestPreviewContainer");
+        if (box) {
+          box.style.display = box.style.display === "none" ? "block" : "none";
+        }
+      }
+
+      function updateRequestPreview() {
+        const actionSelect = document.getElementById("sandboxActionSelect");
+        const action = actionSelect ? actionSelect.value : "run";
+        const isRun = action === "run";
+        const endpoint = isRun ? "/api/execution/runs" : "/api/execution/submissions?wait=true";
+        const code = (document.getElementById("sbCodeEditor") || {}).value || "";
+        const slug = sbCurrentProblem ? sbCurrentProblem.slug : "two-sum-001";
+
+        const previewEndpoint = document.getElementById("sbPreviewEndpoint");
+        if (previewEndpoint) previewEndpoint.textContent = endpoint;
+
+        const payload = isRun
+          ? { slug, language: sbCurrentLanguage, code }
+          : { slug, language: sbCurrentLanguage, code, wait: true };
+
+        const previewJson = document.getElementById("sbRequestPreviewJson");
+        if (previewJson) {
+          previewJson.textContent = JSON.stringify(payload, null, 2);
+        }
+      }
+
       function loadDemoSolution(type) {
         if (!sbCurrentProblem) return;
         const slug = sbCurrentProblem.slug.toLowerCase();
         const editor = document.getElementById("sbCodeEditor");
+        const lang = sbCurrentLanguage;
 
-        if (type === "wrong") {
-          if (sbCurrentLanguage === "python") {
-            editor.value = "class Solution:\n    def twoSum(self, nums, target):\n        # Deliberate wrong answer for testing\n        print('Debugging student output: nums =', nums)\n        return [-1, -1]\n";
-          } else if (sbCurrentLanguage === "javascript") {
-            editor.value = "class Solution {\n    twoSum(nums, target) {\n        console.log('Debugging student print:', target);\n        return [-1, -1];\n    }\n}\n";
+        // Compile Error Preset
+        if (type === "compile_error") {
+          if (lang === "cpp") {
+            editor.value = "ListNode* addTwoNumbers(ListNode* l1, ListNode* l2) {\n    // Deliberate syntax & type error to test compiler diagnostics\n    undeclared_variable = 42\n    return non_existent_function(l1);\n}\n";
+          } else if (lang === "c") {
+            editor.value = "struct ListNode* addTwoNumbers(struct ListNode* l1, struct ListNode* l2) {\n    syntax_error_here !!!\n    return NULL;\n}\n";
+          } else if (lang === "java") {
+            editor.value = "class Solution {\n    public ListNode addTwoNumbers(ListNode l1, ListNode l2) {\n        // Syntax error for compiler test\n        int x = \"wrong_type\";\n        return null\n    }\n}\n";
+          } else if (lang === "python") {
+            editor.value = "class Solution:\n    def addTwoNumbers(self, l1, l2):\n        # Syntax error for Python diagnostics\n        if True\n            return None\n";
           } else {
-            editor.value = "// Deliberate wrong answer\nreturn {};";
+            editor.value = "class Solution {\n    addTwoNumbers(l1, l2) {\n        // Syntax error\n        const x = ;\n        return null;\n    }\n}\n";
           }
           updateEditorLineCount();
+          updateRequestPreview();
           return;
         }
 
-        // Correct solutions
-        if (slug.includes("two-sum")) {
-          if (sbCurrentLanguage === "python") {
-            editor.value = "class Solution:\n    def twoSum(self, nums, target):\n        lookup = {}\n        for i, n in enumerate(nums):\n            diff = target - n\n            if diff in lookup:\n                return [lookup[diff], i]\n            lookup[n] = i\n";
-          } else if (sbCurrentLanguage === "javascript") {
-            editor.value = "class Solution {\n    twoSum(nums, target) {\n        const map = new Map();\n        for (let i = 0; i < nums.length; i++) {\n            const diff = target - nums[i];\n            if (map.has(diff)) {\n                return [map.get(diff), i];\n            }\n            map.set(nums[i], i);\n        }\n    }\n}\n";
-          } else if (sbCurrentLanguage === "cpp") {
+        // Buggy / Wrong Answer Preset
+        if (type === "wrong") {
+          if (lang === "python") {
+            editor.value = "class Solution:\n    def " + (slug.includes("add-two") ? "addTwoNumbers" : "twoSum") + "(self, *args):\n        # Deliberate wrong answer for testing\n        print('Debugging student output: args =', args)\n        return None\n";
+          } else if (lang === "javascript") {
+            editor.value = "class Solution {\n    " + (slug.includes("add-two") ? "addTwoNumbers" : "twoSum") + "(...args) {\n        console.log('Debugging student print:', args);\n        return null;\n    }\n}\n";
+          } else if (lang === "cpp") {
+            editor.value = slug.includes("add-two")
+              ? "ListNode* addTwoNumbers(ListNode* l1, ListNode* l2) {\n    // Deliberate wrong output\n    std::cout << \"Debug print from C++\" << std::endl;\n    return nullptr;\n}\n"
+              : "class Solution {\npublic:\n    vector<int> twoSum(vector<int>& nums, int target) {\n        return {-1, -1};\n    }\n};\n";
+          } else if (lang === "c") {
+            editor.value = "struct ListNode* addTwoNumbers(struct ListNode* l1, struct ListNode* l2) {\n    printf(\"Debug print from C\\n\");\n    return NULL;\n}\n";
+          } else {
+            editor.value = "class Solution {\n    public ListNode addTwoNumbers(ListNode l1, ListNode l2) {\n        System.out.println(\"Debug print from Java\");\n        return null;\n    }\n}\n";
+          }
+          updateEditorLineCount();
+          updateRequestPreview();
+          return;
+        }
+
+        // Correct Solutions for Add Two Numbers
+        if (slug.includes("add-two-numbers")) {
+          if (lang === "cpp") {
+            editor.value = "ListNode* addTwoNumbers(ListNode* l1, ListNode* l2) {\n    ListNode dummy(0);\n    ListNode* tail = &dummy;\n    int carry = 0;\n    while (l1 || l2 || carry) {\n        int sum = carry;\n        if (l1) { sum += l1->val; l1 = l1->next; }\n        if (l2) { sum += l2->val; l2 = l2->next; }\n        carry = sum / 10;\n        tail->next = new ListNode(sum % 10);\n        tail = tail->next;\n    }\n    return dummy.next;\n}\n";
+          } else if (lang === "c") {
+            editor.value = "struct ListNode* addTwoNumbers(struct ListNode* l1, struct ListNode* l2) {\n    struct ListNode* head = NULL;\n    struct ListNode* tail = NULL;\n    int carry = 0;\n    while (l1 || l2 || carry) {\n        int sum = carry;\n        if (l1) { sum += l1->val; l1 = l1->next; }\n        if (l2) { sum += l2->val; l2 = l2->next; }\n        carry = sum / 10;\n        struct ListNode* node = (struct ListNode*)malloc(sizeof(struct ListNode));\n        node->val = sum % 10;\n        node->next = NULL;\n        if (!head) head = node;\n        else tail->next = node;\n        tail = node;\n    }\n    return head;\n}\n";
+          } else if (lang === "java") {
+            editor.value = "class Solution {\n    public ListNode addTwoNumbers(ListNode l1, ListNode l2) {\n        ListNode dummy = new ListNode(0);\n        ListNode curr = dummy;\n        int carry = 0;\n        while (l1 != null || l2 != null || carry != 0) {\n            int sum = carry;\n            if (l1 != null) { sum += l1.val; l1 = l1.next; }\n            if (l2 != null) { sum += l2.val; l2 = l2.next; }\n            carry = sum / 10;\n            curr.next = new ListNode(sum % 10);\n            curr = curr.next;\n        }\n        return dummy.next;\n    }\n}\n";
+          } else if (lang === "python") {
+            editor.value = "class Solution:\n    def addTwoNumbers(self, l1: Optional[ListNode], l2: Optional[ListNode]) -> Optional[ListNode]:\n        dummy = ListNode(0)\n        curr = dummy\n        carry = 0\n        while l1 or l2 or carry:\n            val1 = l1.val if l1 else 0\n            val2 = l2.val if l2 else 0\n            total = val1 + val2 + carry\n            carry = total // 10\n            curr.next = ListNode(total % 10)\n            curr = curr.next\n            l1 = l1.next if l1 else None\n            l2 = l2.next if l2 else None\n        return dummy.next\n";
+          } else {
+            editor.value = "class Solution {\n    addTwoNumbers(l1, l2) {\n        let dummy = new ListNode(0);\n        let curr = dummy;\n        let carry = 0;\n        while (l1 || l2 || carry) {\n            let sum = carry;\n            if (l1) { sum += l1.val; l1 = l1.next; }\n            if (l2) { sum += l2.val; l2 = l2.next; }\n            carry = Math.floor(sum / 10);\n            curr.next = new ListNode(sum % 10);\n            curr = curr.next;\n        }\n        return dummy.next;\n    }\n}\n";
+          }
+        } else if (slug.includes("two-sum")) {
+          if (lang === "cpp") {
             editor.value = "class Solution {\npublic:\n    vector<int> twoSum(vector<int>& nums, int target) {\n        unordered_map<int, int> m;\n        for (int i = 0; i < nums.size(); i++) {\n            if (m.count(target - nums[i])) return {m[target - nums[i]], i};\n            m[nums[i]] = i;\n        }\n        return {};\n    }\n};\n";
+          } else if (lang === "python") {
+            editor.value = "class Solution:\n    def twoSum(self, nums, target):\n        lookup = {}\n        for i, n in enumerate(nums):\n            diff = target - n\n            if diff in lookup:\n                return [lookup[diff], i]\n            lookup[n] = i\n";
+          } else if (lang === "javascript") {
+            editor.value = "class Solution {\n    twoSum(nums, target) {\n        const map = new Map();\n        for (let i = 0; i < nums.length; i++) {\n            const diff = target - nums[i];\n            if (map.has(diff)) {\n                return [map.get(diff), i];\n            }\n            map.set(nums[i], i);\n        }\n    }\n}\n";
           } else {
             editor.value = "class Solution {\n    public int[] twoSum(int[] nums, int target) {\n        Map<Integer, Integer> map = new HashMap<>();\n        for (int i = 0; i < nums.length; i++) {\n            if (map.containsKey(target - nums[i])) return new int[]{map.get(target - nums[i]), i};\n            map.put(nums[i], i);\n        }\n        return new int[]{};\n    }\n}\n";
           }
-        } else if (slug.includes("contains-duplicate")) {
-          if (sbCurrentLanguage === "python") {
-            editor.value = "class Solution:\n    def containsDuplicate(self, nums):\n        return len(nums) != len(set(nums))\n";
-          } else {
-            editor.value = "class Solution {\n    containsDuplicate(nums) {\n        return new Set(nums).size !== nums.length;\n    }\n}\n";
-          }
-        } else if (slug.includes("palindrome")) {
-          if (sbCurrentLanguage === "python") {
-            editor.value = "class Solution:\n    def isPalindrome(self, s):\n        cleaned = [c.lower() for c in str(s) if c.isalnum()]\n        return cleaned == cleaned[::-1]\n";
-          } else {
-            editor.value = "class Solution {\n    isPalindrome(s) {\n        const clean = String(s).toLowerCase().replace(/[^a-z0-9]/g, '');\n        return clean === clean.split('').reverse().join('');\n    }\n}\n";
-          }
         } else {
-          // Generic fallback for any other problem
-          if (sbCurrentLanguage === "python") {
-            editor.value = "class Solution:\n    def solve(self, *args):\n        # Working solution demo\n        return True\n";
+          if (lang === "python") {
+            editor.value = "class Solution:\n    def solve(self, *args):\n        return True\n";
           } else {
             editor.value = "class Solution {\n    solve(...args) {\n        return true;\n    }\n}\n";
           }
         }
         updateEditorLineCount();
+        updateRequestPreview();
       }
 
       function toggleCustomInputBox() {
@@ -1779,14 +1936,45 @@
         box.style.display = box.style.display === "none" ? "block" : "none";
       }
 
+      function setExecutingState(isExecuting) {
+        const unifiedBtn = document.getElementById("btnExecuteUnified");
+        const runBtn = document.getElementById("btnRunVisible");
+        const submitBtn = document.getElementById("btnSubmitAll");
+        const editor = document.getElementById("sbCodeEditor");
+
+        if (unifiedBtn) {
+          unifiedBtn.disabled = isExecuting;
+          unifiedBtn.innerHTML = isExecuting ? '⏳ Executing...' : '⚡ Execute';
+        }
+        if (runBtn) {
+          runBtn.disabled = isExecuting;
+          runBtn.innerHTML = isExecuting ? '⏳ Running...' : '▶ Run (Visible)';
+        }
+        if (submitBtn) {
+          submitBtn.disabled = isExecuting;
+          submitBtn.innerHTML = isExecuting ? '⏳ Submitting...' : '🚀 Submit (All Tests)';
+        }
+        if (editor) {
+          editor.readOnly = isExecuting;
+        }
+      }
+
+      async function handleExecuteUnified() {
+        const actionSelect = document.getElementById("sandboxActionSelect");
+        const action = actionSelect ? actionSelect.value : "run";
+        if (action === "submit") {
+          await handleSubmitAllCases();
+        } else {
+          await handleRunVisibleCases();
+        }
+      }
+
       // --- RUN VISIBLE TESTCASES ---
       async function handleRunVisibleCases() {
         const code = document.getElementById("sbCodeEditor").value;
         const slug = sbCurrentProblem ? sbCurrentProblem.slug : "two-sum-001";
-        const runBtn = document.getElementById("btnRunVisible");
         
-        runBtn.disabled = true;
-        runBtn.innerHTML = '⏳ Running...';
+        setExecutingState(true);
 
         const resultsCard = document.getElementById("sbResultsCard");
         resultsCard.style.display = "block";
@@ -1795,7 +1983,10 @@
         banner.style.background = "#1e293b";
         banner.style.color = "#94a3b8";
         document.getElementById("sbVerdictText").textContent = "Executing sample testcases...";
-        document.getElementById("sbVerdictMeta").textContent = "Communicating with execution engine...";
+        document.getElementById("sbVerdictMeta").textContent = "Compiling and running against visible tests...";
+        document.getElementById("sbCompilationErrorBox").style.display = "none";
+
+        const startTime = Date.now();
 
         try {
           const res = await fetch("/api/execution/runs", {
@@ -1811,14 +2002,26 @@
             })
           });
 
-          const data = await res.json();
-          logConsole("POST /api/execution/runs", data);
+          const latency = Date.now() - startTime;
+          const data = await res.json().catch(() => ({}));
+          logConsole("POST /api/execution/runs (" + res.status + ")", data);
+
+          // Update HTTP Status and Latency badges
+          document.getElementById("sbHttpStatusBadge").textContent = "HTTP " + res.status + " " + res.statusText;
+          document.getElementById("sbHttpStatusBadge").style.color = res.ok ? "#34d399" : "#f87171";
+          document.getElementById("sbLatencyBadge").textContent = "Latency: " + latency + "ms";
 
           if (!res.ok) {
             banner.className = "verdict-banner failed";
             document.getElementById("sbVerdictText").textContent = data.code || "Execution Error";
             document.getElementById("sbVerdictMeta").textContent = data.message || "Failed to execute code";
             document.getElementById("sbCaseTabsBar").innerHTML = "";
+
+            if (data.details || data.message) {
+              const compBox = document.getElementById("sbCompilationErrorBox");
+              compBox.style.display = "block";
+              document.getElementById("sbCompilationErrorText").textContent = data.details || data.message;
+            }
             document.getElementById("sbActiveCaseDetail").innerHTML = '<div style="color:#ef4444;">' + escapeHtml(data.message || "Execution failed") + '</div>';
             return;
           }
@@ -1826,13 +2029,24 @@
           sbRunCases = data.cases || [];
           const allPassed = data.status === "Accepted" && data.passedCount === data.totalCount;
 
-          banner.className = "verdict-banner " + (allPassed ? "accepted" : "failed");
-          document.getElementById("sbVerdictText").textContent = allPassed
-            ? "Accepted — All " + data.totalCount + " Sample Testcases Passed!"
-            : (data.status || "Wrong Answer") + " (" + data.passedCount + "/" + data.totalCount + " Passed)";
+          // Check if any case had a compilation error or runtime error
+          const compErrCase = sbRunCases.find(c => c.status === "Compilation Error" || (c.errorText && c.errorText.includes("error:")));
+          if (compErrCase) {
+            banner.className = "verdict-banner failed";
+            document.getElementById("sbVerdictText").textContent = "⚠️ Compilation Error";
+            document.getElementById("sbVerdictMeta").textContent = "Compiler diagnostics generated";
+            const compBox = document.getElementById("sbCompilationErrorBox");
+            compBox.style.display = "block";
+            document.getElementById("sbCompilationErrorText").textContent = compErrCase.errorText || compErrCase.message || "Compilation failed";
+          } else {
+            banner.className = "verdict-banner " + (allPassed ? "accepted" : "failed");
+            document.getElementById("sbVerdictText").textContent = allPassed
+              ? "Accepted — All " + data.totalCount + " Sample Testcases Passed!"
+              : (data.status || "Wrong Answer") + " (" + data.passedCount + "/" + data.totalCount + " Passed)";
 
-          const totalTime = sbRunCases.reduce((acc, c) => acc + (c.timeMs || 0), 0);
-          document.getElementById("sbVerdictMeta").textContent = "Passed: " + data.passedCount + "/" + data.totalCount + " • Time: " + totalTime + "ms";
+            const totalTime = sbRunCases.reduce((acc, c) => acc + (c.timeMs || 0), 0);
+            document.getElementById("sbVerdictMeta").textContent = "Passed: " + data.passedCount + "/" + data.totalCount + " • Time: " + totalTime + "ms";
+          }
 
           renderCaseTabs();
         } catch (e) {
@@ -1840,8 +2054,7 @@
           document.getElementById("sbVerdictText").textContent = "Client Request Failed";
           document.getElementById("sbVerdictMeta").textContent = e.message;
         } finally {
-          runBtn.disabled = false;
-          runBtn.innerHTML = '▶ Run (Visible Tests)';
+          setExecutingState(false);
         }
       }
 
@@ -1895,10 +2108,8 @@
       async function handleSubmitAllCases() {
         const code = document.getElementById("sbCodeEditor").value;
         const slug = sbCurrentProblem ? sbCurrentProblem.slug : "two-sum-001";
-        const submitBtn = document.getElementById("btnSubmitAll");
 
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '⏳ Submitting...';
+        setExecutingState(true);
 
         const resultsCard = document.getElementById("sbResultsCard");
         resultsCard.style.display = "block";
@@ -1909,6 +2120,9 @@
         document.getElementById("sbVerdictText").textContent = "Evaluating all test cases across tiers...";
         document.getElementById("sbVerdictMeta").textContent = "Running complete multi-tier test suite...";
         document.getElementById("sbCaseTabsBar").innerHTML = "";
+        document.getElementById("sbCompilationErrorBox").style.display = "none";
+
+        const startTime = Date.now();
 
         try {
           const res = await fetch("/api/execution/submissions?wait=true", {
@@ -1925,13 +2139,24 @@
             })
           });
 
-          const data = await res.json();
-          logConsole("POST /api/execution/submissions", data);
+          const latency = Date.now() - startTime;
+          const data = await res.json().catch(() => ({}));
+          logConsole("POST /api/execution/submissions (" + res.status + ")", data);
+
+          document.getElementById("sbHttpStatusBadge").textContent = "HTTP " + res.status + " " + res.statusText;
+          document.getElementById("sbHttpStatusBadge").style.color = res.ok ? "#34d399" : "#f87171";
+          document.getElementById("sbLatencyBadge").textContent = "Latency: " + latency + "ms";
 
           if (!res.ok) {
             banner.className = "verdict-banner failed";
             document.getElementById("sbVerdictText").textContent = data.code || "Submission Error";
             document.getElementById("sbVerdictMeta").textContent = data.message || "Failed to evaluate submission";
+
+            if (data.details || data.message) {
+              const compBox = document.getElementById("sbCompilationErrorBox");
+              compBox.style.display = "block";
+              document.getElementById("sbCompilationErrorText").textContent = data.details || data.message;
+            }
             return;
           }
 
@@ -1956,6 +2181,12 @@
               '</div>';
           } else {
             const fail = data.firstFailure || {};
+            if (fail.errorText && (fail.errorText.includes("error:") || data.verdict === "COMPILATION ERROR")) {
+              const compBox = document.getElementById("sbCompilationErrorBox");
+              compBox.style.display = "block";
+              document.getElementById("sbCompilationErrorText").textContent = fail.errorText;
+            }
+
             detail.innerHTML =
               '<div style="color:#f87171; font-weight:700; font-size:0.95rem; margin-bottom:0.5rem;">' + (fail.message || "Failed during verification tests.") + '</div>' +
               '<div style="color:#cbd5e1; font-size:0.85rem; line-height:1.6;">' +
@@ -1972,8 +2203,7 @@
           document.getElementById("sbVerdictText").textContent = "Submission Request Failed";
           document.getElementById("sbVerdictMeta").textContent = e.message;
         } finally {
-          submitBtn.disabled = false;
-          submitBtn.innerHTML = '🚀 Submit (All Tests)';
+          setExecutingState(false);
         }
       }
 
@@ -1988,6 +2218,9 @@
         banner.style.color = "#94a3b8";
         document.getElementById("sbVerdictText").textContent = "Executing custom stdin...";
         document.getElementById("sbVerdictMeta").textContent = "Running single case...";
+        document.getElementById("sbCompilationErrorBox").style.display = "none";
+
+        const startTime = Date.now();
 
         try {
           const res = await fetch("/api/execution/runs", {
@@ -2002,13 +2235,22 @@
               stdin
             })
           });
-          const data = await res.json();
+          const latency = Date.now() - startTime;
+          const data = await res.json().catch(() => ({}));
           logConsole("POST /api/execution/runs (Custom Input)", data);
+
+          document.getElementById("sbHttpStatusBadge").textContent = "HTTP " + res.status + " " + res.statusText;
+          document.getElementById("sbLatencyBadge").textContent = "Latency: " + latency + "ms";
 
           if (!res.ok) {
             banner.className = "verdict-banner failed";
             document.getElementById("sbVerdictText").textContent = data.code || "Error";
             document.getElementById("sbVerdictMeta").textContent = data.message || "Custom execution failed";
+            if (data.details || data.message) {
+              const compBox = document.getElementById("sbCompilationErrorBox");
+              compBox.style.display = "block";
+              document.getElementById("sbCompilationErrorText").textContent = data.details || data.message;
+            }
             return;
           }
 

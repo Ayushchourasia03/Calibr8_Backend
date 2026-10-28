@@ -5,7 +5,7 @@ import path from 'path';
 import os from 'os';
 
 /**
- * Normalizes values for comparison (handles JSON numbers, arrays, objects, booleans, strings).
+ * Normalizes values for comparison (handles space-separated numbers, JSON arrays/objects, booleans, strings).
  */
 export function normalizeOutput(val) {
   if (val === null || val === undefined) return '';
@@ -33,13 +33,13 @@ export function normalizeOutput(val) {
   if (clean.toLowerCase() === 'true' || clean.toLowerCase() === 'yes') return 'true';
   if (clean.toLowerCase() === 'false' || clean.toLowerCase() === 'no') return 'false';
 
-  // Handle space-separated numbers (e.g. "0 1" or "[0, 1]")
+  // Handle space-separated numbers (e.g. "7 0 8" or "0 1")
   const spaceParts = clean.split(/\s+/).filter(Boolean);
   if (spaceParts.length > 1 && spaceParts.every(p => !isNaN(Number(p)))) {
     return JSON.stringify(spaceParts.map(Number));
   }
 
-  // Handle comma-separated numbers without brackets (e.g. "0, 1")
+  // Handle comma-separated numbers without brackets (e.g. "7, 0, 8")
   const commaParts = clean.split(',').map(s => s.trim()).filter(Boolean);
   if (commaParts.length > 1 && commaParts.every(p => !isNaN(Number(p)))) {
     return JSON.stringify(commaParts.map(Number));
@@ -48,11 +48,19 @@ export function normalizeOutput(val) {
   return clean;
 }
 
+/**
+ * Robust comparison between actual output and expected output
+ */
 export function areOutputsEqual(actualRaw, expectedRaw) {
   const normActual = normalizeOutput(actualRaw);
   const normExpected = normalizeOutput(expectedRaw);
 
   if (normActual === normExpected) return true;
+
+  // Space-normalized match (e.g. "7 0 8\n" vs "7 0 8")
+  const flatActual = String(actualRaw || '').trim().replace(/\s+/g, ' ');
+  const flatExpected = String(expectedRaw || '').trim().replace(/\s+/g, ' ');
+  if (flatActual === flatExpected) return true;
 
   // Additional check: array contents regardless of string representation
   try {
@@ -68,8 +76,8 @@ export function areOutputsEqual(actualRaw, expectedRaw) {
 }
 
 /**
- * Builds the source code with random result marker and hidden driver.
- * Student code is placed FIRST so error line numbers match the student's editor.
+ * Builds the source code with random result marker and hidden driver
+ * when no problem template is provided.
  */
 export function buildSource(language, studentCode, marker) {
   const lang = String(language).toLowerCase();
@@ -117,7 +125,6 @@ try:
 
     _final_args = _parsed_lines
 
-    # Adaptive argument resolution for competitive programming inputs
     if len(_parsed_lines) > _expected_count and _expected_count > 0:
         if len(_parsed_lines) == _expected_count + 1 and isinstance(_parsed_lines[0], int):
             if _expected_count == 1 and not isinstance(_parsed_lines[1], list):
@@ -127,7 +134,6 @@ try:
         elif len(_parsed_lines) == _expected_count + 1 and isinstance(_parsed_lines[1], list):
             _final_args = _parsed_lines[1:]
 
-    # If function expects 1 argument and multiple parsed items exist
     if _expected_count == 1 and len(_final_args) > 1:
         if isinstance(_final_args[0], int) and isinstance(_final_args[1], list):
             _final_args = [_final_args[1]]
@@ -224,7 +230,15 @@ try {
   if (lang === 'cpp') {
     let prefix = '';
     if (!studentCode.includes('#include')) {
-      prefix = `#include <iostream>\n#include <vector>\n#include <string>\n#include <sstream>\n#include <unordered_map>\n#include <map>\n#include <set>\n#include <unordered_set>\n#include <algorithm>\n#include <cmath>\nusing namespace std;\n\n`;
+      prefix = `#include <bits/stdc++.h>\n#include <iostream>\n#include <vector>\n#include <string>\n#include <sstream>\n#include <unordered_map>\n#include <algorithm>\nusing namespace std;\n\nstruct ListNode { int val; ListNode* next; ListNode() : val(0), next(nullptr) {} ListNode(int x) : val(x), next(nullptr) {} ListNode(int x, ListNode *next) : val(x), next(next) {} };\n\n`;
+    }
+    return prefix + studentCode;
+  }
+
+  if (lang === 'c') {
+    let prefix = '';
+    if (!studentCode.includes('#include')) {
+      prefix = `#include <stdio.h>\n#include <stdlib.h>\n#include <stdbool.h>\n#include <string.h>\n\nstruct ListNode { int val; struct ListNode* next; };\n\n`;
     }
     return prefix + studentCode;
   }
@@ -232,68 +246,34 @@ try {
   if (lang === 'java') {
     let prefix = '';
     if (!studentCode.includes('import java.')) {
-      prefix = `import java.util.*;\nimport java.io.*;\n\n`;
+      prefix = `import java.util.*;\nimport java.io.*;\n\nclass ListNode { int val; ListNode next; ListNode(int x) { val = x; } }\n\n`;
     }
     return prefix + studentCode;
   }
 
-  // Fallback
   return studentCode;
 }
 
 /**
- * Executes a single test case in a sandboxed process.
- * Returns stdout, stderr, real studentStdout, actual output, status, timeMs, memoryKb.
+ * Helper to run an executable binary or command in a sandboxed directory
  */
-export async function executeCase({
-  language,
-  code,
-  fullCode: providedFullCode,
-  stdin = '',
-  timeLimitMs = 3000,
-  memoryLimitKb = 64000,
-  expectedOutput = ''
-}) {
-  const lang = String(language).toLowerCase();
-
-  // If language is not Python or JavaScript (e.g. C++, C, Java without local compiler)
-  if (lang !== 'python' && lang !== 'javascript' && lang !== 'js') {
-    return {
-      status: 'OK',
-      studentStdout: `[Note: Execution engine simulated for ${language}]`,
-      actual: expectedOutput || '0 1',
-      errorText: null,
-      timeMs: 24,
-      memoryKb: 12400,
-    };
-  }
-
-  const marker = `__CALIBR8_MARK_${crypto.randomBytes(6).toString('hex')}__`;
-  const codeToRun = providedFullCode || buildSource(lang, code, marker);
-
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'calibr8-exec-'));
-  const filename = (lang === 'python') ? 'solution.py' : 'solution.js';
-  const filePath = path.join(tmpDir, filename);
-
-  await fs.writeFile(filePath, codeToRun, 'utf-8');
-
+function runProcess({ cmd, args, cwd, stdin, timeLimitMs, marker }) {
   return new Promise((resolve) => {
     const startTime = Date.now();
     let stdoutBuffer = '';
     let stderrBuffer = '';
     let isKilled = false;
 
-    const cmd = (lang === 'python') ? 'python3' : 'node';
-    const args = [filePath];
-
     const child = spawn(cmd, args, {
-      cwd: tmpDir,
+      cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
     const timer = setTimeout(() => {
       isKilled = true;
-      child.kill('SIGKILL');
+      try {
+        child.kill('SIGKILL');
+      } catch {}
     }, timeLimitMs);
 
     child.stdout.on('data', (data) => {
@@ -306,7 +286,6 @@ export async function executeCase({
 
     child.on('error', (err) => {
       clearTimeout(timer);
-      fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
       resolve({
         status: 'Runtime Error',
         studentStdout: '',
@@ -317,10 +296,9 @@ export async function executeCase({
       });
     });
 
-    child.on('close', async (exitCode) => {
+    child.on('close', (exitCode) => {
       clearTimeout(timer);
       const timeMs = Date.now() - startTime;
-      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
 
       if (isKilled) {
         return resolve({
@@ -333,49 +311,39 @@ export async function executeCase({
         });
       }
 
-      const lines = stdoutBuffer.split('\n');
-      let markerLineIdx = -1;
+      // Check for result marker (used in Python/JS reflection drivers)
       let actual = '';
-
-      for (let i = lines.length - 1; i >= 0; i--) {
-        const line = lines[i];
-        if (line.includes(marker)) {
-          markerLineIdx = i;
-          actual = line.slice(line.indexOf(marker) + marker.length).trim();
-          break;
-        }
-      }
-
       let studentStdout = '';
-      if (markerLineIdx !== -1) {
-        const studentLines = lines.filter((_, idx) => idx !== markerLineIdx);
-        studentStdout = studentLines.join('\n').trim();
+
+      if (marker && stdoutBuffer.includes(marker)) {
+        const lines = stdoutBuffer.split('\n');
+        let markerLineIdx = -1;
+        for (let i = lines.length - 1; i >= 0; i--) {
+          if (lines[i].includes(marker)) {
+            markerLineIdx = i;
+            actual = lines[i].slice(lines[i].indexOf(marker) + marker.length).trim();
+            break;
+          }
+        }
+        if (markerLineIdx !== -1) {
+          studentStdout = lines.filter((_, idx) => idx !== markerLineIdx).join('\n').trim();
+        }
       } else {
         actual = stdoutBuffer.trim();
         studentStdout = '';
       }
 
       if (exitCode !== 0) {
-        const cleanedStderr = stderrBuffer
-          .split('\n')
-          .filter(
-            (l) =>
-              !l.includes('CALIBR8 DRIVER') &&
-              !l.includes('_sol') &&
-              !l.includes('_args') &&
-              !l.includes('_final_args') &&
-              !l.includes('_parsed')
-          )
-          .join('\n')
-          .trim();
-
         const isCompile =
-          cleanedStderr.includes('SyntaxError') || cleanedStderr.includes('IndentationError');
+          stderrBuffer.includes('SyntaxError') ||
+          stderrBuffer.includes('IndentationError') ||
+          stderrBuffer.includes('ReferenceError: Solution is not defined');
+
         return resolve({
           status: isCompile ? 'Compilation Error' : 'Runtime Error',
           studentStdout,
           actual: '',
-          errorText: cleanedStderr || stderrBuffer.trim() || 'Process exited with non-zero code.',
+          errorText: stderrBuffer.trim() || `Process exited with code ${exitCode}.`,
           timeMs,
           memoryKb: 14000,
         });
@@ -392,10 +360,240 @@ export async function executeCase({
     });
 
     try {
-      child.stdin.write(stdin || '');
+      if (stdin !== undefined && stdin !== null) {
+        child.stdin.write(stdin);
+      }
       child.stdin.end();
     } catch {
-      // Child might have exited quickly
+      // Process might have terminated immediately
     }
   });
+}
+
+/**
+ * Executes a single test case in a sandboxed process.
+ * Supports C++ (g++), C (gcc), Java (javac+java), Python 3 (python3), and JavaScript (node).
+ * Correctly distinguishes Compilation Error, Runtime Error, Time Limit Exceeded, and OK.
+ *
+ * @param {object} params
+ * @returns {Promise<object>} Execution result
+ */
+export async function executeCase({
+  language,
+  code,
+  fullCode: providedFullCode,
+  stdin = '',
+  timeLimitMs = 3000,
+  memoryLimitKb = 64000,
+  expectedOutput = '',
+}) {
+  const lang = String(language || 'python').toLowerCase();
+  const marker = `__CALIBR8_MARK_${crypto.randomBytes(6).toString('hex')}__`;
+  const codeToRun = providedFullCode || buildSource(lang, code, marker);
+
+  // 1. C++ Execution (g++ 12+)
+  if (lang === 'cpp') {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'calibr8-cpp-'));
+    const srcPath = path.join(tmpDir, 'solution.cpp');
+    const binPath = path.join(tmpDir, 'solution');
+
+    try {
+      await fs.writeFile(srcPath, codeToRun, 'utf-8');
+
+      // Compile
+      const compileStart = Date.now();
+      const compileRes = await new Promise((resolve) => {
+        const gpp = spawn('g++', ['-O2', '-std=c++20', srcPath, '-o', binPath], {
+          cwd: tmpDir,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let stderr = '';
+        gpp.stderr.on('data', (d) => { stderr += d.toString(); });
+        gpp.on('close', (exitCode) => {
+          resolve({ exitCode, stderr, duration: Date.now() - compileStart });
+        });
+        gpp.on('error', (err) => {
+          resolve({ exitCode: 1, stderr: err.message, duration: Date.now() - compileStart });
+        });
+      });
+
+      if (compileRes.exitCode !== 0) {
+        return {
+          status: 'Compilation Error',
+          studentStdout: '',
+          actual: '',
+          errorText: compileRes.stderr.trim() || 'C++ compilation failed.',
+          timeMs: compileRes.duration,
+          memoryKb: 0,
+        };
+      }
+
+      // Execute binary
+      return await runProcess({
+        cmd: binPath,
+        args: [],
+        cwd: tmpDir,
+        stdin,
+        timeLimitMs,
+        marker: null,
+      });
+    } finally {
+      fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  // 2. C Execution (gcc 12+)
+  if (lang === 'c') {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'calibr8-c-'));
+    const srcPath = path.join(tmpDir, 'solution.c');
+    const binPath = path.join(tmpDir, 'solution');
+
+    try {
+      await fs.writeFile(srcPath, codeToRun, 'utf-8');
+
+      // Compile
+      const compileStart = Date.now();
+      const compileRes = await new Promise((resolve) => {
+        const gcc = spawn('gcc', ['-O2', srcPath, '-o', binPath], {
+          cwd: tmpDir,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let stderr = '';
+        gcc.stderr.on('data', (d) => { stderr += d.toString(); });
+        gcc.on('close', (exitCode) => {
+          resolve({ exitCode, stderr, duration: Date.now() - compileStart });
+        });
+        gcc.on('error', (err) => {
+          resolve({ exitCode: 1, stderr: err.message, duration: Date.now() - compileStart });
+        });
+      });
+
+      if (compileRes.exitCode !== 0) {
+        return {
+          status: 'Compilation Error',
+          studentStdout: '',
+          actual: '',
+          errorText: compileRes.stderr.trim() || 'C compilation failed.',
+          timeMs: compileRes.duration,
+          memoryKb: 0,
+        };
+      }
+
+      // Execute binary
+      return await runProcess({
+        cmd: binPath,
+        args: [],
+        cwd: tmpDir,
+        stdin,
+        timeLimitMs,
+        marker: null,
+      });
+    } finally {
+      fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  // 3. Java Execution (OpenJDK 17)
+  if (lang === 'java') {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'calibr8-java-'));
+    let className = 'Main';
+    const match = codeToRun.match(/public\s+class\s+([A-Za-z0-9_]+)/);
+    if (match) className = match[1];
+
+    const srcPath = path.join(tmpDir, `${className}.java`);
+
+    try {
+      await fs.writeFile(srcPath, codeToRun, 'utf-8');
+
+      // Compile
+      const compileStart = Date.now();
+      const compileRes = await new Promise((resolve) => {
+        const javac = spawn('javac', [srcPath], {
+          cwd: tmpDir,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let stderr = '';
+        javac.stderr.on('data', (d) => { stderr += d.toString(); });
+        javac.on('close', (exitCode) => {
+          resolve({ exitCode, stderr, duration: Date.now() - compileStart });
+        });
+        javac.on('error', (err) => {
+          resolve({ exitCode: 1, stderr: err.message, duration: Date.now() - compileStart });
+        });
+      });
+
+      if (compileRes.exitCode !== 0) {
+        return {
+          status: 'Compilation Error',
+          studentStdout: '',
+          actual: '',
+          errorText: compileRes.stderr.trim() || 'Java compilation failed.',
+          timeMs: compileRes.duration,
+          memoryKb: 0,
+        };
+      }
+
+      // Execute class
+      return await runProcess({
+        cmd: 'java',
+        args: ['-cp', tmpDir, className],
+        cwd: tmpDir,
+        stdin,
+        timeLimitMs,
+        marker: null,
+      });
+    } finally {
+      fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  // 4. Python 3 Execution
+  if (lang === 'python') {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'calibr8-py-'));
+    const filePath = path.join(tmpDir, 'solution.py');
+
+    try {
+      await fs.writeFile(filePath, codeToRun, 'utf-8');
+      return await runProcess({
+        cmd: 'python3',
+        args: [filePath],
+        cwd: tmpDir,
+        stdin,
+        timeLimitMs,
+        marker: codeToRun.includes(marker) ? marker : null,
+      });
+    } finally {
+      fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  // 5. JavaScript (Node.js 22) Execution
+  if (lang === 'javascript' || lang === 'js') {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'calibr8-js-'));
+    const filePath = path.join(tmpDir, 'solution.js');
+
+    try {
+      await fs.writeFile(filePath, codeToRun, 'utf-8');
+      return await runProcess({
+        cmd: 'node',
+        args: [filePath],
+        cwd: tmpDir,
+        stdin,
+        timeLimitMs,
+        marker: codeToRun.includes(marker) ? marker : null,
+      });
+    } finally {
+      fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  // 6. Unsupported Language
+  return {
+    status: 'Unsupported Language',
+    studentStdout: '',
+    actual: '',
+    errorText: `Execution engine does not support language: '${language}'. Supported: cpp, c, java, python, javascript.`,
+    timeMs: 0,
+    memoryKb: 0,
+  };
 }

@@ -170,15 +170,47 @@ export async function resolveProblem(slugOrId) {
   }
 
   if (problem) {
-    // Populate templatesMap and userTemplates
-    if (!problem.templatesMap) {
+    // If problem came from DB or needs template enhancement, check local problem definitions
+    loadLocalProblems();
+    const localMatch =
+      problemIndexBySlug.get(problem.slug?.toLowerCase()) ||
+      problemIndexById.get(String(problem.id));
+
+    // Populate templatesMap preserving rich structured templates
+    if (!problem.templatesMap || Object.keys(problem.templatesMap).length === 0) {
       if (Array.isArray(problem.templates)) {
         problem.templatesMap = problem.templates.reduce((acc, t) => {
-          acc[t.language] = t.code;
+          let tmplObj = t.code;
+          if (t.header || t.footer) {
+            tmplObj = {
+              userTemplate: t.code,
+              header: t.header || "",
+              footer: t.footer || "",
+            };
+          } else if (typeof t.code === "string" && t.code.trim().startsWith("{")) {
+            try {
+              const parsed = JSON.parse(t.code.trim());
+              if (parsed.header !== undefined || parsed.footer !== undefined) {
+                tmplObj = parsed;
+              }
+            } catch {}
+          }
+          acc[t.language] = tmplObj;
           return acc;
         }, {});
       } else {
         problem.templatesMap = problem.templates || {};
+      }
+    }
+
+    // Merge with local rich templates (e.g. headers and drivers) if local problem has them
+    if (localMatch && localMatch.templatesMap) {
+      for (const [lang, val] of Object.entries(localMatch.templatesMap)) {
+        if (typeof val === "object" && (val.header || val.footer)) {
+          problem.templatesMap[lang] = val;
+        } else if (!problem.templatesMap[lang]) {
+          problem.templatesMap[lang] = val;
+        }
       }
     }
 
