@@ -1,0 +1,68 @@
+{
+  "slug": "two-sum",
+  "title": "Two Sum",
+  "difficulty": "Easy",
+  "topic": "Array",
+  "timeLimit": 1000,
+  "memoryLimit": 256,
+  "description": "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target. You may assume that each input would have exactly one solution, and you may not use the same element twice.\n\nInput Format:\nFirst line: n target\nSecond line: n space-separated integers\n\nOutput Format:\nSpace-separated indices",
+  "testcases": [
+    {
+      "testIndex": 0,
+      "isVisible": true,
+      "input": "4 9\n2 7 11 15",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 1,
+      "isVisible": true,
+      "input": "3 6\n3 2 4",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 2,
+      "isVisible": false,
+      "input": "2 6\n3 3",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 3,
+      "isVisible": false,
+      "input": "4 10\n1 4 6 8",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 4,
+      "isVisible": false,
+      "input": "5 13\n-1 2 5 11 15",
+      "output": "1 3"
+    }
+  ],
+  "templates": {
+    "cpp": {
+      "userTemplate": "class Solution {\npublic:\n    vector<int> twoSum(vector<int>& nums, int target) {\n        // write code here\n        \n    }\n};",
+      "header": "#include <bits/stdc++.h>\nusing namespace std;\n",
+      "footer": "\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    int n, target;\n    if (!(cin >> n >> target)) return 0;\n    vector<int> nums(n);\n    for (int i = 0; i < n; i++) cin >> nums[i];\n    Solution sol;\n    vector<int> res = sol.twoSum(nums, target);\n    if (res.size() >= 2) {\n        cout << res[0] << \" \" << res[1] << \"\\n\";\n    }\n    return 0;\n}\n"
+    },
+    "c": {
+      "userTemplate": "int* twoSum(int* nums, int numsSize, int target, int* returnSize) {\n    // write code here\n    \n}",
+      "header": "#include <stdio.h>\n#include <stdlib.h>\n",
+      "footer": "\nint main() {\n    int n, target;\n    if (scanf(\"%d %d\", &n, &target) != 2) return 0;\n    int* nums = (int*)malloc(sizeof(int) * n);\n    for (int i = 0; i < n; i++) scanf(\"%d\", &nums[i]);\n    int returnSize = 0;\n    int* res = twoSum(nums, n, target, &returnSize);\n    if (res && returnSize >= 2) {\n        printf(\"%d %d\\n\", res[0], res[1]);\n    }\n    free(nums);\n    return 0;\n}\n"
+    },
+    "java": {
+      "userTemplate": "class Solution {\n    public int[] twoSum(int[] nums, int target) {\n        // write code here\n        \n    }\n}",
+      "header": "import java.util.*;\nimport java.io.*;\n",
+      "footer": "\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        if (!sc.hasNextInt()) return;\n        int n = sc.nextInt();\n        int target = sc.nextInt();\n        int[] nums = new int[n];\n        for (int i = 0; i < n; i++) nums[i] = sc.nextInt();\n        Solution sol = new Solution();\n        int[] res = sol.twoSum(nums, target);\n        if (res != null && res.length >= 2) {\n            System.out.println(res[0] + \" \" + res[1]);\n        }\n    }\n}\n"
+    },
+    "python": {
+      "userTemplate": "class Solution:\n    def twoSum(self, nums: list[int], target: int) -> list[int]:\n        # write code here\n        pass",
+      "header": "import sys\n",
+      "footer": "\ndef main():\n    raw = sys.stdin.read().strip()\n    if not raw:\n        return\n    lines = [l.strip() for l in raw.split('\\n') if l.strip()]\n    if not lines:\n        return\n    parts = lines[0].split()\n    n = int(parts[0])\n    target = int(parts[1])\n    nums = [int(x) for x in lines[1].split()] if len(lines) > 1 else []\n    sol = Solution() if 'Solution' in globals() else None\n    fn = sol.twoSum if sol and hasattr(sol, 'twoSum') else globals().get('twoSum')\n    res = fn(nums, target)\n    if res and len(res) >= 2:\n        print(f\"{res[0]} {res[1]}\")\n\nif __name__ == '__main__':\n    main()\n"
+    },
+    "javascript": {
+      "userTemplate": "class Solution {\n    twoSum(nums, target) {\n        // write code here\n        \n    }\n}",
+      "header": "const fs = require('fs');\n",
+      "footer": "\nfunction main() {\n    const raw = fs.readFileSync(0, 'utf8').trim();\n    if (!raw) return;\n    const lines = raw.split('\\n').map(l => l.trim()).filter(Boolean);\n    if (!lines.length) return;\n    const parts = lines[0].split(/\\s+/);\n    const n = Number(parts[0]);\n    const target = Number(parts[1]);\n    const nums = lines.length > 1 ? lines[1].split(/\\s+/).map(Number) : [];\n    const sol = (typeof Solution !== 'undefined') ? new Solution() : null;\n    const fn = (sol && typeof sol.twoSum === 'function') ? sol.twoSum.bind(sol) : (typeof twoSum === 'function' ? twoSum : null);\n    if (fn) {\n        const res = fn(nums, target);\n        if (res && res.length >= 2) {\n            console.log(res[0] + ' ' + res[1]);\n        }\n    }\n}\nmain();\n"
+    }
+  }
+}

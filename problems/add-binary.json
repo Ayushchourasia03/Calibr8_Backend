@@ -39,9 +39,30 @@
     }
   ],
   "templates": {
-    "cpp": "class Solution {\npublic:\n    string addBinary(string a, string b) {\n        // write code here\n    }\n};",
-    "java": "class Solution {\n    public String addBinary(String a, String b) {\n        // write code here\n    }\n}",
-    "python": "class Solution:\n    def addBinary(self, a: str, b: str) -> str:\n        # write code here\n        pass",
-    "javascript": "class Solution {\n    addBinary(a, b) {\n        // write code here\n    }\n}"
+    "cpp": {
+      "userTemplate": "class Solution {\npublic:\n    string addBinary(string a, string b) {\n        // write code here\n        \n    }\n};",
+      "header": "#include <bits/stdc++.h>\nusing namespace std;\n",
+      "footer": "\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    string a, b;\n    if (!(cin >> a >> b)) return 0;\n    Solution sol;\n    cout << sol.addBinary(a, b) << \"\\n\";\n    return 0;\n}\n"
+    },
+    "c": {
+      "userTemplate": "char* addBinary(char* a, char* b) {\n    // write code here\n    \n}",
+      "header": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n",
+      "footer": "\nint main() {\n    char a[10005], b[10005];\n    if (scanf(\"%s %s\", a, b) != 2) return 0;\n    char* res = addBinary(a, b);\n    printf(\"%s\\n\", res);\n    return 0;\n}\n"
+    },
+    "java": {
+      "userTemplate": "class Solution {\n    public String addBinary(String a, String b) {\n        // write code here\n        \n    }\n}",
+      "header": "import java.util.*;\nimport java.io.*;\n",
+      "footer": "\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        if (!sc.hasNext()) return;\n        String a = sc.next();\n        String b = sc.next();\n        Solution sol = new Solution();\n        System.out.println(sol.addBinary(a, b));\n    }\n}\n"
+    },
+    "python": {
+      "userTemplate": "class Solution:\n    def addBinary(self, a: str, b: str) -> str:\n        # write code here\n        pass",
+      "header": "import sys\n",
+      "footer": "\ndef main():\n    raw = sys.stdin.read().strip()\n    if not raw:\n        return\n    lines = [l.strip() for l in raw.split('\\n') if l.strip()]\n    if len(lines) == 1:\n        parts = lines[0].split()\n        a, b = parts[0], parts[1]\n    else:\n        a, b = lines[0], lines[1]\n    sol = Solution() if 'Solution' in globals() else None\n    fn = sol.addBinary if sol and hasattr(sol, 'addBinary') else globals().get('addBinary')\n    print(fn(a, b))\n\nif __name__ == '__main__':\n    main()\n"
+    },
+    "javascript": {
+      "userTemplate": "class Solution {\n    addBinary(a, b) {\n        // write code here\n        \n    }\n}",
+      "header": "const fs = require('fs');\n",
+      "footer": "\nfunction main() {\n    const raw = fs.readFileSync(0, 'utf8').trim();\n    if (!raw) return;\n    const lines = raw.split(/\\r?\\n/).map(l => l.trim()).filter(Boolean);\n    let a = '', b = '';\n    if (lines.length >= 2) {\n        a = lines[0]; b = lines[1];\n    } else {\n        const parts = lines[0].split(/\\s+/);\n        a = parts[0]; b = parts[1];\n    }\n    const sol = (typeof Solution !== 'undefined') ? new Solution() : null;\n    const fn = (sol && typeof sol.addBinary === 'function') ? sol.addBinary.bind(sol) : (typeof addBinary === 'function' ? addBinary : null);\n    if (fn) console.log(fn(a, b));\n}\nmain();\n"
+    }
   }
 }

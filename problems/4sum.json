@@ -39,9 +39,30 @@
     }
   ],
   "templates": {
-    "cpp": "class Solution {\npublic:\n    vector<vector<int>> fourSum(vector<int>& nums, int target) {\n        // write code here\n    }\n};",
-    "java": "class Solution {\n    public List<List<Integer>> fourSum(int[] nums, int target) {\n        // write code here\n    }\n}",
-    "python": "class Solution:\n    def fourSum(self, nums: list[int], target: int) -> list[list[int]]:\n        # write code here\n        pass",
-    "javascript": "class Solution {\n    fourSum(nums, target) {\n        // write code here\n    }\n}"
+    "cpp": {
+      "userTemplate": "class Solution {\npublic:\n    vector<vector<int>> fourSum(vector<int>& nums, int target) {\n        // write code here\n        \n    }\n};",
+      "header": "#include <bits/stdc++.h>\nusing namespace std;\n",
+      "footer": "\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    int n, target;\n    if (!(cin >> n >> target)) return 0;\n    vector<int> nums(n);\n    for (int i = 0; i < n; i++) cin >> nums[i];\n    Solution sol;\n    auto res = sol.fourSum(nums, target);\n    cout << res.size() << \"\\n\";\n    return 0;\n}\n"
+    },
+    "c": {
+      "userTemplate": "int fourSum(int* nums, int numsSize, int target) {\n    // write code here\n    \n}",
+      "header": "#include <stdio.h>\n#include <stdlib.h>\n",
+      "footer": "\nint main() {\n    int n, target;\n    if (scanf(\"%d %d\", &n, &target) != 2) return 0;\n    int* nums = (int*)malloc(sizeof(int) * n);\n    for (int i = 0; i < n; i++) scanf(\"%d\", &nums[i]);\n    printf(\"%d\\n\", fourSum(nums, n, target));\n    free(nums);\n    return 0;\n}\n"
+    },
+    "java": {
+      "userTemplate": "class Solution {\n    public List<List<Integer>> fourSum(int[] nums, int target) {\n        // write code here\n        \n    }\n}",
+      "header": "import java.util.*;\nimport java.io.*;\n",
+      "footer": "\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        if (!sc.hasNextInt()) return;\n        int n = sc.nextInt();\n        int target = sc.nextInt();\n        int[] nums = new int[n];\n        for (int i = 0; i < n; i++) nums[i] = sc.nextInt();\n        Solution sol = new Solution();\n        List<List<Integer>> res = sol.fourSum(nums, target);\n        System.out.println(res != null ? res.size() : 0);\n    }\n}\n"
+    },
+    "python": {
+      "userTemplate": "class Solution:\n    def fourSum(self, nums: list[int], target: int) -> list[list[int]]:\n        # write code here\n        pass",
+      "header": "import sys\n",
+      "footer": "\ndef main():\n    raw = sys.stdin.read().strip()\n    if not raw:\n        return\n    lines = [l.strip() for l in raw.split('\\n') if l.strip()]\n    if not lines:\n        return\n    parts = lines[0].split()\n    n = int(parts[0])\n    target = int(parts[1])\n    nums = [int(x) for x in lines[1].split()] if len(lines) > 1 else []\n    sol = Solution() if 'Solution' in globals() else None\n    fn = sol.fourSum if sol and hasattr(sol, 'fourSum') else globals().get('fourSum')\n    res = fn(nums, target)\n    if isinstance(res, (list, tuple, set)):\n        print(len(res))\n    elif isinstance(res, int):\n        print(res)\n    else:\n        print(0)\n\nif __name__ == '__main__':\n    main()\n"
+    },
+    "javascript": {
+      "userTemplate": "class Solution {\n    fourSum(nums, target) {\n        // write code here\n        \n    }\n}",
+      "header": "const fs = require('fs');\n",
+      "footer": "\nfunction main() {\n    const raw = fs.readFileSync(0, 'utf8').trim();\n    if (!raw) return;\n    const lines = raw.split('\\n').map(l => l.trim()).filter(Boolean);\n    if (!lines.length) return;\n    const parts = lines[0].split(/\\s+/);\n    const n = Number(parts[0]);\n    const target = Number(parts[1]);\n    const nums = lines.length > 1 ? lines[1].split(/\\s+/).map(Number) : [];\n    const sol = (typeof Solution !== 'undefined') ? new Solution() : null;\n    const fn = (sol && typeof sol.fourSum === 'function') ? sol.fourSum.bind(sol) : (typeof fourSum === 'function' ? fourSum : null);\n    if (fn) {\n        const res = fn(nums, target);\n        console.log(Array.isArray(res) ? res.length : (res || 0));\n    }\n}\nmain();\n"
+    }
   }
 }

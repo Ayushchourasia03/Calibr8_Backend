@@ -39,9 +39,30 @@
     }
   ],
   "templates": {
-    "cpp": "class Solution {\npublic:\n    bool backspaceCompare(string s, string t) {\n        // write code here\n    }\n};",
-    "java": "class Solution {\n    public boolean backspaceCompare(String s, String t) {\n        // write code here\n    }\n}",
-    "python": "class Solution:\n    def backspaceCompare(self, s: str, t: str) -> bool:\n        # write code here\n        pass",
-    "javascript": "class Solution {\n    backspaceCompare(s, t) {\n        // write code here\n    }\n}"
+    "cpp": {
+      "userTemplate": "class Solution {\npublic:\n    bool backspaceCompare(string s, string t) {\n        // write code here\n        \n    }\n};",
+      "header": "#include <bits/stdc++.h>\nusing namespace std;\n",
+      "footer": "\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    string s, t;\n    if (!(cin >> s >> t)) return 0;\n    Solution sol;\n    cout << (sol.backspaceCompare(s, t) ? \"true\" : \"false\") << \"\\n\";\n    return 0;\n}\n"
+    },
+    "c": {
+      "userTemplate": "bool backspaceCompare(char* s, char* t) {\n    // write code here\n    \n}",
+      "header": "#include <stdio.h>\n#include <stdlib.h>\n#include <stdbool.h>\n#include <string.h>\n",
+      "footer": "\nint main() {\n    char s[10005], t[10005];\n    if (scanf(\"%s %s\", s, t) != 2) return 0;\n    printf(\"%s\\n\", backspaceCompare(s, t) ? \"true\" : \"false\");\n    return 0;\n}\n"
+    },
+    "java": {
+      "userTemplate": "class Solution {\n    public boolean backspaceCompare(String s, String t) {\n        // write code here\n        \n    }\n}",
+      "header": "import java.util.*;\nimport java.io.*;\n",
+      "footer": "\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        if (!sc.hasNext()) return;\n        String s = sc.next();\n        String t = sc.next();\n        Solution sol = new Solution();\n        System.out.println(sol.backspaceCompare(s, t) ? \"true\" : \"false\");\n    }\n}\n"
+    },
+    "python": {
+      "userTemplate": "class Solution:\n    def backspaceCompare(self, s: str, t: str) -> bool:\n        # write code here\n        pass",
+      "header": "import sys\n",
+      "footer": "\ndef main():\n    raw = sys.stdin.read().strip()\n    if not raw:\n        return\n    lines = [l.strip() for l in raw.split('\\n') if l.strip()]\n    if len(lines) == 1:\n        parts = lines[0].split()\n        s, t = parts[0], parts[1]\n    else:\n        s, t = lines[0], lines[1]\n    sol = Solution() if 'Solution' in globals() else None\n    fn = sol.backspaceCompare if sol and hasattr(sol, 'backspaceCompare') else globals().get('backspaceCompare')\n    res = fn(s, t)\n    print(\"true\" if res else \"false\")\n\nif __name__ == '__main__':\n    main()\n"
+    },
+    "javascript": {
+      "userTemplate": "class Solution {\n    backspaceCompare(s, t) {\n        // write code here\n        \n    }\n}",
+      "header": "const fs = require('fs');\n",
+      "footer": "\nfunction main() {\n    const raw = fs.readFileSync(0, 'utf8').trim();\n    if (!raw) return;\n    const lines = raw.split(/\\r?\\n/).map(l => l.trim()).filter(Boolean);\n    let s = '', t = '';\n    if (lines.length >= 2) {\n        s = lines[0]; t = lines[1];\n    } else {\n        const parts = lines[0].split(/\\s+/);\n        s = parts[0]; t = parts[1];\n    }\n    const sol = (typeof Solution !== 'undefined') ? new Solution() : null;\n    const fn = (sol && typeof sol.backspaceCompare === 'function') ? sol.backspaceCompare.bind(sol) : (typeof backspaceCompare === 'function' ? backspaceCompare : null);\n    if (fn) console.log(fn(s, t) ? 'true' : 'false');\n}\nmain();\n"
+    }
   }
 }
