@@ -15,6 +15,38 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 const STUDY_DIR = path.join(__dirname, "../study-material");
+const SUBJECT_DETAILS = {
+  cn: {
+    name: "Computer Networks",
+    description: "Networking foundations, protocols, security, and performance.",
+    icon: "🌐",
+    order: 1,
+  },
+  dbms: {
+    name: "Database Management Systems",
+    description: "Relational data, SQL, transactions, storage, and internals.",
+    icon: "🗄️",
+    order: 2,
+  },
+  oops: {
+    name: "Object-Oriented Programming",
+    description: "OOP principles, SOLID design, and practical patterns.",
+    icon: "🧩",
+    order: 3,
+  },
+  os: {
+    name: "Operating Systems",
+    description: "Processes, memory, scheduling, file systems, and security.",
+    icon: "⚙️",
+    order: 4,
+  },
+  "system-design": {
+    name: "System Design",
+    description: "Scalability, architecture, reliability, and distributed systems.",
+    icon: "🏗️",
+    order: 5,
+  },
+};
 
 function getOrderFromName(name) {
   const match = name.match(/^(\d+)-/);
@@ -42,15 +74,27 @@ async function main() {
   for (const subjectFolder of subjectFolders) {
     const subjectPath = path.join(STUDY_DIR, subjectFolder);
     const subjectSlug = getSlugFromName(subjectFolder);
-    const subjectName = getNameFromSlug(subjectSlug);
-    const subjectOrder = getOrderFromName(subjectFolder);
+    const subjectDetails = SUBJECT_DETAILS[subjectSlug] || {};
+    const subjectName = subjectDetails.name || getNameFromSlug(subjectSlug);
+    const subjectOrder = subjectDetails.order || getOrderFromName(subjectFolder);
 
     console.log(`\n📚 SUBJECT: ${subjectName} (${subjectSlug})`);
 
     const subject = await prisma.studySubject.upsert({
       where: { slug: subjectSlug },
-      update: { name: subjectName, order: subjectOrder },
-      create: { slug: subjectSlug, name: subjectName, order: subjectOrder },
+      update: {
+        name: subjectName,
+        description: subjectDetails.description,
+        icon: subjectDetails.icon,
+        order: subjectOrder,
+      },
+      create: {
+        slug: subjectSlug,
+        name: subjectName,
+        description: subjectDetails.description,
+        icon: subjectDetails.icon,
+        order: subjectOrder,
+      },
     });
 
     const chapterFolders = fs

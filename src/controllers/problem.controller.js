@@ -7,7 +7,18 @@ export { resolveProblem, listAllProblems };
 
 export const getAllProblems = async (req, res, next) => {
   try {
-    const data = await listAllProblems(req.query);
+    if (req.query.status && !["solved", "todo"].includes(req.query.status)) {
+      throw new ApiError(
+        400,
+        "Status must be either 'solved' or 'todo'.",
+        "INVALID_STATUS",
+      );
+    }
+
+    const data = await listAllProblems({
+      ...req.query,
+      userId: req.user?.id,
+    });
     res.status(200).json({
       success: true,
       count: data.length,

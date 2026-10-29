@@ -765,6 +765,7 @@ _Valid values_: `cpp`, `c`, `java`, `python`, `javascript`.
 ```json
 {
   "college": "AKGEC",
+  "branch": "Computer Science",
   "batch": "2026",
   "state": "UP",
   "country": "India"
@@ -782,6 +783,7 @@ _Valid values_: `cpp`, `c`, `java`, `python`, `javascript`.
     "name": "Alexander Mercer",
     "email": "student@example.com",
     "college": "AKGEC",
+    "branch": "Computer Science",
     "batch": "2026",
     "state": "UP",
     "country": "India",
@@ -815,6 +817,27 @@ _Valid values_: `cpp`, `c`, `java`, `python`, `javascript`.
       "isSolved": true
     }
   ]
+}
+```
+
+---
+
+### 6.6 Get Successful Submission Activity
+
+- **Method & Path**: `GET /api/users/me/activity`
+- **Protected**: Yes (`Authorization: Bearer <token>`)
+- **Description**: Returns daily counts of submissions that passed every test case in the past 371 days. Runs, partial submissions, failed submissions, and anonymous submissions are not included.
+- **Success Response (200 OK)**:
+
+```json
+{
+  "success": true,
+  "activity": {
+    "2026-10-28": 2,
+    "2026-10-29": 1
+  },
+  "total": 3,
+  "activeDays": 2
 }
 ```
 
@@ -908,7 +931,8 @@ _Valid values_: `cpp`, `c`, `java`, `python`, `javascript`.
 
 ### 7.3 List Structured DSA Categories
 
-- **Method & Path**: `GET /api/topics/categories` or `GET /api/topics/dsa/categories`
+- **Method & Path**: `GET /api/topics/dsa/categories`
+- **Public alias**: `GET /api/topics/categories` does not require authentication and is used by the Tracks page.
 - **Protected**: Yes (`Authorization: Bearer <token>`)
 - **Success Response (200 OK)**:
 
@@ -1382,7 +1406,7 @@ Allows setting or changing the student's preferred programming language during o
 ### 10.1 List Supported Languages
 
 - **Method & Path**: `GET /api/execution/languages`
-- **Protected**: Yes (`Authorization: Bearer <token>`)
+- **Protected**: No (`Authorization: Bearer <token>`)
 - **Success Response (200 OK)**:
 
 ```json
@@ -1404,6 +1428,12 @@ Allows setting or changing the student's preferred programming language during o
     {
       "key": "cpp",
       "label": "C++",
+      "version": "GCC 13",
+      "starterAvailable": true
+    },
+    {
+      "key": "c",
+      "label": "C",
       "version": "GCC 13",
       "starterAvailable": true
     },
@@ -1450,10 +1480,13 @@ _Note_: Also accepts `problemId` in place of `slug`. Maximum code size is 64 KB.
   "cases": [
     {
       "index": 0,
+      "testIndex": 0,
+      "isVisible": true,
       "input": "4\n2 7 11 15\n9",
       "expected": "0 1",
       "actual": "0 1",
       "studentStdout": "debugging: 9\n",
+      "passed": true,
       "status": "Accepted",
       "timeMs": 42,
       "memoryKb": 12800
@@ -1495,6 +1528,8 @@ _Note_: Also accepts `problemId` in place of `slug`. Maximum code size is 64 KB.
 }
 ```
 
+The submission is evaluated against all visible and hidden testcases. Poll the returned URL until the status is terminal. A completed response includes per-testcase `results`; visible testcase details include input and outputs, while hidden testcase details include only the testcase index, pass status, verdict, and resource usage.
+
 ---
 
 ### 10.4 Poll Submission Status
@@ -1515,6 +1550,25 @@ _Note_: Also accepts `problemId` in place of `slug`. Maximum code size is 64 KB.
     "status": "ACCEPTED",
     "passedCount": 15,
     "totalCount": 15,
+    "results": [
+      {
+        "testIndex": 0,
+        "isVisible": true,
+        "passed": true,
+        "status": "Accepted",
+        "input": "4\n2 7 11 15\n9",
+        "expected": "0 1",
+        "actual": "0 1"
+      },
+      {
+        "testIndex": 1,
+        "isVisible": false,
+        "passed": true,
+        "status": "Accepted",
+        "time": 58,
+        "memory": 14200
+      }
+    ],
     "time": "58ms",
     "memory": 14200,
     "createdAt": "2026-10-24T06:55:00.000Z",
@@ -1575,6 +1629,8 @@ _Note_: Also accepts `problemId` in place of `slug`. Maximum code size is 64 KB.
 ---
 
 ## 12. CS Curriculum & Study Material APIs (`/api/study`)
+
+Study subjects, chapters, lesson content, and MCQs are loaded from `backend/study-material`. Populate or refresh the database using `npm run study:sync` from the backend directory.
 
 ### 12.1 List All Subjects
 
@@ -1686,7 +1742,7 @@ _Note_: Also accepts `problemId` in place of `slug`. Maximum code size is 64 KB.
 - **Method & Path**: `GET /api/study/topics/:topicSlug`
 - **Protected**: No (Public)
 - **Path Parameter**: `:topicSlug` (e.g. `'dbms-foundations-and-architecture'`)
-- **Anti-Cheat Policy**: `correctIndex` and `explanation` are filtered out so answers cannot be inspected client-side.
+- **Answer Handling**: `correctIndex` is omitted from this response. The explanation is included with each MCQ.
 - **Success Response (200 OK)**:
 
 ```json
@@ -1744,14 +1800,14 @@ _Note_: Keys are MCQ IDs, values are the 0-indexed option selected.
 ```json
 {
   "success": true,
-  "totalQuestions": 2,
+  "userId": "u-45a8-bc91-2309",
+  "topicSlug": "dbms-foundations-and-architecture",
   "score": 2,
-  "percentage": 100,
-  "results": [
+  "total": 2,
+  "result": [
     {
       "mcqId": "mcq-1",
-      "correct": true,
-      "userAnswer": 1,
+      "isCorrect": true,
       "correctIndex": 1,
       "explanation": "The conceptual schema describes the structure of the whole database for a community of users while hiding storage."
     }
@@ -2022,4 +2078,3 @@ For immediate exploration and manual endpoint testing, the backend is pre-seeded
   - Role: `user`
   - Active Theme: `default` (Calibr8 Dark)
 - **1-Click Authentication**: Available directly on the Interactive Dashboard (`/`) via the `⚡ 1-Click Demo Login` button.
-

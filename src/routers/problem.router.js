@@ -14,7 +14,7 @@ import { protect, requireAdmin, optionalAuth } from "../middlewares/auth.middlew
 const router = Router();
 
 // Catalog reads are public; mutations remain protected.
-router.get("/", getAllProblems);
+router.get("/", optionalAuth, getAllProblems);
 
 // POST /api/problems - moved to /api/admin/problems; retained with strict admin-only check
 router.post("/", protect, requireAdmin, addProblem);

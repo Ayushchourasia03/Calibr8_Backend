@@ -226,10 +226,18 @@ export async function resolveProblem(slugOrId) {
 }
 
 /**
- * Lists all problems with optional difficulty and search filter.
+ * Lists real problems with optional catalog filters and user solve status.
  */
-export async function listAllProblems({ difficulty, search } = {}) {
+export async function listAllProblems({
+  difficulty,
+  search,
+  topic,
+  status,
+  userId,
+} = {}) {
   let problems = [];
+  let submissionsByProblem = new Map();
+  let solvedProblemIds = new Set();
 
   try {
     const where = {};
@@ -246,13 +254,69 @@ export async function listAllProblems({ difficulty, search } = {}) {
         slug: true,
         title: true,
         difficulty: true,
+        tags: true,
+        solvedCount: true,
+        createdAt: true,
+        dsaTopic: { select: { name: true, slug: true } },
         timeLimit: true,
         memoryLimit: true,
         _count: { select: { testcases: true, templates: true } },
       },
     });
+
   } catch (dbErr) {
-    // Database findMany warning in dev environment
+    console.warn(
+      "[ProblemResolver] Database problem lookup failed; using local problem definitions:",
+      dbErr.message,
+    );
+    problems = [];
+  }
+
+  const problemIds = problems.map(({ id }) => id);
+  const localProblemsBySlug = new Map(
+    loadLocalProblems().map((problem) => [
+      String(problem.slug).toLowerCase(),
+      problem,
+    ]),
+  );
+  if (problemIds.length > 0) {
+    const submissionGroups = await prisma.submission.groupBy({
+      by: ["problemId", "status", "passedCount", "totalCount"],
+      where: { problemId: { in: problemIds } },
+      _count: { _all: true },
+    });
+    for (const group of submissionGroups) {
+      const current = submissionsByProblem.get(group.problemId) || {
+        accepted: 0,
+        total: 0,
+      };
+      current.total += group._count._all;
+      if (
+        String(group.status).toUpperCase() === "ACCEPTED" &&
+        group.totalCount > 0 &&
+        group.passedCount === group.totalCount
+      ) {
+        current.accepted += group._count._all;
+      }
+      submissionsByProblem.set(group.problemId, current);
+    }
+
+    if (userId) {
+      const solvedSubmissions = await prisma.submission.findMany({
+        where: {
+          userId,
+          problemId: { in: problemIds },
+          status: { equals: "ACCEPTED", mode: "insensitive" },
+          totalCount: { gt: 0 },
+        },
+        select: { problemId: true, passedCount: true, totalCount: true },
+      });
+      solvedProblemIds = new Set(
+        solvedSubmissions
+          .filter(({ passedCount, totalCount }) => passedCount === totalCount)
+          .map(({ problemId }) => problemId),
+      );
+    }
   }
 
   // Fallback to /problems/*.json if DB returned no problems
@@ -264,6 +328,13 @@ export async function listAllProblems({ difficulty, search } = {}) {
       slug: p.slug,
       title: p.title,
       difficulty: p.difficulty,
+      topic: p.topic,
+      topicSlug: null,
+      tags: p.tags || [],
+      isSolved: false,
+      acceptanceRate: null,
+      points: pointsForDifficulty(p.difficulty),
+      createdAt: null,
       timeLimit: p.timeLimit,
       memoryLimit: p.memoryLimit,
       _count: {
@@ -271,6 +342,33 @@ export async function listAllProblems({ difficulty, search } = {}) {
         templates: Object.keys(p.templatesMap || {}).length,
       },
     }));
+  } else {
+    problems = problems.map((problem) => {
+      const stats = submissionsByProblem.get(problem.id);
+      const localProblem = localProblemsBySlug.get(
+        String(problem.slug).toLowerCase(),
+      );
+      const topic =
+        problem.dsaTopic?.name || localProblem?.topic || problem.tags?.[0] || "Other";
+      return {
+        ...problem,
+        topic,
+        topicSlug:
+          problem.dsaTopic?.slug ||
+          String(topic)
+            .toLowerCase()
+            .trim()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, ""),
+        tags: problem.tags || [],
+        isSolved: solvedProblemIds.has(problem.id),
+        acceptanceRate:
+          stats?.total > 0
+            ? Math.round((stats.accepted / stats.total) * 1000) / 10
+            : null,
+        points: pointsForDifficulty(problem.difficulty),
+      };
+    });
   }
 
   if (difficulty) {
@@ -283,11 +381,36 @@ export async function listAllProblems({ difficulty, search } = {}) {
     const q = search.trim().toLowerCase();
     problems = problems.filter(
       (p) =>
-        p.title.toLowerCase().includes(q) ||
-        p.slug.toLowerCase().includes(q) ||
-        String(p.problemNumber).includes(q)
+        String(p.title || "").toLowerCase().includes(q) ||
+        String(p.slug || "").toLowerCase().includes(q) ||
+        String(p.problemNumber).includes(q) ||
+        String(p.topic || "").toLowerCase().includes(q) ||
+        String(p.difficulty || "").toLowerCase().includes(q) ||
+        (p.tags || []).some((tag) => String(tag).toLowerCase().includes(q))
     );
   }
 
+  if (topic) {
+    const selectedTopic = String(topic).trim().toLowerCase();
+    problems = problems.filter(
+      (p) => String(p.topic || "").trim().toLowerCase() === selectedTopic,
+    );
+  }
+
+  if (status === "solved") {
+    problems = problems.filter((p) => p.isSolved);
+  } else if (status === "todo") {
+    problems = problems.filter((p) => !p.isSolved);
+  } else if (status) {
+    throw new Error(`Unsupported problem status filter: ${status}`);
+  }
+
   return problems;
+}
+
+function pointsForDifficulty(difficulty) {
+  const normalized = String(difficulty || "").toLowerCase();
+  if (normalized === "medium") return 25;
+  if (normalized === "hard") return 50;
+  return 10;
 }
