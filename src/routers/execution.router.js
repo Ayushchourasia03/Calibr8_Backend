@@ -6,8 +6,7 @@ import {
   submitSolution,
   getSubmissionStatus,
 } from "../controllers/execution.controller.js";
-import { optionalAuth } from "../middlewares/auth.middleware.js";
-
+import { protect } from "../middlewares/auth.middleware.js";
 const router = Router();
 
 // Rate limiter: 30 requests per minute
@@ -21,14 +20,14 @@ const runLimiter = rateLimit({
 router.get("/languages", getLanguages);
 
 // POST /api/execution/runs (and /run alias) - run sample test cases synchronously
-router.post("/runs", runLimiter, optionalAuth, runCode);
-router.post("/run", runLimiter, optionalAuth, runCode);
+router.post("/runs", runLimiter, protect, runCode);
+router.post("/run", runLimiter, protect, runCode);
 
 // POST /api/execution/submissions (and /submit alias) - full multi-tier submission
-router.post("/submissions", runLimiter, optionalAuth, submitSolution);
-router.post("/submit", runLimiter, optionalAuth, submitSolution);
+router.post("/submissions", runLimiter, protect, submitSolution);
+router.post("/submit", runLimiter, protect, submitSolution);
 
 // GET /api/execution/submissions/:id - poll submission status & tier progress
-router.get("/submissions/:id", optionalAuth, getSubmissionStatus);
+router.get("/submissions/:id", protect, getSubmissionStatus);
 
 export default router;
