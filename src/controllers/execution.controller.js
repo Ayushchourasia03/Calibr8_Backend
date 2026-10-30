@@ -4,6 +4,8 @@ import { executeCase, areOutputsEqual, buildSource } from "../utils/codeRunner.j
 import { buildFinalCode, LANGUAGE_IDS, normalizeLanguage, SUPPORTED_LANGUAGES } from "../utils/codeBuilder.js";
 import { resolveProblem } from "../utils/problemResolver.js";
 import { ApiError } from "../utils/ApiError.js";
+import { syncProblemSolvedCount } from "../utils/problemSolvedCount.js";
+import { publicTestResults } from "../utils/testcaseResults.js";
 
 const CODEBOX_URL = process.env.CODEBOX_URL || "http://187.127.173.216";
 const CODEBOX_TOKEN = process.env.CODEBOX_TOKEN;
@@ -236,6 +238,14 @@ export const runCode = async (req, res, next) => {
       throw new ApiError(404, `Problem '${slug}' not found.`, "NOT_FOUND");
     }
 
+    if (!problem.testcases?.length) {
+      throw new ApiError(
+        422,
+        "This problem has no testcases and cannot be accepted.",
+        "NO_TESTCASES",
+      );
+    }
+
     // Validate function-only submission and build executable source upfront
     const fullCode = buildFinalCode(problem, studentCode, normLang);
 
@@ -290,6 +300,7 @@ export const runCode = async (req, res, next) => {
       results.push({
         index: idx,
         testIndex: tc.testIndex ?? idx,
+        isVisible: true,
         input: testInput,
         expected: expectedOutput,
         actual: execResult.actual,
@@ -317,26 +328,20 @@ export const runCode = async (req, res, next) => {
 };
 
 /**
- * Evaluates all testcases for a problem (up to 12 cases: 3 visible + 9 hidden)
+ * Evaluates every visible and hidden testcase for a problem.
  * Sequential execution (concurrency 1 for KVM1 - do NOT parallelize)
  */
 async function evaluateAllTestcases(problem, language, code, providedFullCode) {
   const normLang = normalizeLanguage(language) || "cpp";
   const rawTestcases = problem.testcases || [];
-  // Max 12 testcases per PRD: 3 visible + 9 hidden
-  const allTestcases = rawTestcases.slice(0, 12);
+  const allTestcases = rawTestcases;
 
   if (allTestcases.length === 0) {
-    return {
-      status: "ACCEPTED",
-      tierReached: "Tier 3 (Optimal)",
-      passedCount: 0,
-      totalCount: 0,
-      maxTimeMs: 10,
-      maxMemoryKb: 12000,
-      firstFailure: null,
-      results: [],
-    };
+    throw new ApiError(
+      422,
+      "This problem has no testcases and cannot be accepted.",
+      "NO_TESTCASES",
+    );
   }
 
   const fullCode = providedFullCode || buildFinalCode(problem, code, normLang);
@@ -381,10 +386,12 @@ async function evaluateAllTestcases(problem, language, code, providedFullCode) {
     }
 
     const caseItem = {
+      testIndex: tc.testIndex ?? idx,
       input: testInput,
       expected: expectedOutput,
       actual: execResult.actual,
       passed: isPassed,
+      isVisible: tc.isVisible === true,
       time: execResult.timeMs || 0,
       memory: execResult.memoryKb || 0,
       status: isPassed ? "Accepted" : failureType,
@@ -412,8 +419,6 @@ async function evaluateAllTestcases(problem, language, code, providedFullCode) {
           ? `Failed sample test ${idx + 1}: expected '${expectedOutput}', got '${execResult.actual}'`
           : `Failed on hidden evaluation test case #${idx + 1}.`,
       };
-
-      break; // Stop at first failing test
     }
   }
 
@@ -478,7 +483,7 @@ export const submitSolution = async (req, res, next) => {
     const fullCode = buildFinalCode(problem, studentCode, normLang);
 
     const subId = `sub_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-    const totalTcs = (problem.testcases || []).slice(0, 12).length;
+    const totalTcs = (problem.testcases || []).length;
 
     let submission = {
       id: subId,
@@ -510,7 +515,13 @@ export const submitSolution = async (req, res, next) => {
         include: { problem: true },
       });
     } catch (dbErr) {
-      // In-memory fallback
+      if (userId) {
+        throw new ApiError(
+          503,
+          "Unable to save this submission. Please try again.",
+          "SUBMISSION_STORAGE_UNAVAILABLE",
+        );
+      }
     }
 
     submissionCache.set(submission.id, { ...submission });
@@ -542,8 +553,30 @@ export const submitSolution = async (req, res, next) => {
           },
         });
         updated = { ...dbUpdated, ...updated };
+
+        if (
+          userId &&
+          evaluation.status === "ACCEPTED" &&
+          evaluation.totalCount > 0 &&
+          evaluation.passedCount === evaluation.totalCount
+        ) {
+          try {
+            await syncProblemSolvedCount(prisma, problem.id);
+          } catch (syncError) {
+            console.error(
+              `[Problem solved count] Failed to update problem ${problem.id}:`,
+              syncError,
+            );
+          }
+        }
       } catch (dbErr) {
-        // In-memory fallback
+        if (userId) {
+          throw new ApiError(
+            503,
+            "Unable to save the submission verdict. Please try again.",
+            "SUBMISSION_STORAGE_UNAVAILABLE",
+          );
+        }
       }
 
       submissionCache.set(submission.id, updated);
@@ -566,7 +599,7 @@ export const submitSolution = async (req, res, next) => {
         success: true,
         passed,
         total,
-        results: completed.results || [],
+        results: publicTestResults(completed.results || []),
         submissionId: submission.id,
         verdict: completed.status,
         status: completed.status,
@@ -576,7 +609,7 @@ export const submitSolution = async (req, res, next) => {
         time: completed.time || `${completed.maxTimeMs}ms`,
         memory: completed.memory || completed.maxMemoryKb,
         firstFailure: completed.firstFailure,
-        cases: completed.results || [],
+        cases: publicTestResults(completed.results || []),
         problem: {
           slug: problem.slug,
           title: problem.title,
@@ -632,8 +665,11 @@ export const getSubmissionStatus = async (req, res, next) => {
       // In-memory poll
     }
 
-    if (!submission) {
-      submission = submissionCache.get(id);
+    const cachedSubmission = submissionCache.get(id);
+    if (cachedSubmission) {
+      submission = submission
+        ? { ...cachedSubmission, ...submission }
+        : cachedSubmission;
     }
 
     if (!submission) {
@@ -678,7 +714,7 @@ export const getSubmissionStatus = async (req, res, next) => {
         memory: submission.memory || 14000,
         createdAt: submission.createdAt,
         firstFailure: submission.firstFailure || null,
-        results: submission.results || [],
+        results: publicTestResults(submission.results || []),
         problem: submission.problem || { slug: "problem", title: "Problem" },
       },
     });

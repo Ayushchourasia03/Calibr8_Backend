@@ -1,5 +1,6 @@
 import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
+import { listAllProblems } from "../utils/problemResolver.js";
 
 /**
  * GET /api/topics
@@ -108,17 +109,19 @@ export const getAllDsaTopics = async (req, res, next) => {
   try {
     const topics = await prisma.dsaTopic.findMany({
       orderBy: { order: "asc" },
-      include: {
-        _count: { select: { problems: true } },
-      },
     });
 
+    const problems = await listAllProblems();
     const data = topics.map((t) => ({
       id: t.id,
       slug: t.slug,
       name: t.name,
       order: t.order,
-      totalProblems: t._count.problems,
+      totalProblems: problems.filter(
+        (problem) =>
+          problem.topicSlug === t.slug ||
+          String(problem.topic).toLowerCase() === t.name.toLowerCase(),
+      ).length,
     }));
 
     res.status(200).json(data);
@@ -152,7 +155,7 @@ export const getProblemsByDsaTopic = async (req, res, next) => {
       ];
     }
 
-    const problems = await prisma.problem.findMany({
+    let problems = await prisma.problem.findMany({
       where,
       orderBy: { problemNumber: "asc" },
       select: {
@@ -164,6 +167,22 @@ export const getProblemsByDsaTopic = async (req, res, next) => {
         tags: true,
       },
     });
+
+    if (problems.length === 0) {
+      const catalog = await listAllProblems({
+        topic: topic.name,
+        difficulty,
+        search,
+      });
+      problems = catalog.map((problem) => ({
+        id: problem.id,
+        problemNumber: problem.problemNumber,
+        slug: problem.slug,
+        title: problem.title,
+        difficulty: problem.difficulty,
+        tags: problem.tags,
+      }));
+    }
 
     res.status(200).json({
       topic: { id: topic.id, slug: topic.slug, name: topic.name },

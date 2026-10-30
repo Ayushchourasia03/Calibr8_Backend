@@ -9,7 +9,7 @@ async function runTests() {
 
   try {
     // 1. Function-only enforcement: submitting main() should fail
-    const forbiddenMainRes = await fetch(`${baseUrl}/api/execution/runs`, {
+    const forbiddenMainRes = await fetch(`${baseUrl}/api/problems/add-two-numbers/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -24,7 +24,7 @@ async function runTests() {
     console.log("✔ main() injection blocked with FUNCTION_ONLY_REQUIRED");
 
     // 2. Unsupported language rejected
-    const unsupportedLangRes = await fetch(`${baseUrl}/api/execution/runs`, {
+    const unsupportedLangRes = await fetch(`${baseUrl}/api/problems/add-two-numbers/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -52,7 +52,7 @@ async function runTests() {
       return dummy.next;
     }`;
 
-    const runCppRes = await fetch(`${baseUrl}/api/execution/runs`, {
+    const runCppRes = await fetch(`${baseUrl}/api/problems/add-two-numbers/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -84,7 +84,7 @@ async function runTests() {
             l2 = l2.next if l2 else None
         return dummy.next
 `;
-    const runPyRes = await fetch(`${baseUrl}/api/execution/runs`, {
+    const runPyRes = await fetch(`${baseUrl}/api/problems/add-two-numbers/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -99,7 +99,7 @@ async function runTests() {
     console.log(`✔ Add Two Numbers (Python) Run: ${runPyData.passedCount}/${runPyData.totalCount} passed`);
 
     // 5. C++ Compilation Error Diagnostics
-    const syntaxErrRes = await fetch(`${baseUrl}/api/execution/runs`, {
+    const syntaxErrRes = await fetch(`${baseUrl}/api/problems/add-two-numbers/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

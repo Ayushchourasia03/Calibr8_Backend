@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getMe,
+  getMyActivity,
   updateMe,
   updateLanguage,
   getAllProblems,
@@ -12,6 +13,7 @@ const router = Router();
 
 // Authenticated profile management
 router.get("/me", protect, getMe);
+router.get("/me/activity", protect, getMyActivity);
 router.put("/me", protect, updateMe);
 router.patch("/me/language", protect, updateLanguage);
 router.patch("/me/academic", protect, updateAcademicProfile);

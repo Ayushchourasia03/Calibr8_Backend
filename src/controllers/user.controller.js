@@ -1,5 +1,6 @@
 import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
+import { getSuccessfulSubmissionActivity } from "../utils/successfulSubmissionActivity.js";
 
 /**
  * GET /api/users/me
@@ -43,6 +44,42 @@ export const getMe = async (req, res, next) => {
     }
 
     res.status(200).json({ success: true, user });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/users/me/activity
+ * Returns daily counts of fully accepted code submissions from the past year.
+ */
+export const getMyActivity = async (req, res, next) => {
+  try {
+    const since = new Date();
+    since.setUTCDate(since.getUTCDate() - 371);
+
+    const submissions = await prisma.submission.findMany({
+      where: {
+        userId: req.user.id,
+        status: { equals: "ACCEPTED", mode: "insensitive" },
+        totalCount: { gt: 0 },
+        createdAt: { gte: since },
+      },
+      select: {
+        createdAt: true,
+        passedCount: true,
+        totalCount: true,
+        status: true,
+      },
+    });
+
+    const activity = getSuccessfulSubmissionActivity(submissions);
+    res.status(200).json({
+      success: true,
+      activity,
+      total: Object.values(activity).reduce((sum, count) => sum + count, 0),
+      activeDays: Object.keys(activity).length,
+    });
   } catch (err) {
     next(err);
   }
@@ -154,7 +191,7 @@ export const getAllProblems = async (req, res, next) => {
         submissions: userId
           ? {
               where: { userId, status: "ACCEPTED" },
-              select: { id: true },
+              select: { id: true, passedCount: true, totalCount: true },
             }
           : false,
       },
@@ -173,7 +210,13 @@ export const getAllProblems = async (req, res, next) => {
           : p.difficulty.toLowerCase(),
       solvedPercentage:
         totalUsers > 0 ? Math.round((p.solvedCount / totalUsers) * 100) : 0,
-      isSolved: userId ? (p.submissions?.length || 0) > 0 : false,
+      isSolved: userId
+        ? (p.submissions || []).some(
+            (submission) =>
+              submission.totalCount > 0 &&
+              submission.passedCount === submission.totalCount,
+          )
+        : false,
     }));
 
     res.status(200).json({
@@ -188,20 +231,21 @@ export const getAllProblems = async (req, res, next) => {
 
 /**
  * PATCH /api/users/me/academic
- * Updates academic profile (college, batch, state, country) for rankings and filters.
+ * Updates academic profile (college, branch, batch, state, country) for rankings and filters.
  */
 export const updateAcademicProfile = async (req, res, next) => {
   try {
-    const { college, batch, state, country } = req.body;
+    const { college, branch, batch, state, country } = req.body;
 
     const data = {};
     if (college !== undefined) data.college = String(college).trim();
+    if (branch !== undefined) data.branch = String(branch).trim();
     if (batch !== undefined) data.batch = String(batch).trim();
     if (state !== undefined) data.state = String(state).trim();
     if (country !== undefined) data.country = String(country).trim();
 
     if (Object.keys(data).length === 0) {
-      throw new ApiError(400, "At least one academic field (college, batch, state, country) must be provided.");
+      throw new ApiError(400, "At least one academic field (college, branch, batch, state, country) must be provided.");
     }
 
     const user = await prisma.user.update({
@@ -212,6 +256,7 @@ export const updateAcademicProfile = async (req, res, next) => {
         name: true,
         email: true,
         college: true,
+        branch: true,
         batch: true,
         state: true,
         country: true,
