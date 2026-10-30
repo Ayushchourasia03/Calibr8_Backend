@@ -1,4 +1,5 @@
 import prisma from "../src/config/db.js";
+import { STORE_THEMES } from "../src/data/storeThemes.js";
 
 const topics = [
   // Onboarding DSA Topics
@@ -30,7 +31,20 @@ async function main() {
     });
     console.log(`  ✅ [${t.category}] ${t.slug} - ${t.name}`);
   }
-  console.log(`\n🎉 Successfully seeded ${topics.length} topics.`);
+  console.log(`🌱 Seeding ${STORE_THEMES.length} themes...`);
+  for (const theme of STORE_THEMES) {
+    await prisma.theme.upsert({
+      where: { slug: theme.slug },
+      update: {
+        name: theme.name,
+        price: theme.price,
+        previewColor: theme.previewColor,
+        isDefault: theme.isDefault,
+      },
+      create: theme,
+    });
+  }
+  console.log(`\n🎉 Successfully seeded ${topics.length} topics and ${STORE_THEMES.length} themes.`);
 }
 
 main()
