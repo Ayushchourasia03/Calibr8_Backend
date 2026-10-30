@@ -32,6 +32,21 @@ try {
     "Content-Type": "application/json",
   };
 
+  assert.deepEqual(registration.stats, {
+    rating: 800,
+    tier: "Pulse II",
+    score: 0,
+    scoreUnits: 0,
+    coins: 100,
+    streak: 0,
+    longestStreak: 0,
+  });
+
+  const authResponse = await fetch(`${baseUrl}/auth/me`, { headers });
+  const auth = await authResponse.json();
+  assert.equal(authResponse.status, 200);
+  assert.deepEqual(auth.stats, registration.stats);
+
   const overviewResponse = await fetch(`${baseUrl}/users/me/overview`, {
     headers,
   });

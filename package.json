@@ -15,6 +15,7 @@
     "test:profile": "node tests/profileApi.test.js",
     "test:problems": "node tests/problemsCatalog.test.js",
     "test:solved-count": "node tests/problemSolvedCount.test.js",
+    "test:rewards": "node tests/acceptedSubmissionReward.test.js",
     "test:testcase-results": "node tests/testcaseResults.test.js",
     "test:languages": "node tests/executionLanguages.test.js",
     "problems:sync-solved-counts": "node scripts/sync-problem-solved-counts.js",

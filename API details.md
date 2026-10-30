@@ -564,6 +564,7 @@ _Validation Rules_:
 
 - **Method & Path**: `GET /api/auth/me` (alias: `GET /api/auth/verify`)
 - **Protected**: Yes (`Authorization: Bearer <token>`)
+- **Description**: Verifies the authenticated session and returns the user plus the compact header summary. The summary is part of this existing request, so the frontend does not need a separate stats call.
 - **Success Response (200 OK)**:
 
 ```json
@@ -580,6 +581,15 @@ _Validation Rules_:
     "preferredLanguage": "python",
     "socialAccounts": [],
     "topics": []
+  },
+  "stats": {
+    "rating": 1200,
+    "tier": "Prism II",
+    "score": 0,
+    "scoreUnits": 0,
+    "coins": 100,
+    "streak": 0,
+    "longestStreak": 0
   }
 }
 ```
@@ -1580,6 +1590,8 @@ _Note_: Also accepts `problemId` in place of `slug`. Maximum code size is 64 KB.
 
 The submission is evaluated against all visible and hidden testcases. Poll the returned URL until the status is terminal. A completed response includes per-testcase `results`; visible testcase details include input and outputs, while hidden testcase details include only the testcase index, pass status, verdict, and resource usage.
 
+For an authenticated user, a fully accepted submission also returns `reward` with the server-calculated points, score and coin awards, and updated header stats. Rewards are granted once per user/problem. Points are 10/25/50 for Easy/Medium/Hard; score units are points × 10; coins are points × 2 + 10. Client-submitted mode, hints, and points do not affect rewards. If the verdict is accepted but reward persistence fails, `rewardError` is `true`; refresh the user session before displaying updated stats.
+
 ---
 
 ### 10.4 Poll Submission Status
@@ -1598,6 +1610,24 @@ The submission is evaluated against all visible and hidden testcases. Poll the r
     "problemId": "prob-1",
     "language": "python",
     "status": "ACCEPTED",
+    "verdict": "ACCEPTED",
+    "tierReached": "Tier 3 (Optimal)",
+    "reward": {
+      "awarded": true,
+      "points": 10,
+      "scoreDelta": 100,
+      "coinsEarned": 30,
+      "stats": {
+        "rating": 830,
+        "tier": "Pulse II",
+        "score": 10,
+        "scoreUnits": 100,
+        "coins": 130,
+        "streak": 1,
+        "longestStreak": 1
+      }
+    },
+    "rewardError": false,
     "passedCount": 15,
     "totalCount": 15,
     "results": [

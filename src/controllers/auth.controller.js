@@ -3,6 +3,7 @@ import { hashPassword, comparePassword } from "../utils/bcrypt.js";
 import { signToken, decodeToken } from "../utils/jwt.js";
 import { ApiError } from "../utils/ApiError.js";
 import { blacklistToken } from "../utils/tokenBlacklist.js";
+import { getUserHeaderStats } from "../utils/userHeaderStats.js";
 
 /**
  * Validate password strength:
@@ -85,6 +86,7 @@ export const register = async (req, res, next) => {
     res.status(201).json({
       success: true,
       user: safeUser,
+      stats: getUserHeaderStats(safeUser),
       token,
       isNewUser: true,
     });
@@ -134,6 +136,7 @@ export const login = async (req, res, next) => {
     res.status(200).json({
       success: true,
       user: safeUser,
+      stats: getUserHeaderStats(safeUser),
       token,
       isNewUser: false,
     });
@@ -190,6 +193,7 @@ export const refreshToken = async (req, res, next) => {
       success: true,
       token: newToken,
       user,
+      stats: getUserHeaderStats(user),
     });
   } catch (err) {
     next(err);
@@ -210,6 +214,10 @@ export const verifyAuth = async (req, res, next) => {
         name: true,
         difficulty: true,
         rating: true,
+        score: true,
+        streak: true,
+        longestStreak: true,
+        tier: true,
         coins: true,
         onboarded: true,
         preferredLanguage: true,
@@ -231,6 +239,7 @@ export const verifyAuth = async (req, res, next) => {
     res.status(200).json({
       success: true,
       user,
+      stats: getUserHeaderStats(user),
     });
   } catch (err) {
     next(err);
