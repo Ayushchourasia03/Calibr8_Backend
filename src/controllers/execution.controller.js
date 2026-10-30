@@ -8,7 +8,7 @@ import { syncProblemSolvedCount } from "../utils/problemSolvedCount.js";
 import { applyAcceptedSubmissionReward } from "../utils/acceptedSubmissionReward.js";
 import { publicTestResults } from "../utils/testcaseResults.js";
 
-const CODEBOX_URL = process.env.CODEBOX_URL || "http://187.127.173.216";
+const CODEBOX_URL = process.env.CODEBOX_URL 
 const CODEBOX_TOKEN = process.env.CODEBOX_TOKEN;
 const submissionCache = new Map();
 
