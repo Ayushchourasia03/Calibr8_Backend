@@ -34,6 +34,7 @@ model User {
   longestStreak     Int      @default(0)
 
   socialAccounts                       SocialAccount[]
+  problemProgress                      UserProblemProgress[]
   ownedThemes                          UserTheme[]
   topics                               UserTopic[]
   submissions                          Submission[]
@@ -139,7 +140,23 @@ model Problem {
   dsaTopic      DsaTopic?      @relation(fields: [dsaTopicId], references: [id])
   testcases     Testcase[]
   submissions   Submission[] // ADD THIS
+  userProgress  UserProblemProgress[]
   @@map("problems")
+}
+
+model UserProblemProgress {
+  userId        String   @map("userId")
+  problemId     String   @map("problemId")
+  points        Int
+  scoreAwarded  Int      @default(0) @map("scoreAwarded")
+  coinsAwarded  Int      @default(0) @map("coinsAwarded")
+  solvedAt      DateTime @default(now()) @map("solvedAt")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem       Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@id([userId, problemId])
+  @@index([problemId])
+  @@map("user_problem_progress")
 }
 
 model DsaTopic {

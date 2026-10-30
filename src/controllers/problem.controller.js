@@ -1,4 +1,3 @@
-import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
 import { getUserTemplate } from "../utils/codeBuilder.js";
 import { resolveProblem, listAllProblems } from "../utils/problemResolver.js";
@@ -117,87 +116,6 @@ export const getProblemStarterTemplate = async (req, res, next) => {
       success: true,
       data: { slug: problem.slug, language, template },
     });
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const addProblem = async (req, res, next) => {
-  try {
-    if (req.user?.role !== "admin") {
-      throw new ApiError(
-        403,
-        "Admin privileges required to create problems.",
-        "FORBIDDEN",
-      );
-    }
-
-    const {
-      slug,
-      title,
-      description,
-      difficulty = "Easy",
-      timeLimit = 1000,
-      memoryLimit = 256,
-      testcases = [],
-      templates = {},
-    } = req.body;
-
-    if (!slug || !title) {
-      throw new ApiError(
-        400,
-        "slug and title are required for a problem.",
-        "MISSING_FIELDS",
-      );
-    }
-
-    const existing = await prisma.problem.findUnique({ where: { slug } });
-    if (existing) {
-      throw new ApiError(
-        409,
-        `Problem with slug '${slug}' already exists.`,
-        "CONFLICT",
-      );
-    }
-
-    const formattedTestcases = testcases.map((testcase, index) => {
-      const input = String(testcase.stdinSmall ?? testcase.input ?? "");
-      return {
-        testIndex: testcase.testIndex ?? index,
-        isVisible: Boolean(testcase.isVisible),
-        stdinSmall: input,
-        expectedSmall: String(testcase.expectedSmall ?? testcase.output ?? ""),
-        sizeBytes: Buffer.byteLength(input, "utf-8"),
-        r2Key: testcase.r2Key || null,
-      };
-    });
-
-    const formattedTemplates = Array.isArray(templates)
-      ? templates
-      : Object.entries(templates).map(([language, code]) => ({
-          language,
-          code: String(code),
-        }));
-
-    const created = await prisma.problem.create({
-      data: {
-        slug,
-        title,
-        description: description || title,
-        difficulty,
-        timeLimit,
-        memoryLimit,
-        testcases: { create: formattedTestcases },
-        templates: { create: formattedTemplates },
-      },
-      include: {
-        testcases: true,
-        templates: true,
-        _count: { select: { testcases: true, templates: true } },
-      },
-    });
-
-    res.status(201).json({ success: true, data: created });
   } catch (err) {
     next(err);
   }

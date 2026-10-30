@@ -990,7 +990,7 @@
       let curriculumSubjects = [];
       let currentSubjectSlug = "dbms";
 
-      // Full Master Catalog of 45 Endpoints (excluding admin only)
+      // Full Master Catalog of 45 Endpoints
       const ALL_ENDPOINTS = [
         // System & Health
         { id: "sys-1", category: "system", method: "GET", path: "/health", auth: false, desc: "Health check reporting server uptime and status" },
@@ -1107,7 +1107,6 @@
           document.getElementById("profileDetails").innerHTML =
             "<div><strong>Name:</strong> " + escapeHtml(currentUser.name) + "</div>" +
             "<div><strong>Email:</strong> " + escapeHtml(currentUser.email) + "</div>" +
-            "<div><strong>Role:</strong> " + escapeHtml(currentUser.role || "user") + "</div>" +
             "<div><strong>Rating:</strong> <span style='color:#34d399; font-weight:bold;'>" + (currentUser.rating || 800) + "</span></div>" +
             "<div><strong>Score:</strong> " + (currentUser.score || 0) + " pts | <strong>Streak:</strong> " + (currentUser.streak || 0) + " days | <strong>Coins:</strong> " + (currentUser.coins || 100) + "</div>" +
             "<div><strong>Academic:</strong> " + escapeHtml(currentUser.college || "Not set") + " (" + escapeHtml(currentUser.batch || "N/A") + "), " + escapeHtml(currentUser.state || "") + "</div>" +

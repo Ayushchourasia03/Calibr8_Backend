@@ -5,6 +5,7 @@ import { buildFinalCode, LANGUAGE_IDS, normalizeLanguage, SUPPORTED_LANGUAGES } 
 import { resolveProblem } from "../utils/problemResolver.js";
 import { ApiError } from "../utils/ApiError.js";
 import { syncProblemSolvedCount } from "../utils/problemSolvedCount.js";
+import { applyAcceptedSubmissionReward } from "../utils/acceptedSubmissionReward.js";
 import { publicTestResults } from "../utils/testcaseResults.js";
 
 const CODEBOX_URL = process.env.CODEBOX_URL || "http://187.127.173.216";
@@ -542,6 +543,28 @@ export const submitSolution = async (req, res, next) => {
       };
 
       try {
+        let reward = null;
+        let rewardError = false;
+        const isAccepted =
+          evaluation.status === "ACCEPTED" &&
+          evaluation.totalCount > 0 &&
+          evaluation.passedCount === evaluation.totalCount;
+
+        if (userId && isAccepted) {
+          try {
+            reward = await prisma.$transaction((tx) =>
+              applyAcceptedSubmissionReward(tx, { userId, problem }),
+            );
+            rewardError = !reward;
+          } catch (rewardDbErr) {
+            rewardError = true;
+            console.error(
+              `[Submission Rewards] Failed to save rewards for submission ${submission.id}:`,
+              rewardDbErr,
+            );
+          }
+        }
+
         const dbUpdated = await prisma.submission.update({
           where: { id: submission.id },
           data: {
@@ -551,8 +574,14 @@ export const submitSolution = async (req, res, next) => {
             time: `${evaluation.maxTimeMs}ms`,
             memory: evaluation.maxMemoryKb,
           },
+          include: { problem: true },
         });
-        updated = { ...dbUpdated, ...updated };
+        updated = {
+          ...dbUpdated,
+          ...updated,
+          reward,
+          rewardError,
+        };
 
         if (
           userId &&
@@ -604,6 +633,8 @@ export const submitSolution = async (req, res, next) => {
         verdict: completed.status,
         status: completed.status,
         tierReached: completed.tierReached,
+        reward: completed.reward || null,
+        rewardError: completed.rewardError || false,
         passedCount: passed,
         totalCount: total,
         time: completed.time || `${completed.maxTimeMs}ms`,
@@ -676,12 +707,11 @@ export const getSubmissionStatus = async (req, res, next) => {
       throw new ApiError(404, "Submission not found.", "SUBMISSION_NOT_FOUND");
     }
 
-    // If authenticated user, verify ownership (allow admin or owner)
+    // Authenticated users may only inspect their own submissions.
     if (
       req.user?.id &&
       submission.userId &&
-      submission.userId !== req.user.id &&
-      req.user.role !== "admin"
+      submission.userId !== req.user.id
     ) {
       throw new ApiError(404, "Submission not found.", "SUBMISSION_NOT_FOUND");
     }
@@ -708,6 +738,8 @@ export const getSubmissionStatus = async (req, res, next) => {
         status: submission.status,
         verdict: submission.status,
         tierReached,
+        reward: submission.reward || null,
+        rewardError: submission.rewardError || false,
         passedCount: submission.passedCount,
         totalCount: submission.totalCount,
         time: submission.time || "45ms",

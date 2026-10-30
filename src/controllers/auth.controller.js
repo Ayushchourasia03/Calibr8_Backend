@@ -3,6 +3,7 @@ import { hashPassword, comparePassword } from "../utils/bcrypt.js";
 import { signToken, decodeToken } from "../utils/jwt.js";
 import { ApiError } from "../utils/ApiError.js";
 import { blacklistToken } from "../utils/tokenBlacklist.js";
+import { getUserHeaderStats } from "../utils/userHeaderStats.js";
 
 /**
  * Validate password strength:
@@ -31,7 +32,7 @@ function validatePassword(password, email) {
  */
 export const register = async (req, res, next) => {
   try {
-    const { email, password, name, role } = req.body;
+    const { email, password, name } = req.body;
 
     // 1. Validate required input fields
     if (!email || !password || !name) {
@@ -59,27 +60,12 @@ export const register = async (req, res, next) => {
     // 5. Hash password with bcrypt (10 rounds)
     const passwordHash = await hashPassword(password);
 
-    // 6. Assign role (default 'user', allow 'admin' only with valid ADMIN_SECRET if provided)
-    let assignedRole = "user";
-    if (role === "admin") {
-      const adminSecret = req.body.adminSecret || req.headers["x-admin-secret"];
-      if (adminSecret && adminSecret === process.env.ADMIN_SECRET) {
-        assignedRole = "admin";
-      } else {
-        // If no admin secret is configured in dev and it's explicitly requested
-        if (process.env.NODE_ENV !== "production" && process.env.ADMIN_SECRET === undefined) {
-          assignedRole = "admin";
-        }
-      }
-    }
-
-    // 7. Create user record in database
+    // 6. Create user record in database
     const user = await prisma.user.create({
       data: {
         email: normalizedEmail,
         passwordHash,
         name: name.trim(),
-       // role: assignedRole,
       },
       include: {
         socialAccounts: true,
@@ -91,16 +77,18 @@ export const register = async (req, res, next) => {
       },
     });
 
-    // 8. Generate authentication JWT token with jti
-    const token = signToken({ id: user.id, email: user.email, role: user.role });
+    // 7. Generate authentication JWT token with jti
+    const token = signToken({ id: user.id, email: user.email });
 
-    // 9. Strip password hash before sending
+    // 8. Strip password hash before sending
     const { passwordHash: _, ...safeUser } = user;
 
     res.status(201).json({
       success: true,
       user: safeUser,
+      stats: getUserHeaderStats(safeUser),
       token,
+      isNewUser: true,
     });
   } catch (err) {
     next(err);
@@ -141,14 +129,16 @@ export const login = async (req, res, next) => {
       throw new ApiError(401, "Invalid email or password.", "INVALID_CREDENTIALS");
     }
 
-    const token = signToken({ id: user.id, email: user.email, role: user.role || "user" });
+    const token = signToken({ id: user.id, email: user.email });
 
     const { passwordHash: _, ...safeUser } = user;
 
     res.status(200).json({
       success: true,
       user: safeUser,
+      stats: getUserHeaderStats(safeUser),
       token,
+      isNewUser: false,
     });
   } catch (err) {
     next(err);
@@ -191,7 +181,7 @@ export const refreshToken = async (req, res, next) => {
     const oldToken = req.token;
 
     // Issue fresh 1-day token
-    const newToken = signToken({ id: user.id, email: user.email, role: user.role || "user" });
+    const newToken = signToken({ id: user.id, email: user.email });
 
     // Revoke old token
     if (oldToken) {
@@ -203,6 +193,7 @@ export const refreshToken = async (req, res, next) => {
       success: true,
       token: newToken,
       user,
+      stats: getUserHeaderStats(user),
     });
   } catch (err) {
     next(err);
@@ -221,9 +212,12 @@ export const verifyAuth = async (req, res, next) => {
         id: true,
         email: true,
         name: true,
-       // role: true,
         difficulty: true,
         rating: true,
+        score: true,
+        streak: true,
+        longestStreak: true,
+        tier: true,
         coins: true,
         onboarded: true,
         preferredLanguage: true,
@@ -245,6 +239,7 @@ export const verifyAuth = async (req, res, next) => {
     res.status(200).json({
       success: true,
       user,
+      stats: getUserHeaderStats(user),
     });
   } catch (err) {
     next(err);

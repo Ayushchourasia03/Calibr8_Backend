@@ -3,21 +3,17 @@ import {
   getAllProblems,
   getProblemBySlug,
   getProblemStarterTemplate,
-  addProblem,
 } from "../controllers/problem.controller.js";
 import {
   runCode,
   submitSolution,
 } from "../controllers/execution.controller.js";
-import { protect, requireAdmin, optionalAuth } from "../middlewares/auth.middleware.js";
+import { optionalAuth } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
-// Catalog reads are public; mutations remain protected.
+// Catalog reads are public.
 router.get("/", optionalAuth, getAllProblems);
-
-// POST /api/problems - moved to /api/admin/problems; retained with strict admin-only check
-router.post("/", protect, requireAdmin, addProblem);
 
 // GET /api/problems/:slug - problem detail with visible testcases & starter templates
 router.get("/:slug", getProblemBySlug);

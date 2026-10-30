@@ -21,7 +21,7 @@ Priority tags: **P0** fix now, **P1** needed for the core loop, **P2** needed fo
 
 | # | Problem found | Why it matters | Fix |
 | --- | --- | --- | --- |
-| 1 | POST /api/problems has no auth | Anyone can create content | Admin-only role check; move to /api/admin/problems |
+| 1 | POST /api/problems exposed problem creation | Anyone could create content | Removed the problem-creation API; maintain the catalog through the seed/import workflow |
 | 2 | GET /api/execution/submissions/:id has no auth | Anyone can read other students' code | Require login; owner only; return 404 otherwise |
 | 3 | Run and Submit allow anonymous users | Every run costs judge time; nothing can be scored | Require login on both |
 | 4 | Submit is synchronous and returns only passed and total counts | The UI and scoring need tiers, points and the strict multiplier | Make it asynchronous (202, then poll) with tier fields (section 6.2) |
@@ -87,7 +87,7 @@ These are the extra changes found by comparing the two.
 
 | Table or change | Key fields | Needed by |
 | --- | --- | --- |
-| users (extend) | role, timeZone, handle, avatarType, avatarValue, collegeId, collegeVerified, branch, batchYear, state, privacy | Profile, rankings, admin |
+| users (extend) | timeZone, handle, avatarType, avatarValue, collegeId, collegeVerified, branch, batchYear, state, privacy | Profile, rankings |
 | topics (canonical) | slug, name, area, order, isActive | Everything |
 | user\_topics | userId, topicId, level, rating, ratingDeviation, solves | Rating, daily |
 | rating\_events | userId, topicId, before, after, problemId, result, at | Rating graph |
@@ -109,7 +109,6 @@ These are the extra changes found by comparing the two.
 | friendships | userId, friendId | Friends board |
 | share\_assets | type, status, url | Sharing |
 | store\_items, purchases, payments | price, gateway reference | Store |
-| problem\_reports, admin\_audit\_log | reason, status; actor, action | Content and admin |
 
 ## 6. API specifications
 

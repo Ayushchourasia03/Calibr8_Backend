@@ -2,6 +2,33 @@ import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
 import { getSuccessfulSubmissionActivity } from "../utils/successfulSubmissionActivity.js";
 
+async function getActivitySummary(userId) {
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - 371);
+
+  const submissions = await prisma.submission.findMany({
+    where: {
+      userId,
+      status: { equals: "ACCEPTED", mode: "insensitive" },
+      totalCount: { gt: 0 },
+      createdAt: { gte: since },
+    },
+    select: {
+      createdAt: true,
+      passedCount: true,
+      totalCount: true,
+      status: true,
+    },
+  });
+
+  const activity = getSuccessfulSubmissionActivity(submissions);
+  return {
+    activity,
+    total: Object.values(activity).reduce((sum, count) => sum + count, 0),
+    activeDays: Object.keys(activity).length,
+  };
+}
+
 /**
  * GET /api/users/me
  * Returns the authenticated user's profile details with topics and preferences.
@@ -50,35 +77,64 @@ export const getMe = async (req, res, next) => {
 };
 
 /**
+ * GET /api/users/me/overview
+ * Returns profile details and successful submission activity for the profile page.
+ */
+export const getProfileOverview = async (req, res, next) => {
+  try {
+    const [user, activitySummary] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          difficulty: true,
+          rating: true,
+          score: true,
+          streak: true,
+          strictPercent: true,
+          tier: true,
+          college: true,
+          branch: true,
+          batch: true,
+          state: true,
+          country: true,
+          coins: true,
+          onboarded: true,
+          preferredLanguage: true,
+          createdAt: true,
+          updatedAt: true,
+          socialAccounts: true,
+          topics: { include: { topic: true } },
+        },
+      }),
+      getActivitySummary(req.user.id),
+    ]);
+
+    if (!user) {
+      throw new ApiError(404, "User not found.");
+    }
+
+    res.status(200).json({
+      success: true,
+      user,
+      ...activitySummary,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * GET /api/users/me/activity
  * Returns daily counts of fully accepted code submissions from the past year.
  */
 export const getMyActivity = async (req, res, next) => {
   try {
-    const since = new Date();
-    since.setUTCDate(since.getUTCDate() - 371);
-
-    const submissions = await prisma.submission.findMany({
-      where: {
-        userId: req.user.id,
-        status: { equals: "ACCEPTED", mode: "insensitive" },
-        totalCount: { gt: 0 },
-        createdAt: { gte: since },
-      },
-      select: {
-        createdAt: true,
-        passedCount: true,
-        totalCount: true,
-        status: true,
-      },
-    });
-
-    const activity = getSuccessfulSubmissionActivity(submissions);
     res.status(200).json({
       success: true,
-      activity,
-      total: Object.values(activity).reduce((sum, count) => sum + count, 0),
-      activeDays: Object.keys(activity).length,
+      ...(await getActivitySummary(req.user.id)),
     });
   } catch (err) {
     next(err);
@@ -224,6 +280,70 @@ export const getAllProblems = async (req, res, next) => {
       data,
       message: "Problems fetched successfully",
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * PATCH /api/users/me
+ * Updates the editable fields shown on the profile page in one request.
+ */
+export const updateProfile = async (req, res, next) => {
+  try {
+    const { name, college, branch, batch, state, country } = req.body;
+    const data = {};
+
+    if (name !== undefined) {
+      if (typeof name !== "string" || !name.trim()) {
+        throw new ApiError(400, "Name cannot be empty.");
+      }
+      data.name = name.trim();
+    }
+
+    for (const [field, value] of Object.entries({
+      college,
+      branch,
+      batch,
+      state,
+      country,
+    })) {
+      if (value !== undefined) data[field] = String(value ?? "").trim();
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw new ApiError(400, "At least one profile field must be provided.");
+    }
+
+    const user = await prisma.user.update({
+      where: { id: req.user.id },
+      data,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        difficulty: true,
+        rating: true,
+        score: true,
+        streak: true,
+        strictPercent: true,
+        tier: true,
+        college: true,
+        branch: true,
+        batch: true,
+        state: true,
+        country: true,
+        coins: true,
+        onboarded: true,
+        preferredLanguage: true,
+        createdAt: true,
+        updatedAt: true,
+        socialAccounts: true,
+        topics: { include: { topic: true } },
+      },
+    });
+
+    res.status(200).json({ success: true, user });
   } catch (err) {
     next(err);
   }

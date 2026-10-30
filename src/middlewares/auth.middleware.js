@@ -36,9 +36,12 @@ export const protect = async (req, res, next) => {
           id: true,
           email: true,
           name: true,
-          role: true,
           difficulty: true,
           rating: true,
+          score: true,
+          streak: true,
+          longestStreak: true,
+          tier: true,
           coins: true,
           onboarded: true,
           preferredLanguage: true,
@@ -68,9 +71,9 @@ export const protect = async (req, res, next) => {
             id: decoded.id,
             email: decoded.email || `${decoded.id}@calibr8.dev`,
             name: decoded.name || 'Calibr8 Developer',
-            role: decoded.role || 'user',
             difficulty: 'easy',
             rating: 800,
+            longestStreak: 0,
             coins: 100,
             score: 0,
             streak: 0,
@@ -93,9 +96,12 @@ export const protect = async (req, res, next) => {
           id: decoded.id,
           email: decoded.email || `${decoded.id}@calibr8.dev`,
           name: decoded.name || 'Calibr8 Developer',
-          role: decoded.role || 'user',
           coins: 100,
           rating: 800,
+          score: 0,
+          streak: 0,
+          longestStreak: 0,
+          tier: 'Prism I',
           difficulty: 'easy',
           onboarded: false,
           preferredLanguage: 'cpp',
@@ -117,23 +123,6 @@ export const protect = async (req, res, next) => {
     }
     next(err);
   }
-};
-
-/**
- * Admin-only role check middleware.
- * Must be placed after protect.
- */
-export const requireAdmin = (req, res, next) => {
-  if (!req.user) {
-    return next(new ApiError(401, 'Authentication required.', 'UNAUTHORIZED'));
-  }
-
-  const role = req.user.role || 'user';
-  if (role !== 'admin') {
-    return next(new ApiError(403, 'Admin privileges required. Access denied.', 'FORBIDDEN'));
-  }
-
-  next();
 };
 
 /**
@@ -166,7 +155,6 @@ export const optionalAuth = async (req, res, next) => {
         id: decoded.id,
         email: decoded.email || `${decoded.id}@calibr8.dev`,
         name: decoded.name || 'Calibr8 User',
-        role: decoded.role || 'user',
       };
     }
 

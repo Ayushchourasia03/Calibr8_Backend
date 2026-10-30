@@ -75,7 +75,6 @@ Every error emitted by the backend (4xx and 5xx) strictly adheres to this struct
 | `401 Unauthorized`      | `TOKEN_EXPIRED`         | JWT has passed its `exp` claim                                                 |
 | `401 Unauthorized`      | `USER_NOT_FOUND`        | User ID encoded in JWT token no longer exists in DB                            |
 | `403 Forbidden`         | `FORBIDDEN`             | Access denied (e.g., trying to apply an unowned theme)                         |
-| `403 Forbidden`         | `ADMIN_REQUIRED`        | Administrative credentials required for endpoint                               |
 | `404 Not Found`         | `NOT_FOUND`             | Problem, study topic, chapter, subject, or theme not found                     |
 | `404 Not Found`         | `SUBMISSION_NOT_FOUND`  | Submission ID does not exist or belongs to another user (anti-leak protection) |
 | `409 Conflict`          | `EMAIL_ALREADY_EXISTS`  | Registration email is already associated with an account                       |
@@ -110,7 +109,6 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: "user" | "admin";
   difficulty: UserDifficulty | null;
   rating: number;
   score: number;
@@ -481,7 +479,6 @@ export async function apiClient<T>(
   "email": "student@example.com",
   "password": "StrongPassword123",
   "name": "Alex Mercer",
-  "role": "user"
 }
 ```
 
@@ -490,7 +487,6 @@ _Validation Rules_:
 - `email`: Required, valid email string. Normalized to lowercase.
 - `password`: Required, 8–72 characters, must not match email (case-insensitive).
 - `name`: Required, non-empty string.
-- `role`: Optional (`user` default). If `admin` is supplied, `ADMIN_SECRET` must be set in environment.
 - **Success Response (201 Created)**:
 
 ```json
@@ -498,11 +494,11 @@ _Validation Rules_:
   "success": true,
   "message": "User registered successfully.",
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "isNewUser": true,
   "user": {
     "id": "u-45a8-bc91-2309",
     "email": "student@example.com",
     "name": "Alex Mercer",
-    "role": "user",
     "difficulty": null,
     "rating": 800,
     "score": 0,
@@ -543,11 +539,11 @@ _Validation Rules_:
   "success": true,
   "message": "Login successful.",
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "isNewUser": false,
   "user": {
     "id": "u-45a8-bc91-2309",
     "email": "student@example.com",
     "name": "Alex Mercer",
-    "role": "user",
     "difficulty": "medium",
     "rating": 1200,
     "score": 450,
@@ -568,6 +564,7 @@ _Validation Rules_:
 
 - **Method & Path**: `GET /api/auth/me` (alias: `GET /api/auth/verify`)
 - **Protected**: Yes (`Authorization: Bearer <token>`)
+- **Description**: Verifies the authenticated session and returns the user plus the compact header summary. The summary is part of this existing request, so the frontend does not need a separate stats call.
 - **Success Response (200 OK)**:
 
 ```json
@@ -577,7 +574,6 @@ _Validation Rules_:
     "id": "u-45a8-bc91-2309",
     "email": "student@example.com",
     "name": "Alex Mercer",
-    "role": "user",
     "difficulty": "medium",
     "rating": 1200,
     "coins": 100,
@@ -585,6 +581,15 @@ _Validation Rules_:
     "preferredLanguage": "python",
     "socialAccounts": [],
     "topics": []
+  },
+  "stats": {
+    "rating": 1200,
+    "tier": "Prism II",
+    "score": 0,
+    "scoreUnits": 0,
+    "coins": 100,
+    "streak": 0,
+    "longestStreak": 0
   }
 }
 ```
@@ -840,6 +845,61 @@ _Valid values_: `cpp`, `c`, `java`, `python`, `javascript`.
   "activeDays": 2
 }
 ```
+
+### Profile Page Combined Endpoints
+
+The profile page uses the following combined endpoints to reduce network requests.
+
+#### Get Profile Overview
+
+- **Method & Path**: `GET /api/users/me/overview`
+- **Protected**: Yes (`Authorization: Bearer <token>`)
+- **Description**: Returns the authenticated user's profile and daily successful submission activity from the past 371 days.
+- **Success Response (200 OK)**:
+
+```json
+{
+  "success": true,
+  "user": {
+    "id": "u-45a8-bc91-2309",
+    "email": "student@example.com",
+    "name": "Alex Mercer",
+    "college": "AKGEC",
+    "branch": "CSE",
+    "batch": "2026",
+    "state": "UP",
+    "country": "India",
+    "socialAccounts": [],
+    "topics": []
+  },
+  "activity": {
+    "2026-10-28": 2,
+    "2026-10-29": 1
+  },
+  "total": 3,
+  "activeDays": 2
+}
+```
+
+#### Save Profile
+
+- **Method & Path**: `PATCH /api/users/me`
+- **Protected**: Yes (`Authorization: Bearer <token>`)
+- **Description**: Updates profile name and academic fields together. Send at least one field. Name, when provided, must not be empty.
+- **Request Body**:
+
+```json
+{
+  "name": "Alex Mercer",
+  "college": "AKGEC",
+  "branch": "CSE",
+  "batch": "2026",
+  "state": "UP",
+  "country": "India"
+}
+```
+
+- **Success Response (200 OK)**: `{ "success": true, "user": { ... } }`, with the updated user profile.
 
 ---
 
@@ -1530,6 +1590,8 @@ _Note_: Also accepts `problemId` in place of `slug`. Maximum code size is 64 KB.
 
 The submission is evaluated against all visible and hidden testcases. Poll the returned URL until the status is terminal. A completed response includes per-testcase `results`; visible testcase details include input and outputs, while hidden testcase details include only the testcase index, pass status, verdict, and resource usage.
 
+For an authenticated user, a fully accepted submission also returns `reward` with the server-calculated points, score and coin awards, and updated header stats. Rewards are granted once per user/problem. Points are 10/25/50 for Easy/Medium/Hard; score units are points × 10; coins are points × 2 + 10. Client-submitted mode, hints, and points do not affect rewards. If the verdict is accepted but reward persistence fails, `rewardError` is `true`; refresh the user session before displaying updated stats.
+
 ---
 
 ### 10.4 Poll Submission Status
@@ -1548,6 +1610,24 @@ The submission is evaluated against all visible and hidden testcases. Poll the r
     "problemId": "prob-1",
     "language": "python",
     "status": "ACCEPTED",
+    "verdict": "ACCEPTED",
+    "tierReached": "Tier 3 (Optimal)",
+    "reward": {
+      "awarded": true,
+      "points": 10,
+      "scoreDelta": 100,
+      "coinsEarned": 30,
+      "stats": {
+        "rating": 830,
+        "tier": "Pulse II",
+        "score": 10,
+        "scoreUnits": 100,
+        "coins": 130,
+        "streak": 1,
+        "longestStreak": 1
+      }
+    },
+    "rewardError": false,
     "passedCount": 15,
     "totalCount": 15,
     "results": [

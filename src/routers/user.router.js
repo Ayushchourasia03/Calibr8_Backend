@@ -1,8 +1,10 @@
 import { Router } from "express";
 import {
   getMe,
+  getProfileOverview,
   getMyActivity,
   updateMe,
+  updateProfile,
   updateLanguage,
   getAllProblems,
   updateAcademicProfile,
@@ -12,9 +14,11 @@ import { protect } from "../middlewares/auth.middleware.js";
 const router = Router();
 
 // Authenticated profile management
+router.get("/me/overview", protect, getProfileOverview);
 router.get("/me", protect, getMe);
 router.get("/me/activity", protect, getMyActivity);
 router.put("/me", protect, updateMe);
+router.patch("/me", protect, updateProfile);
 router.patch("/me/language", protect, updateLanguage);
 router.patch("/me/academic", protect, updateAcademicProfile);
 

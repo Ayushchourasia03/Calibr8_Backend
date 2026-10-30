@@ -51,6 +51,7 @@ class InMemoryStore {
     this.themes = new Map();
     this.userThemes = new Map();
     this.submissions = new Map();
+    this.userProblemProgress = new Map();
     this.studySubjects = [];
     this.studyChapters = [];
     this.studyTopics = [];
@@ -286,6 +287,11 @@ function createModelProxy(modelName) {
       if (modelName === "submission") {
         return [...store.submissions.values()];
       }
+      if (modelName === "userProblemProgress") {
+        return [...store.userProblemProgress.values()].filter(
+          (progress) => !where.userId || progress.userId === where.userId,
+        );
+      }
       return [];
     },
 
@@ -302,10 +308,10 @@ function createModelProxy(modelName) {
           coins: data.coins ?? 100,
           score: data.score ?? 0,
           streak: data.streak ?? 0,
-          longestStreak: data.longestStreak ?? 0,
-          lastStreakDate: data.lastStreakDate ?? null,
           strictPercent: 0,
           tier: "Prism I",
+          longestStreak: data.longestStreak ?? 0,
+          lastStreakDate: data.lastStreakDate ?? null,
           onboarded: false,
           preferredLanguage: data.preferredLanguage || "cpp",
           createdAt: new Date(),
@@ -332,11 +338,30 @@ function createModelProxy(modelName) {
       return { id: `item-${Date.now()}`, ...data };
     },
 
+    async createMany({ data = [], skipDuplicates = false } = {}) {
+      if (modelName !== "userProblemProgress") return { count: 0 };
+      let count = 0;
+      for (const record of data) {
+        const key = `${record.userId}_${record.problemId}`;
+        if (skipDuplicates && store.userProblemProgress.has(key)) continue;
+        store.userProblemProgress.set(key, { ...record });
+        count += 1;
+      }
+      return { count };
+    },
+
     async update({ where, data, include } = {}) {
       if (modelName === "user") {
         for (const u of store.users.values()) {
           if (where.id && u.id === where.id) {
-            Object.assign(u, data, { updatedAt: new Date() });
+            for (const [key, value] of Object.entries(data)) {
+              if (value && typeof value === "object" && "increment" in value) {
+                u[key] = (u[key] || 0) + value.increment;
+              } else {
+                u[key] = value;
+              }
+            }
+            u.updatedAt = new Date();
             return formatUser(u, include);
           }
         }
@@ -394,9 +419,14 @@ function createModelProxy(modelName) {
       return {};
     },
 
-    async count() {
+    async count({ where = {} } = {}) {
       if (modelName === "user") return store.users.size;
       if (modelName === "topic") return store.topics.size;
+      if (modelName === "userProblemProgress") {
+        return [...store.userProblemProgress.values()].filter(
+          (progress) => !where.userId || progress.userId === where.userId,
+        ).length;
+      }
       return 0;
     },
   };
