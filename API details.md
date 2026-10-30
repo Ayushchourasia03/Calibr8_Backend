@@ -1590,7 +1590,7 @@ _Note_: Also accepts `problemId` in place of `slug`. Maximum code size is 64 KB.
 
 The submission is evaluated against all visible and hidden testcases. Poll the returned URL until the status is terminal. A completed response includes per-testcase `results`; visible testcase details include input and outputs, while hidden testcase details include only the testcase index, pass status, verdict, and resource usage.
 
-For an authenticated user, a fully accepted submission also returns `reward` with the server-calculated points, score and coin awards, and updated header stats. Rewards are granted once per user/problem. Points are 10/25/50 for Easy/Medium/Hard; score units are points × 10; coins are points × 2 + 10. Client-submitted mode, hints, and points do not affect rewards. If the verdict is accepted but reward persistence fails, `rewardError` is `true`; refresh the user session before displaying updated stats.
+For an authenticated user, a fully accepted submission also returns `reward` with the server-calculated points, score and coin awards, and updated header stats. Rewards are granted once per user/problem. Points are 10/25/50 for Easy/Medium/Hard; score units are points × 10; coins are points × 2 + 10. Streaks update at most once per UTC day for any fully accepted submission, including repeat solves that do not earn another reward. Client-submitted mode, hints, and points do not affect rewards. If the verdict is accepted but reward persistence fails, `rewardError` is `true`; refresh the user session before displaying updated stats.
 
 ---
 

@@ -48,6 +48,16 @@ export async function applyAcceptedSubmissionReward(
 
   if (!user) return null;
 
+  const lastSolvedDay = user.lastStreakDate
+    ? utcDay(new Date(user.lastStreakDate))
+    : null;
+  const currentDay = utcDay(now);
+  const streak = lastSolvedDay === currentDay
+    ? user.streak
+    : lastSolvedDay === currentDay - 86400000
+      ? user.streak + 1
+      : 1;
+  const longestStreak = Math.max(user.longestStreak || 0, streak);
   const inserted = await tx.userProblemProgress.createMany({
     data: [
       {
@@ -63,12 +73,23 @@ export async function applyAcceptedSubmissionReward(
   });
 
   if (inserted.count === 0) {
+    const updatedUser =
+      lastSolvedDay === currentDay
+        ? user
+        : await tx.user.update({
+            where: { id: userId },
+            data: {
+              streak,
+              longestStreak,
+              lastStreakDate: now,
+            },
+          });
     return {
       awarded: false,
       points: 0,
       scoreDelta: 0,
       coinsEarned: 0,
-      stats: getUserHeaderStats(user),
+      stats: getUserHeaderStats(updatedUser),
     };
   }
 
@@ -86,17 +107,6 @@ export async function applyAcceptedSubmissionReward(
     Math.round(user.rating + kFactor * (1 - expected)),
   );
 
-  const lastSolvedDay = user.lastStreakDate
-    ? utcDay(new Date(user.lastStreakDate))
-    : null;
-  const currentDay = utcDay(now);
-  const nextStreak =
-    lastSolvedDay === currentDay
-      ? user.streak
-      : lastSolvedDay === currentDay - 86400000
-        ? user.streak + 1
-        : 1;
-  const longestStreak = Math.max(user.longestStreak || 0, nextStreak);
   const updatedUser = await tx.user.update({
     where: { id: userId },
     data: {
@@ -104,7 +114,7 @@ export async function applyAcceptedSubmissionReward(
       coins: { increment: coinsAwarded },
       rating,
       tier: getTier(rating),
-      streak: nextStreak,
+      streak,
       longestStreak,
       lastStreakDate: now,
     },
