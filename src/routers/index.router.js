@@ -10,7 +10,6 @@ import problemRouter from "./problem.router.js";
 import studyRouter from "./study.router.js";
 import executionRouter from "./execution.router.js";
 import themeRouter from "./theme.router.js";
-import adminRouter from "./admin.router.js";
 import rankingRouter from "./ranking.router.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -39,7 +38,6 @@ router.use("/api/social", socialRouter);
 router.use("/api/study", studyRouter);
 
 router.use("/api/themes", themeRouter);
-router.use("/api/admin", adminRouter);
 router.use("/api/rankings", rankingRouter);
 router.use('/api/execution', executionRouter);
 router.use('/api/execute', executionRouter);
@@ -66,11 +64,9 @@ router.get("/", (req, res) => {
         "Problem Catalogue (161 coding problems with testcases & multi-language starter templates)",
         "Code Execution Sandbox Runner & Submissions with Tier Evaluation",
         "GitHub OAuth Account Linking",
-        "Admin Problem Management",
       ],
       apiGroups: {
         auth: "/api/auth",
-        admin: "/api/admin",
         users: "/api/users",
         topics: "/api/topics",
         onboarding: "/api/onboarding",
@@ -95,6 +91,8 @@ router.get("/", (req, res) => {
         { method: "POST", path: "/api/auth/change-password", description: "Change user password (Protected)" },
         { method: "GET", path: "/api/users/me", description: "Get authenticated profile (Protected)" },
         { method: "PUT", path: "/api/users/me", description: "Update profile name (Protected)" },
+        { method: "GET", path: "/api/users/me/overview", description: "Get profile details and successful submission activity (Protected)" },
+        { method: "PATCH", path: "/api/users/me", description: "Update profile name and academic fields (Protected)" },
         { method: "PATCH", path: "/api/users/me/language", description: "Update preferred programming language (Protected)" },
         { method: "PATCH", path: "/api/users/me/academic", description: "Update academic profile (college, branch, batch, state, country) (Protected)" },
         { method: "GET", path: "/api/users/me/activity", description: "Get daily fully accepted submission counts (Protected)" },
@@ -111,8 +109,6 @@ router.get("/", (req, res) => {
         { method: "PATCH", path: "/api/onboarding/language", description: "Update language preference (Protected)" },
         { method: "GET", path: "/api/problems", description: "List problems with difficulty, topic, search & solve-status filters (Optional auth)" },
         { method: "GET", path: "/api/problems/:slug", description: "Get problem details with visible testcases & starter templates (Public)" },
-        { method: "POST", path: "/api/admin/problems", description: "Create a problem definition (Admin only)" },
-        { method: "POST", path: "/api/problems", description: "Legacy alias for problem creation (Admin only)" },
         { method: "GET", path: "/api/execution/languages", description: "Get supported languages (Protected)" },
         { method: "POST", path: "/api/execution/runs", description: "Run visible sample testcases with student stdout capture (Protected)" },
         { method: "POST", path: "/api/execution/submissions", description: "Asynchronous tiered submission evaluation - 202 Accepted (Protected)" },

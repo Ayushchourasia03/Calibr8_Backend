@@ -75,7 +75,6 @@ Every error emitted by the backend (4xx and 5xx) strictly adheres to this struct
 | `401 Unauthorized`      | `TOKEN_EXPIRED`         | JWT has passed its `exp` claim                                                 |
 | `401 Unauthorized`      | `USER_NOT_FOUND`        | User ID encoded in JWT token no longer exists in DB                            |
 | `403 Forbidden`         | `FORBIDDEN`             | Access denied (e.g., trying to apply an unowned theme)                         |
-| `403 Forbidden`         | `ADMIN_REQUIRED`        | Administrative credentials required for endpoint                               |
 | `404 Not Found`         | `NOT_FOUND`             | Problem, study topic, chapter, subject, or theme not found                     |
 | `404 Not Found`         | `SUBMISSION_NOT_FOUND`  | Submission ID does not exist or belongs to another user (anti-leak protection) |
 | `409 Conflict`          | `EMAIL_ALREADY_EXISTS`  | Registration email is already associated with an account                       |
@@ -110,7 +109,6 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: "user" | "admin";
   difficulty: UserDifficulty | null;
   rating: number;
   score: number;
@@ -481,7 +479,6 @@ export async function apiClient<T>(
   "email": "student@example.com",
   "password": "StrongPassword123",
   "name": "Alex Mercer",
-  "role": "user"
 }
 ```
 
@@ -490,7 +487,6 @@ _Validation Rules_:
 - `email`: Required, valid email string. Normalized to lowercase.
 - `password`: Required, 8–72 characters, must not match email (case-insensitive).
 - `name`: Required, non-empty string.
-- `role`: Optional (`user` default). If `admin` is supplied, `ADMIN_SECRET` must be set in environment.
 - **Success Response (201 Created)**:
 
 ```json
@@ -498,11 +494,11 @@ _Validation Rules_:
   "success": true,
   "message": "User registered successfully.",
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "isNewUser": true,
   "user": {
     "id": "u-45a8-bc91-2309",
     "email": "student@example.com",
     "name": "Alex Mercer",
-    "role": "user",
     "difficulty": null,
     "rating": 800,
     "score": 0,
@@ -543,11 +539,11 @@ _Validation Rules_:
   "success": true,
   "message": "Login successful.",
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "isNewUser": false,
   "user": {
     "id": "u-45a8-bc91-2309",
     "email": "student@example.com",
     "name": "Alex Mercer",
-    "role": "user",
     "difficulty": "medium",
     "rating": 1200,
     "score": 450,
@@ -577,7 +573,6 @@ _Validation Rules_:
     "id": "u-45a8-bc91-2309",
     "email": "student@example.com",
     "name": "Alex Mercer",
-    "role": "user",
     "difficulty": "medium",
     "rating": 1200,
     "coins": 100,
@@ -840,6 +835,61 @@ _Valid values_: `cpp`, `c`, `java`, `python`, `javascript`.
   "activeDays": 2
 }
 ```
+
+### Profile Page Combined Endpoints
+
+The profile page uses the following combined endpoints to reduce network requests.
+
+#### Get Profile Overview
+
+- **Method & Path**: `GET /api/users/me/overview`
+- **Protected**: Yes (`Authorization: Bearer <token>`)
+- **Description**: Returns the authenticated user's profile and daily successful submission activity from the past 371 days.
+- **Success Response (200 OK)**:
+
+```json
+{
+  "success": true,
+  "user": {
+    "id": "u-45a8-bc91-2309",
+    "email": "student@example.com",
+    "name": "Alex Mercer",
+    "college": "AKGEC",
+    "branch": "CSE",
+    "batch": "2026",
+    "state": "UP",
+    "country": "India",
+    "socialAccounts": [],
+    "topics": []
+  },
+  "activity": {
+    "2026-10-28": 2,
+    "2026-10-29": 1
+  },
+  "total": 3,
+  "activeDays": 2
+}
+```
+
+#### Save Profile
+
+- **Method & Path**: `PATCH /api/users/me`
+- **Protected**: Yes (`Authorization: Bearer <token>`)
+- **Description**: Updates profile name and academic fields together. Send at least one field. Name, when provided, must not be empty.
+- **Request Body**:
+
+```json
+{
+  "name": "Alex Mercer",
+  "college": "AKGEC",
+  "branch": "CSE",
+  "batch": "2026",
+  "state": "UP",
+  "country": "India"
+}
+```
+
+- **Success Response (200 OK)**: `{ "success": true, "user": { ... } }`, with the updated user profile.
 
 ---
 

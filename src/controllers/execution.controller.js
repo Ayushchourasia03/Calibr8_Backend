@@ -676,12 +676,11 @@ export const getSubmissionStatus = async (req, res, next) => {
       throw new ApiError(404, "Submission not found.", "SUBMISSION_NOT_FOUND");
     }
 
-    // If authenticated user, verify ownership (allow admin or owner)
+    // Authenticated users may only inspect their own submissions.
     if (
       req.user?.id &&
       submission.userId &&
-      submission.userId !== req.user.id &&
-      req.user.role !== "admin"
+      submission.userId !== req.user.id
     ) {
       throw new ApiError(404, "Submission not found.", "SUBMISSION_NOT_FOUND");
     }

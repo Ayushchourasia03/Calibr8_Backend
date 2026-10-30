@@ -297,7 +297,6 @@ function createModelProxy(modelName) {
           email: data.email,
           passwordHash: data.passwordHash,
           name: data.name,
-          role: data.role || "user",
           difficulty: data.difficulty || "Easy",
           rating: data.rating || 800,
           coins: data.coins || 100,
