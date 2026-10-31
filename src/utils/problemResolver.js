@@ -280,41 +280,41 @@ export async function listAllProblems({
     ]),
   );
   if (problemIds.length > 0) {
-    const submissionGroups = await prisma.submission.groupBy({
-      by: ["problemId", "status", "passedCount", "totalCount"],
-      where: { problemId: { in: problemIds } },
-      _count: { _all: true },
-    });
+    const [submissionGroups, solvedSubmissions] = await Promise.all([
+      prisma.submission.groupBy({
+        by: ["problemId", "status"],
+        where: { problemId: { in: problemIds } },
+        _count: { _all: true },
+      }),
+      userId
+        ? prisma.submission.groupBy({
+            by: ["problemId"],
+            where: {
+              userId,
+              problemId: { in: problemIds },
+              status: { equals: "ACCEPTED", mode: "insensitive" },
+              totalCount: { gt: 0 },
+            },
+            _count: { _all: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
     for (const group of submissionGroups) {
       const current = submissionsByProblem.get(group.problemId) || {
         accepted: 0,
         total: 0,
       };
       current.total += group._count._all;
-      if (
-        String(group.status).toUpperCase() === "ACCEPTED" &&
-        group.totalCount > 0 &&
-        group.passedCount === group.totalCount
-      ) {
+      if (String(group.status).toUpperCase() === "ACCEPTED") {
         current.accepted += group._count._all;
       }
       submissionsByProblem.set(group.problemId, current);
     }
 
     if (userId) {
-      const solvedSubmissions = await prisma.submission.findMany({
-        where: {
-          userId,
-          problemId: { in: problemIds },
-          status: { equals: "ACCEPTED", mode: "insensitive" },
-          totalCount: { gt: 0 },
-        },
-        select: { problemId: true, passedCount: true, totalCount: true },
-      });
       solvedProblemIds = new Set(
-        solvedSubmissions
-          .filter(({ passedCount, totalCount }) => passedCount === totalCount)
-          .map(({ problemId }) => problemId),
+        solvedSubmissions.map(({ problemId }) => problemId),
       );
     }
   }

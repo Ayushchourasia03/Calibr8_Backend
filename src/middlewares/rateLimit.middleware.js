@@ -1,4 +1,4 @@
-import { ApiError } from '../utils/ApiError.js';
+import { ApiError } from "../utils/ApiError.js";
 
 /**
  * Creates an in-memory sliding window rate limiter middleware.
@@ -13,22 +13,25 @@ export function createRateLimiter(options) {
   const {
     windowMs = 60 * 1000,
     max = 60,
-    keyGenerator = (req) => req.ip || req.connection.remoteAddress || 'unknown',
-    message = 'Too many requests. Please wait a moment before trying again.',
-    code = 'RATE_LIMITED',
+    keyGenerator = (req) => req.ip || req.connection.remoteAddress || "unknown",
+    message = "Too many requests. Please wait a moment before trying again.",
+    code = "RATE_LIMITED",
   } = options;
 
   const hits = new Map();
 
   // Periodic cleanup of stale entries every 60 seconds
-  setInterval(() => {
-    const now = Date.now();
-    for (const [key, record] of hits.entries()) {
-      if (now > record.resetTime) {
-        hits.delete(key);
+  setInterval(
+    () => {
+      const now = Date.now();
+      for (const [key, record] of hits.entries()) {
+        if (now > record.resetTime) {
+          hits.delete(key);
+        }
       }
-    }
-  }, Math.min(windowMs, 60000)).unref?.();
+    },
+    Math.min(windowMs, 60000),
+  ).unref?.();
 
   return (req, res, next) => {
     const key = keyGenerator(req);
@@ -48,13 +51,15 @@ export function createRateLimiter(options) {
     const remaining = Math.max(0, max - record.count);
     const resetSeconds = Math.ceil((record.resetTime - now) / 1000);
 
-    res.setHeader('X-RateLimit-Limit', max);
-    res.setHeader('X-RateLimit-Remaining', remaining);
-    res.setHeader('X-RateLimit-Reset', resetSeconds);
+    res.setHeader("X-RateLimit-Limit", max);
+    res.setHeader("X-RateLimit-Remaining", remaining);
+    res.setHeader("X-RateLimit-Reset", resetSeconds);
 
     if (record.count > max) {
-      res.setHeader('Retry-After', resetSeconds);
-      return next(new ApiError(429, message, code, { retryAfterSeconds: resetSeconds }));
+      res.setHeader("Retry-After", resetSeconds);
+      return next(
+        new ApiError(429, message, code, { retryAfterSeconds: resetSeconds }),
+      );
     }
 
     next();
@@ -68,9 +73,10 @@ export function createRateLimiter(options) {
 export const authLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 30,
-  keyGenerator: (req) => `auth:${req.ip || 'ip'}`,
-  message: 'Too many login or registration attempts. Please try again in a few minutes.',
-  code: 'AUTH_RATE_LIMITED',
+  keyGenerator: (req) => `auth:${req.ip || "ip"}`,
+  message:
+    "Too many login or registration attempts. Please try again in a few minutes.",
+  code: "AUTH_RATE_LIMITED",
 });
 
 /**
@@ -81,8 +87,9 @@ export const runLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   max: 10,
   keyGenerator: (req) => `run:${req.user?.id || req.ip}`,
-  message: 'Run rate limit exceeded. You can perform at most 10 runs per minute.',
-  code: 'RATE_LIMITED',
+  message:
+    "Run rate limit exceeded. You can perform at most 10 runs per minute.",
+  code: "RATE_LIMITED",
 });
 
 /**
@@ -93,8 +100,9 @@ export const submitLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   max: 6,
   keyGenerator: (req) => `submit:${req.user?.id || req.ip}`,
-  message: 'Submission rate limit exceeded. You can submit at most 6 times per minute.',
-  code: 'RATE_LIMITED',
+  message:
+    "Submission rate limit exceeded. You can submit at most 6 times per minute.",
+  code: "RATE_LIMITED",
 });
 
 // Track concurrent in-flight jobs per user (cap at 2 in flight)
@@ -104,26 +112,49 @@ const activeJobsPerUser = new Map();
  * Enforces maximum 2 jobs in flight per user.
  */
 export const inFlightLimiter = (req, res, next) => {
-  const userId = req.user?.id;
-  if (!userId) return next();
+  const identity = req.user?.id
+    ? `user:${req.user.id}`
+    : `ip:${req.ip || req.connection.remoteAddress || "unknown"}`;
 
-  const currentCount = activeJobsPerUser.get(userId) || 0;
+  const currentCount = activeJobsPerUser.get(identity) || 0;
   if (currentCount >= 2) {
-    return next(new ApiError(429, 'Maximum 2 code execution jobs in flight simultaneously.', 'RATE_LIMITED'));
+    return next(
+      new ApiError(
+        429,
+        "Maximum 2 code execution jobs in flight simultaneously.",
+        "RATE_LIMITED",
+      ),
+    );
   }
 
-  activeJobsPerUser.set(userId, currentCount + 1);
+  activeJobsPerUser.set(identity, currentCount + 1);
 
   const release = () => {
-    const cnt = activeJobsPerUser.get(userId) || 1;
+    const cnt = activeJobsPerUser.get(identity) || 1;
     if (cnt <= 1) {
-      activeJobsPerUser.delete(userId);
+      activeJobsPerUser.delete(identity);
     } else {
-      activeJobsPerUser.set(userId, cnt - 1);
+      activeJobsPerUser.set(identity, cnt - 1);
     }
   };
 
-  res.on('finish', release);
-  res.on('close', release);
+  let released = false;
+  const releaseOnce = () => {
+    if (released) return;
+    released = true;
+    release();
+  };
+
+  let releaseWhenResponseCloses = true;
+  req.holdInFlightSlot = () => {
+    releaseWhenResponseCloses = false;
+    return releaseOnce;
+  };
+
+  const releaseIfResponseOwned = () => {
+    if (releaseWhenResponseCloses) releaseOnce();
+  };
+  res.once("finish", releaseIfResponseOwned);
+  res.once("close", releaseIfResponseOwned);
   next();
 };

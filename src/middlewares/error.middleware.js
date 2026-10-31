@@ -1,4 +1,4 @@
-import { ApiError } from '../utils/ApiError.js';
+import { ApiError } from "../utils/ApiError.js";
 
 /**
  * Global error handling middleware.
@@ -13,9 +13,11 @@ import { ApiError } from '../utils/ApiError.js';
  */
 // eslint-disable-next-line no-unused-vars
 export const errorHandler = (err, req, res, next) => {
-  // Never log raw tokens or passwords
-  const sanitizedMessage = (err.message || 'Error').replace(/Bearer\s+[A-Za-z0-9-_.]+/gi, 'Bearer [REDACTED]');
-  console.error(`[API Error] ${req.method} ${req.url}:`, sanitizedMessage);
+  console.error(
+    `[API Error] ${req.method} ${req.path}:`,
+    err.name || "Error",
+    err.code || "",
+  );
 
   if (err instanceof ApiError) {
     const payload = {
@@ -30,11 +32,11 @@ export const errorHandler = (err, req, res, next) => {
   }
 
   // Prisma unique constraint violation (P2002)
-  if (err.code === 'P2002') {
-    const field = err.meta?.target?.[0] ?? 'field';
+  if (err.code === "P2002") {
+    const field = err.meta?.target?.[0] ?? "field";
     return res.status(409).json({
       success: false,
-      code: 'CONFLICT',
+      code: "CONFLICT",
       message: `A record with that ${field} already exists.`,
     });
   }
@@ -42,27 +44,28 @@ export const errorHandler = (err, req, res, next) => {
   // Database connection or environment configuration errors
   if (
     err.message &&
-    (err.message.includes('No database host') ||
-      err.message.includes('connection string') ||
-      err.message.includes('DATABASE_URL'))
+    (err.message.includes("No database host") ||
+      err.message.includes("connection string") ||
+      err.message.includes("DATABASE_URL"))
   ) {
     return res.status(503).json({
       success: false,
-      code: 'DATABASE_UNAVAILABLE',
-      message: 'Database connection error: DATABASE_URL is not configured or unreachable.',
-      details: err.message,
+      code: "DATABASE_UNAVAILABLE",
+      message: "Database service is unavailable.",
     });
   }
 
-  const status = err.status || (err.name === 'ValidationError' ? 400 : 500);
+  const status = err.status || (err.name === "ValidationError" ? 400 : 500);
   const code = err.code || ApiError.defaultCode(status);
+  const message =
+    status >= 500 ? "Internal server error." : err.message || "Request failed.";
 
   const payload = {
     success: false,
     code,
-    message: err.message || 'Internal server error.',
+    message,
   };
-  if (err.details) {
+  if (status < 500 && err.details) {
     payload.details = err.details;
   }
 
