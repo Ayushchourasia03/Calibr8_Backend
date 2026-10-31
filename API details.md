@@ -1925,9 +1925,9 @@ _Note_: Keys are MCQ IDs, values are the 0-indexed option selected.
   "coins": 120,
   "themes": [
     {
-      "id": "theme-default",
+      "id": "thm-default",
       "slug": "default",
-      "name": "Default Dark",
+      "name": "Default",
       "price": 0,
       "previewColor": "#3b82f6",
       "isDefault": true,
@@ -1936,11 +1936,11 @@ _Note_: Keys are MCQ IDs, values are the 0-indexed option selected.
       "canAfford": true
     },
     {
-      "id": "theme-cyberpunk",
-      "slug": "cyberpunk",
-      "name": "Cyberpunk Neon",
-      "price": 100,
-      "previewColor": "#ec4899",
+      "id": "thm-orbit",
+      "slug": "orbit",
+      "name": "Orbit",
+      "price": 450,
+      "previewColor": "#35E6FF",
       "isDefault": false,
       "owned": false,
       "applied": false,
@@ -1977,7 +1977,7 @@ _Note_: Keys are MCQ IDs, values are the 0-indexed option selected.
 
 ```json
 {
-  "slug": "cyberpunk"
+  "slug": "orbit"
 }
 ```
 
@@ -1986,8 +1986,8 @@ _Note_: Keys are MCQ IDs, values are the 0-indexed option selected.
 ```json
 {
   "success": true,
-  "activeTheme": "cyberpunk",
-  "message": "Cyberpunk Neon applied"
+  "activeTheme": "orbit",
+  "message": "Orbit applied"
 }
 ```
 
@@ -2002,7 +2002,7 @@ _Note_: Keys are MCQ IDs, values are the 0-indexed option selected.
 
 - **Method & Path**: `POST /api/themes/:slug/buy`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
-- **Path Parameter**: `:slug` (e.g. `'cyberpunk'`)
+- **Path Parameter**: `:slug` (one of `orbit`, `frost`, `editorial`, `mono`, `pearl`, `arcade`, `racer`, `anime`, `comic`, or `storybook`)
 - **Atomic Operations**:
   - Validates user has `>= theme.price` coins.
   - Decrements coins, links theme to `user_themes`, auto-applies theme.
@@ -2011,15 +2011,26 @@ _Note_: Keys are MCQ IDs, values are the 0-indexed option selected.
 ```json
 {
   "success": true,
-  "message": "Bought Cyberpunk Neon",
+  "message": "Bought Orbit",
   "theme": {
-    "slug": "cyberpunk",
+    "slug": "orbit",
     "applied": true,
     "owned": true
   },
-  "coins": 20
+  "coins": 550,
+  "stats": {
+    "rating": 800,
+    "tier": "Pulse II",
+    "score": 0,
+    "scoreUnits": 0,
+    "coins": 550,
+    "streak": 0,
+    "longestStreak": 0
+  }
 }
 ```
+
+Purchases are committed atomically to `users.coins`, `users.activeThemeId`, and `user_themes`. The theme catalog is installed by the `20261030140001_sync_store_themes` migration (or synchronized by `npm run db:seed`).
 
 - **Error Responses**:
   - `400 Bad Request`: `{"success": false, "code": "ALREADY_OWNED", "message": "Already owned"}`

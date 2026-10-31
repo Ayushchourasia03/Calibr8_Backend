@@ -1054,7 +1054,7 @@
         { id: "thm-1", category: "themes", method: "GET", path: "/api/themes", auth: true, desc: "List all available IDE themes with ownership and prices" },
         { id: "thm-2", category: "themes", method: "GET", path: "/api/themes/me", auth: true, desc: "Get current user active theme and coins" },
         { id: "thm-3", category: "themes", method: "PUT", path: "/api/themes/apply", auth: true, desc: "Apply an owned theme to user profile", body: { slug: "default" } },
-        { id: "thm-4", category: "themes", method: "POST", path: "/api/themes/:slug/buy", auth: true, desc: "Purchase a theme with coins", pathParams: { slug: "cyberpunk" } },
+        { id: "thm-4", category: "themes", method: "POST", path: "/api/themes/:slug/buy", auth: true, desc: "Purchase a theme with coins", pathParams: { slug: "orbit" } },
 
         // Rankings
         { id: "rnk-1", category: "rankings", method: "GET", path: "/api/rankings", auth: false, desc: "Get public leaderboard rankings with optional filters", query: { scope: "", college: "", batch: "", state: "", country: "", limit: "10" } }

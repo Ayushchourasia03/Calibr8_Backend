@@ -8,6 +8,7 @@ import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { neonConfig } from "@neondatabase/serverless";
 import ws from "ws";
+import { STORE_THEMES } from "../data/storeThemes.js";
 
 neonConfig.webSocketConstructor = ws;
 
@@ -33,15 +34,6 @@ const INITIAL_TOPICS = [
   { id: "top-14", slug: "system-design", name: "System Design", category: "CORE" },
 ];
 
-const INITIAL_THEMES = [
-  { id: "thm-default", slug: "default", name: "Calibr8 Dark", price: 0, previewColor: "#3b82f6", isDefault: true },
-  { id: "thm-dracula", slug: "dracula", name: "Dracula Purple", price: 150, previewColor: "#bd93f9", isDefault: false },
-  { id: "thm-nord", slug: "nord", name: "Nord Frost", price: 200, previewColor: "#88c0d0", isDefault: false },
-  { id: "thm-monokai", slug: "monokai", name: "Monokai Pro", price: 250, previewColor: "#a6e22e", isDefault: false },
-  { id: "thm-cyberpunk", slug: "cyberpunk", name: "Cyberpunk Neon", price: 300, previewColor: "#f43f5e", isDefault: false },
-  { id: "thm-matrix", slug: "matrix", name: "Matrix Emerald", price: 350, previewColor: "#10b981", isDefault: false },
-];
-
 // In-Memory Database Store for robust zero-config execution
 class InMemoryStore {
   constructor() {
@@ -60,7 +52,9 @@ class InMemoryStore {
     // Seed topics
     INITIAL_TOPICS.forEach((t) => this.topics.set(t.id, { ...t }));
     // Seed themes
-    INITIAL_THEMES.forEach((t) => this.themes.set(t.id, { ...t }));
+    STORE_THEMES.forEach((t) =>
+      this.themes.set(`thm-${t.slug}`, { id: `thm-${t.slug}`, ...t }),
+    );
 
     // Load study curriculum from local study-material folder
     this.initStudyMaterials();
@@ -195,6 +189,18 @@ function createModelProxy(modelName) {
         }
         return null;
       }
+      if (modelName === "userTheme") {
+        for (const ownedTheme of store.userThemes.values()) {
+          if (
+            (!where.userId || ownedTheme.userId === where.userId) &&
+            (!where.themeId || ownedTheme.themeId === where.themeId) &&
+            (!where.id || ownedTheme.id === where.id)
+          ) {
+            return { ...ownedTheme };
+          }
+        }
+        return null;
+      }
       if (modelName === "submission") {
         return store.submissions.get(where.id) || null;
       }
@@ -221,6 +227,17 @@ function createModelProxy(modelName) {
           }
         }
         return store.users.size > 0 ? formatUser([...store.users.values()][0], include, select) : null;
+      }
+      if (modelName === "userTheme") {
+        for (const ownedTheme of store.userThemes.values()) {
+          if (
+            (!where.userId || ownedTheme.userId === where.userId) &&
+            (!where.themeId || ownedTheme.themeId === where.themeId)
+          ) {
+            return { ...ownedTheme };
+          }
+        }
+        return null;
       }
       if (modelName === "studyTopic") {
         const found = store.studyTopics.find((t) => t.slug === where.slug || t.id === where.id);
@@ -264,6 +281,7 @@ function createModelProxy(modelName) {
       if (modelName === "userTheme") {
         let list = [...store.userThemes.values()];
         if (where.userId) list = list.filter((ut) => ut.userId === where.userId);
+        if (where.themeId) list = list.filter((ut) => ut.themeId === where.themeId);
         return list;
       }
       if (modelName === "studySubject") {
@@ -330,7 +348,17 @@ function createModelProxy(modelName) {
         return sub;
       }
       if (modelName === "userTheme") {
-        const id = `ut-${Date.now()}`;
+        const existing = [...store.userThemes.values()].find(
+          (ownedTheme) =>
+            ownedTheme.userId === data.userId &&
+            ownedTheme.themeId === data.themeId,
+        );
+        if (existing) {
+          const error = new Error("Unique constraint failed on user theme ownership");
+          error.code = "P2002";
+          throw error;
+        }
+        const id = `ut-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const ut = { id, ...data, purchasedAt: new Date() };
         store.userThemes.set(id, ut);
         return ut;
@@ -376,7 +404,48 @@ function createModelProxy(modelName) {
       return { ...data };
     },
 
+    async updateMany({ where = {}, data = {} } = {}) {
+      if (modelName !== "user") return { count: 0 };
+      let count = 0;
+      for (const user of store.users.values()) {
+        if (where.id && user.id !== where.id) continue;
+        if (
+          where.coins?.gte !== undefined &&
+          user.coins < where.coins.gte
+        ) {
+          continue;
+        }
+        for (const [key, value] of Object.entries(data)) {
+          if (value && typeof value === "object" && "increment" in value) {
+            user[key] = (user[key] || 0) + value.increment;
+          } else if (value && typeof value === "object" && "decrement" in value) {
+            user[key] = (user[key] || 0) - value.decrement;
+          } else {
+            user[key] = value;
+          }
+        }
+        user.updatedAt = new Date();
+        count += 1;
+      }
+      return { count };
+    },
+
     async upsert({ where, update, create: createData } = {}) {
+      if (modelName === "theme") {
+        const existing = [...store.themes.values()].find(
+          (theme) => theme.slug === where.slug || theme.id === where.id,
+        );
+        if (existing) {
+          Object.assign(existing, update);
+          return { ...existing };
+        }
+        const theme = {
+          id: createData.id || `thm-${createData.slug}`,
+          ...createData,
+        };
+        store.themes.set(theme.id, theme);
+        return { ...theme };
+      }
       if (modelName === "userTopic") {
         const key = where.userId_topicId
           ? `${where.userId_topicId.userId}_${where.userId_topicId.topicId}`
@@ -441,6 +510,18 @@ function formatUser(u, include, select) {
       ...ut,
       topic: store.topics.get(ut.topicId) || { slug: "dsa", name: "DSA", category: "DSA" },
     }));
+  if (include?.activeTheme) {
+    user.activeTheme = store.themes.get(u.activeThemeId) || null;
+  }
+  if (include?.ownedThemes) {
+    user.ownedThemes = [...store.userThemes.values()]
+      .filter((ownedTheme) => ownedTheme.userId === u.id)
+      .map((ownedTheme) => ({
+        ...ownedTheme,
+        theme: store.themes.get(ownedTheme.themeId) || null,
+      }))
+      .filter((ownedTheme) => ownedTheme.theme);
+  }
 
   if (select) {
     const sel = {};
@@ -476,7 +557,20 @@ const fallbackProxy = new Proxy(
       if (prop === "$connect") return async () => {};
       if (prop === "$disconnect") return async () => {};
       if (prop === "$transaction") {
-        return async (cb) => (typeof cb === "function" ? cb(fallbackProxy) : Promise.all(cb));
+        if (realPrisma) {
+          return realPrisma.$transaction.bind(realPrisma);
+        }
+        return async (transaction) => {
+          if (typeof transaction !== "function") return Promise.all(transaction);
+          const result = fallbackTransactionQueue.then(() =>
+            transaction(fallbackProxy),
+          );
+          fallbackTransactionQueue = result.then(
+            () => undefined,
+            () => undefined,
+          );
+          return result;
+        };
       }
 
       if (realPrisma && typeof realPrisma[prop] !== "undefined") {
@@ -511,5 +605,7 @@ const fallbackProxy = new Proxy(
     },
   }
 );
+
+let fallbackTransactionQueue = Promise.resolve();
 
 export default fallbackProxy;
