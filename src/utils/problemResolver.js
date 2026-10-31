@@ -7,6 +7,10 @@ import { getUserTemplate } from "./codeBuilder.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROBLEMS_DIR = path.resolve(__dirname, "../../problems");
+const RESOLVED_CACHE_TTL_MS = 60 * 1000;
+const RESOLVED_CACHE_MAX_SIZE = 256;
+const resolvedProblemCache = new Map();
+const pendingProblemLoads = new Map();
 
 // In-memory cache of local problems loaded from /problems/*.json
 let cachedProblems = null;
@@ -56,7 +60,10 @@ function loadLocalProblems() {
       const rawTemplates = data.templates || {};
       const tmplsArray = Object.entries(rawTemplates).map(([lang, val]) => ({
         language: lang,
-        code: typeof val === "object" ? (val.userTemplate || val.code || "") : String(val),
+        code:
+          typeof val === "object"
+            ? val.userTemplate || val.code || ""
+            : String(val),
         header: typeof val === "object" ? val.header : "",
         footer: typeof val === "object" ? val.footer : "",
       }));
@@ -65,7 +72,10 @@ function loadLocalProblems() {
       const userTemplates = {};
       Object.keys(rawTemplates).forEach((lang) => {
         const val = rawTemplates[lang];
-        userTemplates[lang] = typeof val === "object" ? (val.userTemplate || val.code || "") : String(val);
+        userTemplates[lang] =
+          typeof val === "object"
+            ? val.userTemplate || val.code || ""
+            : String(val);
       });
 
       const p = {
@@ -94,13 +104,18 @@ function loadLocalProblems() {
 
       problemIndexBySlug.set(lowerSlug, p);
       problemIndexBySlug.set(lowerFileSlug, p);
-      if (!problemIndexBySlug.has(baseSlug)) problemIndexBySlug.set(baseSlug, p);
-      if (!problemIndexBySlug.has(baseFileSlug)) problemIndexBySlug.set(baseFileSlug, p);
+      if (!problemIndexBySlug.has(baseSlug))
+        problemIndexBySlug.set(baseSlug, p);
+      if (!problemIndexBySlug.has(baseFileSlug))
+        problemIndexBySlug.set(baseFileSlug, p);
 
       problemIndexByNumber.set(num, p);
       problemIndexById.set(String(id), p);
     } catch (e) {
-      console.warn(`[ProblemResolver] Error loading problem file ${file}:`, e.message);
+      console.warn(
+        `[ProblemResolver] Error loading problem file ${file}:`,
+        e.message,
+      );
     }
   });
 
@@ -114,6 +129,34 @@ function loadLocalProblems() {
  */
 export async function resolveProblem(slugOrId) {
   if (!slugOrId) return null;
+  const cacheKey = String(slugOrId).trim().toLowerCase();
+  const cached = resolvedProblemCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.problem;
+  if (cached) resolvedProblemCache.delete(cacheKey);
+
+  const pending = pendingProblemLoads.get(cacheKey);
+  if (pending) return pending;
+
+  const load = resolveProblemUncached(slugOrId);
+  pendingProblemLoads.set(cacheKey, load);
+  try {
+    const problem = await load;
+    if (problem) {
+      if (resolvedProblemCache.size >= RESOLVED_CACHE_MAX_SIZE) {
+        resolvedProblemCache.delete(resolvedProblemCache.keys().next().value);
+      }
+      resolvedProblemCache.set(cacheKey, {
+        problem,
+        expiresAt: Date.now() + RESOLVED_CACHE_TTL_MS,
+      });
+    }
+    return problem;
+  } finally {
+    pendingProblemLoads.delete(cacheKey);
+  }
+}
+
+async function resolveProblemUncached(slugOrId) {
   const isNum = /^\d+$/.test(String(slugOrId));
   const queryStr = String(slugOrId).trim().toLowerCase();
 
@@ -139,13 +182,17 @@ export async function resolveProblem(slugOrId) {
     }
 
     if (!problem && !isNum) {
-      const all = await prisma.problem.findMany({ include });
-      problem = all.find(
-        (p) =>
-          p.slug.toLowerCase() === queryStr ||
-          p.slug.replace(/-\d+$/, "").toLowerCase() === queryStr ||
-          String(p.id) === String(slugOrId)
-      );
+      const baseSlug = queryStr.replace(/-\d+$/, "");
+      problem = await prisma.problem.findFirst({
+        where: {
+          OR: [
+            { slug: queryStr },
+            ...(baseSlug === queryStr ? [] : [{ slug: baseSlug }]),
+            { id: String(slugOrId) },
+          ],
+        },
+        include,
+      });
     }
   } catch (dbErr) {
     // Database connection notice in dev environment
@@ -177,7 +224,10 @@ export async function resolveProblem(slugOrId) {
       problemIndexById.get(String(problem.id));
 
     // Populate templatesMap preserving rich structured templates
-    if (!problem.templatesMap || Object.keys(problem.templatesMap).length === 0) {
+    if (
+      !problem.templatesMap ||
+      Object.keys(problem.templatesMap).length === 0
+    ) {
       if (Array.isArray(problem.templates)) {
         problem.templatesMap = problem.templates.reduce((acc, t) => {
           let tmplObj = t.code;
@@ -187,7 +237,10 @@ export async function resolveProblem(slugOrId) {
               header: t.header || "",
               footer: t.footer || "",
             };
-          } else if (typeof t.code === "string" && t.code.trim().startsWith("{")) {
+          } else if (
+            typeof t.code === "string" &&
+            t.code.trim().startsWith("{")
+          ) {
             try {
               const parsed = JSON.parse(t.code.trim());
               if (parsed.header !== undefined || parsed.footer !== undefined) {
@@ -263,7 +316,6 @@ export async function listAllProblems({
         _count: { select: { testcases: true, templates: true } },
       },
     });
-
   } catch (dbErr) {
     console.warn(
       "[ProblemResolver] Database problem lookup failed; using local problem definitions:",
@@ -280,41 +332,41 @@ export async function listAllProblems({
     ]),
   );
   if (problemIds.length > 0) {
-    const submissionGroups = await prisma.submission.groupBy({
-      by: ["problemId", "status", "passedCount", "totalCount"],
-      where: { problemId: { in: problemIds } },
-      _count: { _all: true },
-    });
+    const [submissionGroups, solvedSubmissions] = await Promise.all([
+      prisma.submission.groupBy({
+        by: ["problemId", "status"],
+        where: { problemId: { in: problemIds } },
+        _count: { _all: true },
+      }),
+      userId
+        ? prisma.submission.groupBy({
+            by: ["problemId"],
+            where: {
+              userId,
+              problemId: { in: problemIds },
+              status: { equals: "ACCEPTED", mode: "insensitive" },
+              totalCount: { gt: 0 },
+            },
+            _count: { _all: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
     for (const group of submissionGroups) {
       const current = submissionsByProblem.get(group.problemId) || {
         accepted: 0,
         total: 0,
       };
       current.total += group._count._all;
-      if (
-        String(group.status).toUpperCase() === "ACCEPTED" &&
-        group.totalCount > 0 &&
-        group.passedCount === group.totalCount
-      ) {
+      if (String(group.status).toUpperCase() === "ACCEPTED") {
         current.accepted += group._count._all;
       }
       submissionsByProblem.set(group.problemId, current);
     }
 
     if (userId) {
-      const solvedSubmissions = await prisma.submission.findMany({
-        where: {
-          userId,
-          problemId: { in: problemIds },
-          status: { equals: "ACCEPTED", mode: "insensitive" },
-          totalCount: { gt: 0 },
-        },
-        select: { problemId: true, passedCount: true, totalCount: true },
-      });
       solvedProblemIds = new Set(
-        solvedSubmissions
-          .filter(({ passedCount, totalCount }) => passedCount === totalCount)
-          .map(({ problemId }) => problemId),
+        solvedSubmissions.map(({ problemId }) => problemId),
       );
     }
   }
@@ -349,7 +401,10 @@ export async function listAllProblems({
         String(problem.slug).toLowerCase(),
       );
       const topic =
-        problem.dsaTopic?.name || localProblem?.topic || problem.tags?.[0] || "Other";
+        problem.dsaTopic?.name ||
+        localProblem?.topic ||
+        problem.tags?.[0] ||
+        "Other";
       return {
         ...problem,
         topic,
@@ -373,7 +428,8 @@ export async function listAllProblems({
 
   if (difficulty) {
     problems = problems.filter(
-      (p) => String(p.difficulty).toLowerCase() === String(difficulty).toLowerCase()
+      (p) =>
+        String(p.difficulty).toLowerCase() === String(difficulty).toLowerCase(),
     );
   }
 
@@ -381,19 +437,30 @@ export async function listAllProblems({
     const q = search.trim().toLowerCase();
     problems = problems.filter(
       (p) =>
-        String(p.title || "").toLowerCase().includes(q) ||
-        String(p.slug || "").toLowerCase().includes(q) ||
+        String(p.title || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(p.slug || "")
+          .toLowerCase()
+          .includes(q) ||
         String(p.problemNumber).includes(q) ||
-        String(p.topic || "").toLowerCase().includes(q) ||
-        String(p.difficulty || "").toLowerCase().includes(q) ||
-        (p.tags || []).some((tag) => String(tag).toLowerCase().includes(q))
+        String(p.topic || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(p.difficulty || "")
+          .toLowerCase()
+          .includes(q) ||
+        (p.tags || []).some((tag) => String(tag).toLowerCase().includes(q)),
     );
   }
 
   if (topic) {
     const selectedTopic = String(topic).trim().toLowerCase();
     problems = problems.filter(
-      (p) => String(p.topic || "").trim().toLowerCase() === selectedTopic,
+      (p) =>
+        String(p.topic || "")
+          .trim()
+          .toLowerCase() === selectedTopic,
     );
   }
 

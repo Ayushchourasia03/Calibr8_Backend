@@ -9,6 +9,11 @@ import {
   submitSolution,
 } from "../controllers/execution.controller.js";
 import { optionalAuth } from "../middlewares/auth.middleware.js";
+import {
+  inFlightLimiter,
+  runLimiter,
+  submitLimiter,
+} from "../middlewares/rateLimit.middleware.js";
 
 const router = Router();
 
@@ -24,9 +29,15 @@ router.get("/:slug/template", getProblemStarterTemplate);
 
 // Execution endpoints at problem scope:
 // POST /api/problems/:slug/run - run visible test cases
-router.post("/:slug/run", optionalAuth, runCode);
+router.post("/:slug/run", optionalAuth, runLimiter, inFlightLimiter, runCode);
 
 // POST /api/problems/:slug/submit - submit solution for full tier judging
-router.post("/:slug/submit", optionalAuth, submitSolution);
+router.post(
+  "/:slug/submit",
+  optionalAuth,
+  submitLimiter,
+  inFlightLimiter,
+  submitSolution,
+);
 
 export default router;

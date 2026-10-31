@@ -18,11 +18,6 @@ function getSafeFrontendRedirect(targetUrl, req) {
     "http://127.0.0.1:5173",
   ];
 
-  if (req && req.get("host")) {
-    const host = req.get("host");
-    allowedOrigins.push(`http://${host}`, `https://${host}`);
-  }
-
   if (targetUrl) {
     try {
       const parsed = new URL(targetUrl);
@@ -54,7 +49,11 @@ export const getLinkUrl = (req, res, next) => {
     const providerName = String(provider).toLowerCase();
 
     if (providerName !== "github") {
-      throw new ApiError(404, `Unknown OAuth provider '${provider}'.`, "UNKNOWN_PROVIDER");
+      throw new ApiError(
+        404,
+        `Unknown OAuth provider '${provider}'.`,
+        "UNKNOWN_PROVIDER",
+      );
     }
 
     // Uses OAUTH_STATE_SECRET strictly kept separate from JWT_SECRET
@@ -90,7 +89,10 @@ export const getLinkUrl = (req, res, next) => {
  * 2. Enforces allow-list on redirect destination to prevent open redirect vulnerabilities.
  */
 export const handleCallback = async (req, res, next) => {
-  const safeFrontend = getSafeFrontendRedirect(req.query.redirect_uri || process.env.FRONTEND_URL, req);
+  const safeFrontend = getSafeFrontendRedirect(
+    req.query.redirect_uri || process.env.FRONTEND_URL,
+    req,
+  );
 
   try {
     const { provider } = req.params;
@@ -113,22 +115,13 @@ export const handleCallback = async (req, res, next) => {
       return res.redirect(`${safeFrontend}/?link_error=UNKNOWN_PROVIDER`);
     }
 
+    if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
+      return res.redirect(`${safeFrontend}/?link_error=CONFIGURATION`);
+    }
+
     // Fetch GitHub Profile
     let profile;
-    if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
-      // Mock profile fallback in development if credentials are not configured
-      profile = {
-        providerUserId: "demo-gh-user-12345",
-        username: "octocat-demo",
-        name: "Octocat Demo",
-        email: "octocat@github.dev",
-        avatarUrl: "https://github.com/identicons/octocat.png",
-        profileUrl: "https://github.com/octocat-demo",
-        bio: "GitHub demo user in AI Studio",
-        headline: null,
-        stats: { publicRepos: 12, followers: 42, following: 10 },
-      };
-    } else {
+    {
       const backendUrl = process.env.BACKEND_URL || "http://localhost:3000";
       const redirectUri = `${backendUrl}/api/social/${providerName}/callback`;
 

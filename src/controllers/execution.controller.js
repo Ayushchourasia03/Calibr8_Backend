@@ -1,16 +1,24 @@
 import crypto from "crypto";
 import prisma from "../config/db.js";
-import { executeCase, areOutputsEqual, buildSource } from "../utils/codeRunner.js";
-import { buildFinalCode, LANGUAGE_IDS, normalizeLanguage, SUPPORTED_LANGUAGES } from "../utils/codeBuilder.js";
+import { areOutputsEqual } from "../utils/codeRunner.js";
+import {
+  buildFinalCode,
+  LANGUAGE_IDS,
+  normalizeLanguage,
+  SUPPORTED_LANGUAGES,
+} from "../utils/codeBuilder.js";
 import { resolveProblem } from "../utils/problemResolver.js";
 import { ApiError } from "../utils/ApiError.js";
 import { syncProblemSolvedCount } from "../utils/problemSolvedCount.js";
 import { applyAcceptedSubmissionReward } from "../utils/acceptedSubmissionReward.js";
 import { publicTestResults } from "../utils/testcaseResults.js";
 
-const CODEBOX_URL = process.env.CODEBOX_URL 
+const CODEBOX_URL = process.env.CODEBOX_URL;
 const CODEBOX_TOKEN = process.env.CODEBOX_TOKEN;
 const submissionCache = new Map();
+const MAX_CASES_PER_BATCH = 20;
+const BATCH_POLL_INTERVAL_MS = 500;
+const BATCH_TIMEOUT_MS = 60 * 1000;
 
 /**
  * List enabled execution languages, versions and Judge0 IDs.
@@ -70,10 +78,205 @@ export const getLanguages = async (req, res, next) => {
   }
 };
 
-/**
- * Helper to run a testcase either via remote Codebox engine or local sandboxed runner.
- * Automatically wraps user function with header and footer driver.
- */
+function getCodeboxUrl() {
+  if (!CODEBOX_URL || !CODEBOX_TOKEN) {
+    throw new ApiError(
+      503,
+      "Code execution service is unavailable.",
+      "EXECUTION_UNAVAILABLE",
+    );
+  }
+
+  let runnerUrl;
+  try {
+    runnerUrl = new URL(CODEBOX_URL);
+  } catch {
+    throw new ApiError(
+      503,
+      "Code execution service is unavailable.",
+      "EXECUTION_UNAVAILABLE",
+    );
+  }
+
+  const isLoopback = ["localhost", "127.0.0.1", "::1"].includes(
+    runnerUrl.hostname,
+  );
+  const allowsInsecureLocalHttp =
+    process.env.NODE_ENV !== "production" && isLoopback;
+  if (
+    runnerUrl.protocol !== "https:" &&
+    !(runnerUrl.protocol === "http:" && allowsInsecureLocalHttp)
+  ) {
+    throw new ApiError(
+      503,
+      "Code execution service is unavailable.",
+      "EXECUTION_UNAVAILABLE",
+    );
+  }
+
+  return runnerUrl;
+}
+
+async function fetchCodeboxJson(url, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      redirect: "error",
+      headers: {
+        "X-Auth-Token": CODEBOX_TOKEN,
+        ...options.headers,
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error("Codebox request failed");
+    return await response.json();
+  } catch {
+    throw new ApiError(
+      503,
+      "Code execution service is unavailable.",
+      "EXECUTION_UNAVAILABLE",
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function normalizeRunnerResult(data) {
+  const statusId = Number(data.status?.id);
+  const status =
+    statusId === 5
+      ? "Time Limit Exceeded"
+      : statusId === 6 || Boolean(data.compile_output)
+        ? "Compilation Error"
+        : statusId >= 7 && statusId <= 12
+          ? "Runtime Error"
+          : statusId >= 13
+            ? "Runtime Error"
+            : "OK";
+
+  return {
+    status,
+    studentStdout: "",
+    actual: (data.stdout || "").trim(),
+    errorText: data.stderr || data.compile_output || data.message || null,
+    timeMs: Math.round(parseFloat(data.time || "0") * 1000),
+    memoryKb: data.memory || 0,
+  };
+}
+
+export async function executeCodeBatch({
+  language,
+  fullCode,
+  testcases,
+  timeLimit = 2000,
+  memoryLimit = 256,
+}) {
+  if (!testcases.length) return [];
+
+  const runnerUrl = getCodeboxUrl();
+  const languageId = LANGUAGE_IDS[language] || 54;
+  const cpuTimeLimit = Math.max(1, Math.ceil(timeLimit / 1000));
+  const headers = { "Content-Type": "application/json" };
+  const results = [];
+
+  for (
+    let offset = 0;
+    offset < testcases.length;
+    offset += MAX_CASES_PER_BATCH
+  ) {
+    const cases = testcases.slice(offset, offset + MAX_CASES_PER_BATCH);
+    const created = await fetchCodeboxJson(
+      new URL("/submissions/batch?base64_encoded=false", runnerUrl),
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          submissions: cases.map((testcase) => ({
+            source_code: fullCode,
+            language_id: languageId,
+            stdin:
+              testcase.stdin ?? testcase.stdinSmall ?? testcase.input ?? "",
+            cpu_time_limit: cpuTimeLimit,
+            wall_time_limit: cpuTimeLimit * 2 + 1,
+            memory_limit: memoryLimit * 1024,
+          })),
+        }),
+      },
+    );
+
+    const createdSubmissions = Array.isArray(created)
+      ? created
+      : created.submissions;
+    if (
+      !Array.isArray(createdSubmissions) ||
+      createdSubmissions.length !== cases.length ||
+      createdSubmissions.some((submission) => !submission.token)
+    ) {
+      throw new ApiError(
+        503,
+        "Code execution service returned an invalid response.",
+        "EXECUTION_UNAVAILABLE",
+      );
+    }
+
+    const tokens = createdSubmissions.map(({ token }) => token);
+    const deadline = Date.now() + BATCH_TIMEOUT_MS;
+    let completedSubmissions;
+
+    while (true) {
+      const pollUrl = new URL("/submissions/batch", runnerUrl);
+      pollUrl.searchParams.set("tokens", tokens.join(","));
+      pollUrl.searchParams.set("base64_encoded", "false");
+      const polled = await fetchCodeboxJson(pollUrl, { headers });
+      const polledSubmissions = Array.isArray(polled)
+        ? polled
+        : polled.submissions;
+      if (!Array.isArray(polledSubmissions)) {
+        throw new ApiError(
+          503,
+          "Code execution service returned an invalid response.",
+          "EXECUTION_UNAVAILABLE",
+        );
+      }
+
+      const byToken = new Map(
+        polledSubmissions.map((submission) => [submission.token, submission]),
+      );
+      completedSubmissions = tokens.map((token) => byToken.get(token));
+      if (completedSubmissions.some((submission) => !submission)) {
+        throw new ApiError(
+          503,
+          "Code execution service returned an invalid response.",
+          "EXECUTION_UNAVAILABLE",
+        );
+      }
+
+      const hasPending = completedSubmissions.some((submission) =>
+        [1, 2].includes(Number(submission.status?.id)),
+      );
+      if (!hasPending) break;
+      if (Date.now() >= deadline) {
+        throw new ApiError(
+          503,
+          "Code execution service timed out.",
+          "EXECUTION_UNAVAILABLE",
+        );
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, BATCH_POLL_INTERVAL_MS),
+      );
+    }
+
+    results.push(...completedSubmissions.map(normalizeRunnerResult));
+  }
+
+  return results;
+}
+
+/** Builds the driver source and runs a single custom-input testcase. */
 async function runSingleTestCase({
   problem,
   language,
@@ -112,64 +315,14 @@ async function runSingleTestCase({
     }
   }
 
-  // 1. If CODEBOX_TOKEN is configured and remote VPS is accessible, attempt remote execution
-  if (CODEBOX_TOKEN && CODEBOX_URL) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), timeLimit + 2500);
-
-      const langId = LANGUAGE_IDS[normLang] || 54;
-      const res = await fetch(`${CODEBOX_URL}/submissions?wait=true`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Auth-Token": CODEBOX_TOKEN,
-        },
-        body: JSON.stringify({
-          source_code: fullCode,
-          language_id: langId,
-          stdin: stdin || "",
-          cpu_time_limit: Math.ceil(timeLimit / 1000),
-          memory_limit: memoryLimit * 1024,
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-
-      if (res.ok) {
-        const data = await res.json();
-        const rawStdout = data.stdout || "";
-        const isCompileError = data.status?.id === 6 || Boolean(data.compile_output);
-        const isRuntimeError = data.status?.id >= 7 && data.status?.id <= 12;
-
-        return {
-          status: isCompileError
-            ? "Compilation Error"
-            : isRuntimeError
-            ? "Runtime Error"
-            : "OK",
-          studentStdout: "",
-          actual: rawStdout.trim(),
-          errorText: data.stderr || data.compile_output || null,
-          timeMs: Math.round(parseFloat(data.time || "0") * 1000),
-          memoryKb: data.memory || 0,
-        };
-      }
-    } catch (e) {
-      console.warn("[Codebox VPS] Remote call failed, using sandbox runner:", e.message);
-    }
-  }
-
-  // 2. Sandboxed compiler and runner (C++, C, Java, Python 3, Node.js)
-  return await executeCase({
+  const [result] = await executeCodeBatch({
     language: normLang,
-    code,
     fullCode,
-    stdin,
-    timeLimitMs: timeLimit,
-    memoryLimitKb: memoryLimit * 1024,
-    expectedOutput,
+    testcases: [{ stdin: stdin || "" }],
+    timeLimit,
+    memoryLimit,
   });
+  return result;
 }
 
 /**
@@ -179,15 +332,20 @@ async function runSingleTestCase({
  */
 export const runCode = async (req, res, next) => {
   try {
-    const slug = req.params?.slug || req.body?.slug || req.body?.problemSlug || req.body?.problemId;
-    const rawLang = req.body?.language ?? req.body?.lang ?? req.query?.language ?? "cpp";
+    const slug =
+      req.params?.slug ||
+      req.body?.slug ||
+      req.body?.problemSlug ||
+      req.body?.problemId;
+    const rawLang =
+      req.body?.language ?? req.body?.lang ?? req.query?.language ?? "cpp";
     const normLang = normalizeLanguage(rawLang);
 
     if (!normLang) {
       throw new ApiError(
         422,
         `Unsupported language: '${rawLang}'. Supported languages: ${SUPPORTED_LANGUAGES.join(", ")}.`,
-        "UNSUPPORTED_LANGUAGE"
+        "UNSUPPORTED_LANGUAGE",
       );
     }
 
@@ -199,7 +357,11 @@ export const runCode = async (req, res, next) => {
     }
 
     if (Buffer.byteLength(studentCode, "utf-8") > 64 * 1024) {
-      throw new ApiError(413, "Code exceeds maximum allowable size (64 KB).", "CODE_TOO_LARGE");
+      throw new ApiError(
+        413,
+        "Code exceeds maximum allowable size (64 KB).",
+        "CODE_TOO_LARGE",
+      );
     }
 
     // If custom stdin is provided without a problem
@@ -252,36 +414,35 @@ export const runCode = async (req, res, next) => {
 
     // Filter to strictly VISIBLE testcases only
     const allTestcases = problem.testcases || [];
-    let visibleCases = allTestcases.filter((tc) => tc.isVisible === true);
-
-    if (visibleCases.length === 0 && allTestcases.length > 0) {
-      visibleCases = allTestcases.slice(0, Math.min(3, allTestcases.length));
-    }
+    const visibleCases = allTestcases.filter((tc) => tc.isVisible === true);
 
     if (visibleCases.length === 0) {
-      throw new ApiError(400, "No sample test cases configured for this problem.", "NO_TESTCASES");
+      throw new ApiError(
+        400,
+        "No sample test cases configured for this problem.",
+        "NO_TESTCASES",
+      );
     }
+
+    const executionResults = await executeCodeBatch({
+      language: normLang,
+      fullCode,
+      testcases: visibleCases.map((testcase) => ({
+        stdin: testcase.stdinSmall ?? testcase.input ?? "",
+      })),
+      timeLimit: problem.timeLimit || 2000,
+      memoryLimit: problem.memoryLimit || 256,
+    });
 
     const results = [];
     let allPassed = true;
     let overallStatus = "Accepted";
 
-    // Sequential execution (concurrency 1 for KVM1 - do NOT parallelize)
     for (let idx = 0; idx < visibleCases.length; idx++) {
       const tc = visibleCases[idx];
       const testInput = tc.stdinSmall || tc.input || "";
       const expectedOutput = tc.expectedSmall || tc.output || "";
-
-      const execResult = await runSingleTestCase({
-        problem,
-        language: normLang,
-        code: studentCode,
-        fullCode,
-        stdin: testInput,
-        timeLimit: problem.timeLimit || 2000,
-        memoryLimit: problem.memoryLimit || 256,
-        expectedOutput,
-      });
+      const execResult = executionResults[idx];
 
       let caseStatus = execResult.status;
       let isPassed = false;
@@ -330,7 +491,7 @@ export const runCode = async (req, res, next) => {
 
 /**
  * Evaluates every visible and hidden testcase for a problem.
- * Sequential execution (concurrency 1 for KVM1 - do NOT parallelize)
+ * Execute testcases in bounded Judge0 batches.
  */
 async function evaluateAllTestcases(problem, language, code, providedFullCode) {
   const normLang = normalizeLanguage(language) || "cpp";
@@ -357,23 +518,21 @@ async function evaluateAllTestcases(problem, language, code, providedFullCode) {
   const total = allTestcases.length;
   const tier1Count = Math.max(1, Math.floor(total * 0.35));
   const tier2Count = Math.max(tier1Count + 1, Math.floor(total * 0.7));
+  const executionResults = await executeCodeBatch({
+    language: normLang,
+    fullCode,
+    testcases: allTestcases.map((testcase) => ({
+      stdin: testcase.stdinSmall ?? testcase.input ?? "",
+    })),
+    timeLimit: problem.timeLimit || 2000,
+    memoryLimit: problem.memoryLimit || 256,
+  });
 
-  // Sequential execution (concurrency 1 - KVM1 safety)
   for (let idx = 0; idx < total; idx++) {
     const tc = allTestcases[idx];
     const testInput = tc.stdinSmall || tc.input || "";
     const expectedOutput = tc.expectedSmall || tc.output || "";
-
-    const execResult = await runSingleTestCase({
-      problem,
-      language: normLang,
-      code,
-      fullCode,
-      stdin: testInput,
-      timeLimit: problem.timeLimit || 2000,
-      memoryLimit: problem.memoryLimit || 256,
-      expectedOutput,
-    });
+    const execResult = executionResults[idx];
 
     maxTimeMs = Math.max(maxTimeMs, execResult.timeMs || 0);
     maxMemoryKb = Math.max(maxMemoryKb, execResult.memoryKb || 0);
@@ -403,9 +562,11 @@ async function evaluateAllTestcases(problem, language, code, providedFullCode) {
     if (isPassed) {
       passedCount++;
     } else {
-      if (failureType === "Time Limit Exceeded") finalStatus = "TIME_LIMIT_EXCEEDED";
+      if (failureType === "Time Limit Exceeded")
+        finalStatus = "TIME_LIMIT_EXCEEDED";
       else if (failureType === "Runtime Error") finalStatus = "RUNTIME_ERROR";
-      else if (failureType === "Compilation Error") finalStatus = "COMPILATION_ERROR";
+      else if (failureType === "Compilation Error")
+        finalStatus = "COMPILATION_ERROR";
       else finalStatus = "WRONG_ANSWER";
 
       const isVisible = Boolean(tc.isVisible);
@@ -451,15 +612,20 @@ async function evaluateAllTestcases(problem, language, code, providedFullCode) {
  */
 export const submitSolution = async (req, res, next) => {
   try {
-    const slug = req.params?.slug || req.body?.slug || req.body?.problemSlug || req.body?.problemId;
-    const rawLang = req.body?.language ?? req.body?.lang ?? req.query?.language ?? "cpp";
+    const slug =
+      req.params?.slug ||
+      req.body?.slug ||
+      req.body?.problemSlug ||
+      req.body?.problemId;
+    const rawLang =
+      req.body?.language ?? req.body?.lang ?? req.query?.language ?? "cpp";
     const normLang = normalizeLanguage(rawLang);
 
     if (!normLang) {
       throw new ApiError(
         422,
         `Unsupported language: '${rawLang}'. Supported languages: ${SUPPORTED_LANGUAGES.join(", ")}.`,
-        "UNSUPPORTED_LANGUAGE"
+        "UNSUPPORTED_LANGUAGE",
       );
     }
 
@@ -472,7 +638,11 @@ export const submitSolution = async (req, res, next) => {
     }
 
     if (Buffer.byteLength(studentCode, "utf-8") > 64 * 1024) {
-      throw new ApiError(413, "Code exceeds maximum allowable size (64 KB).", "CODE_TOO_LARGE");
+      throw new ApiError(
+        413,
+        "Code exceeds maximum allowable size (64 KB).",
+        "CODE_TOO_LARGE",
+      );
     }
 
     const problem = await resolveProblem(slug);
@@ -528,7 +698,12 @@ export const submitSolution = async (req, res, next) => {
     submissionCache.set(submission.id, { ...submission });
 
     const runEvaluation = async () => {
-      const evaluation = await evaluateAllTestcases(problem, normLang, studentCode, fullCode);
+      const evaluation = await evaluateAllTestcases(
+        problem,
+        normLang,
+        studentCode,
+        fullCode,
+      );
       let updated = {
         ...submission,
         status: evaluation.status,
@@ -648,19 +823,24 @@ export const submitSolution = async (req, res, next) => {
       });
     }
 
-    // Async execution in background for polling flow
-    runEvaluation().catch((err) => {
-      console.error("[Submission Background Error]:", err);
-      submissionCache.set(submission.id, {
-        ...submission,
-        status: "ERROR",
-        verdict: "ERROR",
-      });
-      prisma.submission.update({
-        where: { id: submission.id },
-        data: { status: "ERROR" },
-      }).catch(() => {});
-    });
+    // Keep the per-user execution slot until the background job settles.
+    const releaseInFlight = req.holdInFlightSlot?.();
+    runEvaluation()
+      .catch((err) => {
+        console.error("[Submission Background Error]:", err.name || "Error");
+        submissionCache.set(submission.id, {
+          ...submission,
+          status: "ERROR",
+          verdict: "ERROR",
+        });
+        prisma.submission
+          .update({
+            where: { id: submission.id },
+            data: { status: "ERROR" },
+          })
+          .catch(() => {});
+      })
+      .finally(() => releaseInFlight?.());
 
     res.status(202).json({
       success: true,
@@ -707,12 +887,8 @@ export const getSubmissionStatus = async (req, res, next) => {
       throw new ApiError(404, "Submission not found.", "SUBMISSION_NOT_FOUND");
     }
 
-    // Authenticated users may only inspect their own submissions.
-    if (
-      req.user?.id &&
-      submission.userId &&
-      submission.userId !== req.user.id
-    ) {
+    // Authenticated users may only inspect submissions explicitly owned by them.
+    if (!req.user?.id || submission.userId !== req.user.id) {
       throw new ApiError(404, "Submission not found.", "SUBMISSION_NOT_FOUND");
     }
 

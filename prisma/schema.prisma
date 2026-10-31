@@ -212,6 +212,7 @@ model Submission {
   problem     Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
   @@index([problemId, status])
   @@index([userId, status])
+  @@index([userId, status, createdAt])
   @@map("submissions")
 }
 

@@ -59,29 +59,31 @@ Every error emitted by the backend (4xx and 5xx) strictly adheres to this struct
 
 #### Master Error Codes Reference
 
-| HTTP Status             | Error Code              | Description / Trigger Condition                                                |
-| :---------------------- | :---------------------- | :----------------------------------------------------------------------------- |
-| `400 Bad Request`       | `VALIDATION_ERROR`      | Missing required body fields or invalid data types                             |
-| `400 Bad Request`       | `INVALID_EMAIL`         | Email fails standard regex format validation                                   |
-| `400 Bad Request`       | `WEAK_PASSWORD`         | Password has fewer than 8 characters                                           |
-| `400 Bad Request`       | `PASSWORD_TOO_LONG`     | Password exceeds bcrypt 72-byte limit                                          |
-| `400 Bad Request`       | `PASSWORD_EQUALS_EMAIL` | Password matches the user's email address                                      |
-| `400 Bad Request`       | `INSUFFICIENT_COINS`    | User coin balance is lower than theme price                                    |
-| `400 Bad Request`       | `ALREADY_OWNED`         | User already owns the requested theme                                          |
-| `400 Bad Request`       | `MISSING_CODE`          | Code string missing in execution payload                                       |
-| `401 Unauthorized`      | `UNAUTHORIZED`          | Missing or invalid `Authorization: Bearer <token>`                             |
-| `401 Unauthorized`      | `INVALID_CREDENTIALS`   | Incorrect email or password during login                                       |
-| `401 Unauthorized`      | `TOKEN_REVOKED`         | Token was invalidated via `POST /api/auth/logout`                              |
-| `401 Unauthorized`      | `TOKEN_EXPIRED`         | JWT has passed its `exp` claim                                                 |
-| `401 Unauthorized`      | `USER_NOT_FOUND`        | User ID encoded in JWT token no longer exists in DB                            |
-| `403 Forbidden`         | `FORBIDDEN`             | Access denied (e.g., trying to apply an unowned theme)                         |
-| `404 Not Found`         | `NOT_FOUND`             | Problem, study topic, chapter, subject, or theme not found                     |
-| `404 Not Found`         | `SUBMISSION_NOT_FOUND`  | Submission ID does not exist or belongs to another user (anti-leak protection) |
-| `409 Conflict`          | `EMAIL_ALREADY_EXISTS`  | Registration email is already associated with an account                       |
-| `413 Payload Too Large` | `CODE_TOO_LARGE`        | Submitted code string exceeds 64 KB limit                                      |
-| `422 Unprocessable`     | `UNSUPPORTED_LANGUAGE`  | Programming language not in `[cpp, c, java, python, javascript]`               |
-| `429 Too Many Requests` | `TOO_MANY_REQUESTS`     | Exceeded rate limit (run, submit, or auth)                                     |
-| `500 Server Error`      | `SERVER_ERROR`          | Unhandled database or runtime execution error                                  |
+| HTTP Status               | Error Code              | Description / Trigger Condition                                                 |
+| :------------------------ | :---------------------- | :------------------------------------------------------------------------------ |
+| `400 Bad Request`         | `VALIDATION_ERROR`      | Missing required body fields or invalid data types                              |
+| `400 Bad Request`         | `INVALID_EMAIL`         | Email fails standard regex format validation                                    |
+| `400 Bad Request`         | `WEAK_PASSWORD`         | Password has fewer than 8 characters                                            |
+| `400 Bad Request`         | `PASSWORD_TOO_LONG`     | Password exceeds bcrypt 72-byte limit                                           |
+| `400 Bad Request`         | `PASSWORD_EQUALS_EMAIL` | Password matches the user's email address                                       |
+| `400 Bad Request`         | `INSUFFICIENT_COINS`    | User coin balance is lower than theme price                                     |
+| `400 Bad Request`         | `ALREADY_OWNED`         | User already owns the requested theme                                           |
+| `400 Bad Request`         | `MISSING_CODE`          | Code string missing in execution payload                                        |
+| `401 Unauthorized`        | `UNAUTHORIZED`          | Missing or invalid `Authorization: Bearer <token>`                              |
+| `401 Unauthorized`        | `INVALID_CREDENTIALS`   | Incorrect email or password during login                                        |
+| `401 Unauthorized`        | `TOKEN_REVOKED`         | Token was invalidated via `POST /api/auth/logout`                               |
+| `401 Unauthorized`        | `TOKEN_EXPIRED`         | JWT has passed its `exp` claim                                                  |
+| `403 Forbidden`           | `FORBIDDEN`             | Access denied (e.g., trying to apply an unowned theme)                          |
+| `404 Not Found`           | `NOT_FOUND`             | Problem, study topic, chapter, subject, or theme not found                      |
+| `404 Not Found`           | `SUBMISSION_NOT_FOUND`  | Submission ID does not exist or belongs to another user (anti-leak protection)  |
+| `409 Conflict`            | `EMAIL_ALREADY_EXISTS`  | Registration email is already associated with an account                        |
+| `413 Payload Too Large`   | `CODE_TOO_LARGE`        | Submitted code string exceeds 64 KB limit                                       |
+| `422 Unprocessable`       | `UNSUPPORTED_LANGUAGE`  | Programming language not in `[cpp, c, java, python, javascript]`                |
+| `429 Too Many Requests`   | `RATE_LIMITED`          | Run, submit, or in-flight execution limit exceeded                              |
+| `429 Too Many Requests`   | `AUTH_RATE_LIMITED`     | Registration or login rate limit exceeded                                       |
+| `503 Service Unavailable` | `EXECUTION_UNAVAILABLE` | Code execution service is missing, unreachable, or returned an invalid response |
+| `503 Service Unavailable` | `DATABASE_UNAVAILABLE`  | Database service is unavailable                                                 |
+| `500 Server Error`        | `INTERNAL_ERROR`        | Unhandled server error; response does not expose internal details               |
 
 ---
 
@@ -470,7 +472,7 @@ export async function apiClient<T>(
 
 - **Method & Path**: `POST /api/auth/register`
 - **Protected**: No
-- **Rate Limit**: 10 requests / min / IP
+- **Rate Limit**: 30 requests / 15 min / IP
 - **Headers**: `Content-Type: application/json`
 - **Request Body**:
 
@@ -478,7 +480,7 @@ export async function apiClient<T>(
 {
   "email": "student@example.com",
   "password": "StrongPassword123",
-  "name": "Alex Mercer",
+  "name": "Alex Mercer"
 }
 ```
 
@@ -521,7 +523,7 @@ _Validation Rules_:
 
 - **Method & Path**: `POST /api/auth/login`
 - **Protected**: No
-- **Rate Limit**: 10 requests / min / IP
+- **Rate Limit**: 30 requests / 15 min / IP
 - **Headers**: `Content-Type: application/json`
 - **Request Body**:
 
@@ -1113,17 +1115,18 @@ The Onboarding and Calibration subsystem is responsible for calibrating a studen
 
 ### 8.1 Submit Skill Calibration
 
-- **Method & Route**: `POST /api/onboarding`  
-- **Route Alias**: `PUT /api/onboarding/levels`  
-- **Authentication**: Required (`Authorization: Bearer <jwt-token>`)  
-- **Content-Type**: `application/json`  
-- **Rate Limit**: 20 requests per minute per authenticated user  
+- **Method & Route**: `POST /api/onboarding`
+- **Route Alias**: `PUT /api/onboarding/levels`
+- **Authentication**: Required (`Authorization: Bearer <jwt-token>`)
+- **Content-Type**: `application/json`
+- **Rate Limit**: 20 requests per minute per authenticated user
 
 #### Request Body Schemas (3 Supported Modes)
 
 The endpoint is polymorphic and intelligently processes three distinct payload paradigms:
 
 #### Mode 1: Granular Per-Topic Selection (Recommended for Full UIs)
+
 Allows setting individual skill levels per DSA topic:
 
 ```json
@@ -1143,9 +1146,10 @@ Allows setting individual skill levels per DSA topic:
 }
 ```
 
-*Alternative Alias for Mode 1*: Also accepts `topicLevels: [{ topicId, level }]` or string array `topicSelections: ["top-1", "top-2"]` (defaults to easy).
+_Alternative Alias for Mode 1_: Also accepts `topicLevels: [{ topicId, level }]` or string array `topicSelections: ["top-1", "top-2"]` (defaults to easy).
 
 #### Mode 2: Global Preset across All Topics
+
 Applies a single target difficulty to all active DSA topics in the database:
 
 ```json
@@ -1156,6 +1160,7 @@ Applies a single target difficulty to all active DSA topics in the database:
 ```
 
 #### Mode 3: 1-Click Beginner Preset (Fast Track)
+
 Instantly calibrates all DSA topics to `easy` and assigns a beginner baseline rating of 800:
 
 ```json
@@ -1168,15 +1173,15 @@ Instantly calibrates all DSA topics to `easy` and assigns a beginner baseline ra
 
 #### Field Specifications & Constraints
 
-| Field | Type | Required | Allowed Values | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| `topicSelections` | `Array<Object>` | Optional (Mode 1) | Array of `{ topicId: string, difficulty: string }` | Detailed calibration per topic. `topicId` can be the topic ID or topic slug. |
-| `topicSelections[].topicId` | `string` | Required if item is obj | Valid topic ID (`top-1`, `top-2`, etc.) or slug (`dsa-arrays`, `dsa-dp`) | Must reference an existing topic in the database. |
-| `topicSelections[].difficulty` | `string` | Optional | `easy`, `beginner`, `medium`, `mid`, `intermediate`, `hard`, `advanced` | Skill level for this topic. Normalized case-insensitively. |
-| `topicIds` | `string \| string[]` | Optional (Mode 2) | `"all"` or `["top-1", "top-2"]` | Calibrates specified topics or all topics if `"all"`. |
-| `difficulty` | `string` | Optional (Mode 2) | `easy`, `medium`, `hard` | Global difficulty to apply when `topicIds` is `"all"`. |
-| `beginner` | `boolean` | Optional (Mode 3) | `true` or `false` | When `true`, automatically assigns `difficulty = "easy"` and `topicIds = "all"`. |
-| `topicLevels` | `Array<Object>` | Optional | Array of `{ topicId, level }` | Alias supported for backward compatibility with frontend clients. |
+| Field                          | Type                 | Required                | Allowed Values                                                           | Description                                                                      |
+| :----------------------------- | :------------------- | :---------------------- | :----------------------------------------------------------------------- | :------------------------------------------------------------------------------- |
+| `topicSelections`              | `Array<Object>`      | Optional (Mode 1)       | Array of `{ topicId: string, difficulty: string }`                       | Detailed calibration per topic. `topicId` can be the topic ID or topic slug.     |
+| `topicSelections[].topicId`    | `string`             | Required if item is obj | Valid topic ID (`top-1`, `top-2`, etc.) or slug (`dsa-arrays`, `dsa-dp`) | Must reference an existing topic in the database.                                |
+| `topicSelections[].difficulty` | `string`             | Optional                | `easy`, `beginner`, `medium`, `mid`, `intermediate`, `hard`, `advanced`  | Skill level for this topic. Normalized case-insensitively.                       |
+| `topicIds`                     | `string \| string[]` | Optional (Mode 2)       | `"all"` or `["top-1", "top-2"]`                                          | Calibrates specified topics or all topics if `"all"`.                            |
+| `difficulty`                   | `string`             | Optional (Mode 2)       | `easy`, `medium`, `hard`                                                 | Global difficulty to apply when `topicIds` is `"all"`.                           |
+| `beginner`                     | `boolean`            | Optional (Mode 3)       | `true` or `false`                                                        | When `true`, automatically assigns `difficulty = "easy"` and `topicIds = "all"`. |
+| `topicLevels`                  | `Array<Object>`      | Optional                | Array of `{ topicId, level }`                                            | Alias supported for backward compatibility with frontend clients.                |
 
 ---
 
@@ -1247,20 +1252,21 @@ Instantly calibrates all DSA topics to `easy` and assigns a beginner baseline ra
 
 #### Error Responses & Resolution
 
-| HTTP Status | Error Code | Cause | Resolution |
-| :--- | :--- | :--- | :--- |
-| `400 Bad Request` | `VALIDATION_ERROR` | Empty topic list or no topics selected (`"Please select at least 1 topic."`). | Send at least one topic in `topicSelections` or pass `beginner: true`. |
-| `400 Bad Request` | `VALIDATION_ERROR` | Topic ID or slug does not exist (`"One or more topic IDs are invalid."`). | Query `GET /api/topics/dsa` first to obtain valid active IDs and slugs. |
-| `400 Bad Request` | `VALIDATION_ERROR` | Invalid difficulty string provided. | Use `easy`, `medium`, or `hard`. |
-| `401 Unauthorized` | `UNAUTHORIZED` | Missing `Authorization: Bearer <token>` header. | Authenticate via `POST /api/auth/login` or `POST /api/auth/register` and attach token. |
-| `401 Unauthorized` | `TOKEN_EXPIRED` | JWT token has passed its expiration time. | Call `POST /api/auth/refresh` or re-authenticate. |
-| `401 Unauthorized` | `TOKEN_REVOKED` | Token was explicitly revoked via `POST /api/auth/logout`. | Re-authenticate to receive a new active token. |
+| HTTP Status        | Error Code         | Cause                                                                         | Resolution                                                                             |
+| :----------------- | :----------------- | :---------------------------------------------------------------------------- | :------------------------------------------------------------------------------------- |
+| `400 Bad Request`  | `VALIDATION_ERROR` | Empty topic list or no topics selected (`"Please select at least 1 topic."`). | Send at least one topic in `topicSelections` or pass `beginner: true`.                 |
+| `400 Bad Request`  | `VALIDATION_ERROR` | Topic ID or slug does not exist (`"One or more topic IDs are invalid."`).     | Query `GET /api/topics/dsa` first to obtain valid active IDs and slugs.                |
+| `400 Bad Request`  | `VALIDATION_ERROR` | Invalid difficulty string provided.                                           | Use `easy`, `medium`, or `hard`.                                                       |
+| `401 Unauthorized` | `UNAUTHORIZED`     | Missing `Authorization: Bearer <token>` header.                               | Authenticate via `POST /api/auth/login` or `POST /api/auth/register` and attach token. |
+| `401 Unauthorized` | `TOKEN_EXPIRED`    | JWT token has passed its expiration time.                                     | Call `POST /api/auth/refresh` or re-authenticate.                                      |
+| `401 Unauthorized` | `TOKEN_REVOKED`    | Token was explicitly revoked via `POST /api/auth/logout`.                     | Re-authenticate to receive a new active token.                                         |
 
 ---
 
 #### Client Implementation Example (cURL & TypeScript)
 
 **cURL Request**:
+
 ```bash
 curl -X POST http://localhost:3000/api/onboarding \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
@@ -1275,25 +1281,31 @@ curl -X POST http://localhost:3000/api/onboarding \
 ```
 
 **TypeScript / React Integration Hook**:
+
 ```typescript
 interface TopicSelection {
   topicId: string;
   difficulty: "easy" | "medium" | "hard";
 }
 
-export async function submitCalibration(selections: TopicSelection[], token: string) {
+export async function submitCalibration(
+  selections: TopicSelection[],
+  token: string,
+) {
   const response = await fetch("/api/onboarding", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({ topicSelections: selections }),
   });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `Calibration failed with status ${response.status}`);
+    throw new Error(
+      errorData.message || `Calibration failed with status ${response.status}`,
+    );
   }
 
   const result = await response.json();
@@ -1307,8 +1319,8 @@ export async function submitCalibration(selections: TopicSelection[], token: str
 
 Checks whether the current authenticated user has completed initial onboarding calibration and retrieves their assigned topic levels.
 
-- **Method & Route**: `GET /api/onboarding/status`  
-- **Authentication**: Required (`Authorization: Bearer <jwt-token>`)  
+- **Method & Route**: `GET /api/onboarding/status`
+- **Authentication**: Required (`Authorization: Bearer <jwt-token>`)
 - **Success Response (`200 OK`)**:
 
 ```json
@@ -1346,9 +1358,9 @@ Checks whether the current authenticated user has completed initial onboarding c
 
 Allows setting or changing the student's preferred programming language during onboarding or afterwards.
 
-- **Method & Route**: `PATCH /api/onboarding/language`  
-- **Authentication**: Required (`Authorization: Bearer <jwt-token>`)  
-- **Content-Type**: `application/json`  
+- **Method & Route**: `PATCH /api/onboarding/language`
+- **Authentication**: Required (`Authorization: Bearer <jwt-token>`)
+- **Content-Type**: `application/json`
 - **Request Body**:
 
 ```json
@@ -1357,7 +1369,8 @@ Allows setting or changing the student's preferred programming language during o
 }
 ```
 
-*Allowed Language Keys*:
+_Allowed Language Keys_:
+
 - `cpp` (C++ / GCC 13)
 - `c` (C / GCC 13)
 - `java` (Java / OpenJDK 17)
@@ -1374,6 +1387,7 @@ Allows setting or changing the student's preferred programming language during o
 ```
 
 - **Error Response (`400 Bad Request`)**:
+
 ```json
 {
   "success": false,
@@ -2142,6 +2156,7 @@ Calibr8 features a resilient dual-tier database layer engineered to run seamless
 ### 16.2 Session Auto-Healing & Token Resilience
 
 When running in ephemeral containers or development sandboxes where memory is refreshed on server restarts:
+
 1. **Cryptographic Integrity**: When a client presents an `Authorization: Bearer <jwt-token>`, `protect` verifies the HMAC-SHA256 signature against `JWT_SECRET`.
 2. **Auto-Restoration**: If the database was restarted or wiped and the user record is not found in memory or PostgreSQL, the middleware **automatically provisions and restores the user record** via `prisma.user.upsert`.
 3. **No Dead Sessions**: Clients and test suites never get blocked with `USER_NOT_FOUND` or `"User belonging to this token no longer exists"`. Session continuity is preserved indefinitely.
