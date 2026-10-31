@@ -6,6 +6,32 @@ async function getActivitySummary(userId) {
   const since = new Date();
   since.setUTCDate(since.getUTCDate() - 371);
 
+  if (typeof prisma.$queryRaw === "function") {
+    try {
+      const dailyCounts = await prisma.$queryRaw`
+        SELECT TO_CHAR(DATE_TRUNC('day', "createdAt" AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
+               COUNT(*)::int AS count
+        FROM "submissions"
+        WHERE "userId" = ${userId}
+          AND "status" = 'ACCEPTED'
+          AND "totalCount" > 0
+          AND "passedCount" = "totalCount"
+          AND "createdAt" >= ${since}
+        GROUP BY 1
+      `;
+      const activity = Object.fromEntries(
+        dailyCounts.map(({ day, count }) => [day, Number(count)]),
+      );
+      return {
+        activity,
+        total: Object.values(activity).reduce((sum, count) => sum + count, 0),
+        activeDays: Object.keys(activity).length,
+      };
+    } catch {
+      // Fall back to the in-memory-compatible query when raw SQL is unavailable.
+    }
+  }
+
   const submissions = await prisma.submission.findMany({
     where: {
       userId,
@@ -198,7 +224,9 @@ export const updateLanguage = async (req, res, next) => {
   try {
     const { language } = req.body;
     const allowed = ["cpp", "c", "java", "python", "javascript"];
-    const normalized = String(language || "").trim().toLowerCase();
+    const normalized = String(language || "")
+      .trim()
+      .toLowerCase();
 
     if (!allowed.includes(normalized)) {
       throw new ApiError(
@@ -365,7 +393,10 @@ export const updateAcademicProfile = async (req, res, next) => {
     if (country !== undefined) data.country = String(country).trim();
 
     if (Object.keys(data).length === 0) {
-      throw new ApiError(400, "At least one academic field (college, branch, batch, state, country) must be provided.");
+      throw new ApiError(
+        400,
+        "At least one academic field (college, branch, batch, state, country) must be provided.",
+      );
     }
 
     const user = await prisma.user.update({
@@ -384,7 +415,9 @@ export const updateAcademicProfile = async (req, res, next) => {
       },
     });
 
-    res.status(200).json({ success: true, message: "Academic profile saved", user });
+    res
+      .status(200)
+      .json({ success: true, message: "Academic profile saved", user });
   } catch (err) {
     next(err);
   }

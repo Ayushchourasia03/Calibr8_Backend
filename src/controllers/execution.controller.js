@@ -16,6 +16,9 @@ import { publicTestResults } from "../utils/testcaseResults.js";
 const CODEBOX_URL = process.env.CODEBOX_URL;
 const CODEBOX_TOKEN = process.env.CODEBOX_TOKEN;
 const submissionCache = new Map();
+const MAX_CASES_PER_BATCH = 20;
+const BATCH_POLL_INTERVAL_MS = 500;
+const BATCH_TIMEOUT_MS = 60 * 1000;
 
 /**
  * List enabled execution languages, versions and Judge0 IDs.
@@ -75,10 +78,205 @@ export const getLanguages = async (req, res, next) => {
   }
 };
 
-/**
- * Helper to run a testcase either via remote Codebox engine or local sandboxed runner.
- * Automatically wraps user function with header and footer driver.
- */
+function getCodeboxUrl() {
+  if (!CODEBOX_URL || !CODEBOX_TOKEN) {
+    throw new ApiError(
+      503,
+      "Code execution service is unavailable.",
+      "EXECUTION_UNAVAILABLE",
+    );
+  }
+
+  let runnerUrl;
+  try {
+    runnerUrl = new URL(CODEBOX_URL);
+  } catch {
+    throw new ApiError(
+      503,
+      "Code execution service is unavailable.",
+      "EXECUTION_UNAVAILABLE",
+    );
+  }
+
+  const isLoopback = ["localhost", "127.0.0.1", "::1"].includes(
+    runnerUrl.hostname,
+  );
+  const allowsInsecureLocalHttp =
+    process.env.NODE_ENV !== "production" && isLoopback;
+  if (
+    runnerUrl.protocol !== "https:" &&
+    !(runnerUrl.protocol === "http:" && allowsInsecureLocalHttp)
+  ) {
+    throw new ApiError(
+      503,
+      "Code execution service is unavailable.",
+      "EXECUTION_UNAVAILABLE",
+    );
+  }
+
+  return runnerUrl;
+}
+
+async function fetchCodeboxJson(url, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      redirect: "error",
+      headers: {
+        "X-Auth-Token": CODEBOX_TOKEN,
+        ...options.headers,
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error("Codebox request failed");
+    return await response.json();
+  } catch {
+    throw new ApiError(
+      503,
+      "Code execution service is unavailable.",
+      "EXECUTION_UNAVAILABLE",
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function normalizeRunnerResult(data) {
+  const statusId = Number(data.status?.id);
+  const status =
+    statusId === 5
+      ? "Time Limit Exceeded"
+      : statusId === 6 || Boolean(data.compile_output)
+        ? "Compilation Error"
+        : statusId >= 7 && statusId <= 12
+          ? "Runtime Error"
+          : statusId >= 13
+            ? "Runtime Error"
+            : "OK";
+
+  return {
+    status,
+    studentStdout: "",
+    actual: (data.stdout || "").trim(),
+    errorText: data.stderr || data.compile_output || data.message || null,
+    timeMs: Math.round(parseFloat(data.time || "0") * 1000),
+    memoryKb: data.memory || 0,
+  };
+}
+
+export async function executeCodeBatch({
+  language,
+  fullCode,
+  testcases,
+  timeLimit = 2000,
+  memoryLimit = 256,
+}) {
+  if (!testcases.length) return [];
+
+  const runnerUrl = getCodeboxUrl();
+  const languageId = LANGUAGE_IDS[language] || 54;
+  const cpuTimeLimit = Math.max(1, Math.ceil(timeLimit / 1000));
+  const headers = { "Content-Type": "application/json" };
+  const results = [];
+
+  for (
+    let offset = 0;
+    offset < testcases.length;
+    offset += MAX_CASES_PER_BATCH
+  ) {
+    const cases = testcases.slice(offset, offset + MAX_CASES_PER_BATCH);
+    const created = await fetchCodeboxJson(
+      new URL("/submissions/batch?base64_encoded=false", runnerUrl),
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          submissions: cases.map((testcase) => ({
+            source_code: fullCode,
+            language_id: languageId,
+            stdin:
+              testcase.stdin ?? testcase.stdinSmall ?? testcase.input ?? "",
+            cpu_time_limit: cpuTimeLimit,
+            wall_time_limit: cpuTimeLimit * 2 + 1,
+            memory_limit: memoryLimit * 1024,
+          })),
+        }),
+      },
+    );
+
+    const createdSubmissions = Array.isArray(created)
+      ? created
+      : created.submissions;
+    if (
+      !Array.isArray(createdSubmissions) ||
+      createdSubmissions.length !== cases.length ||
+      createdSubmissions.some((submission) => !submission.token)
+    ) {
+      throw new ApiError(
+        503,
+        "Code execution service returned an invalid response.",
+        "EXECUTION_UNAVAILABLE",
+      );
+    }
+
+    const tokens = createdSubmissions.map(({ token }) => token);
+    const deadline = Date.now() + BATCH_TIMEOUT_MS;
+    let completedSubmissions;
+
+    while (true) {
+      const pollUrl = new URL("/submissions/batch", runnerUrl);
+      pollUrl.searchParams.set("tokens", tokens.join(","));
+      pollUrl.searchParams.set("base64_encoded", "false");
+      const polled = await fetchCodeboxJson(pollUrl, { headers });
+      const polledSubmissions = Array.isArray(polled)
+        ? polled
+        : polled.submissions;
+      if (!Array.isArray(polledSubmissions)) {
+        throw new ApiError(
+          503,
+          "Code execution service returned an invalid response.",
+          "EXECUTION_UNAVAILABLE",
+        );
+      }
+
+      const byToken = new Map(
+        polledSubmissions.map((submission) => [submission.token, submission]),
+      );
+      completedSubmissions = tokens.map((token) => byToken.get(token));
+      if (completedSubmissions.some((submission) => !submission)) {
+        throw new ApiError(
+          503,
+          "Code execution service returned an invalid response.",
+          "EXECUTION_UNAVAILABLE",
+        );
+      }
+
+      const hasPending = completedSubmissions.some((submission) =>
+        [1, 2].includes(Number(submission.status?.id)),
+      );
+      if (!hasPending) break;
+      if (Date.now() >= deadline) {
+        throw new ApiError(
+          503,
+          "Code execution service timed out.",
+          "EXECUTION_UNAVAILABLE",
+        );
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, BATCH_POLL_INTERVAL_MS),
+      );
+    }
+
+    results.push(...completedSubmissions.map(normalizeRunnerResult));
+  }
+
+  return results;
+}
+
+/** Builds the driver source and runs a single custom-input testcase. */
 async function runSingleTestCase({
   problem,
   language,
@@ -117,100 +315,14 @@ async function runSingleTestCase({
     }
   }
 
-  if (!CODEBOX_URL || !CODEBOX_TOKEN) {
-    throw new ApiError(
-      503,
-      "Code execution service is unavailable.",
-      "EXECUTION_UNAVAILABLE",
-    );
-  }
-
-  let runnerUrl;
-  try {
-    runnerUrl = new URL(CODEBOX_URL);
-  } catch {
-    throw new ApiError(
-      503,
-      "Code execution service is unavailable.",
-      "EXECUTION_UNAVAILABLE",
-    );
-  }
-
-  const isLoopback = ["localhost", "127.0.0.1", "::1"].includes(
-    runnerUrl.hostname,
-  );
-  const allowsInsecureLocalHttp =
-    process.env.NODE_ENV !== "production" && isLoopback;
-  if (
-    runnerUrl.protocol !== "https:" &&
-    !(runnerUrl.protocol === "http:" && allowsInsecureLocalHttp)
-  ) {
-    throw new ApiError(
-      503,
-      "Code execution service is unavailable.",
-      "EXECUTION_UNAVAILABLE",
-    );
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeLimit + 2500);
-
-  try {
-    const langId = LANGUAGE_IDS[normLang] || 54;
-    const res = await fetch(new URL("/submissions?wait=true", runnerUrl), {
-      method: "POST",
-      redirect: "error",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Auth-Token": CODEBOX_TOKEN,
-      },
-      body: JSON.stringify({
-        source_code: fullCode,
-        language_id: langId,
-        stdin: stdin || "",
-        cpu_time_limit: Math.ceil(timeLimit / 1000),
-        memory_limit: memoryLimit * 1024,
-        max_output: 64,
-      }),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      throw new ApiError(
-        503,
-        "Code execution service is unavailable.",
-        "EXECUTION_UNAVAILABLE",
-      );
-    }
-
-    const data = await res.json();
-    const rawStdout = data.stdout || "";
-    const isCompileError =
-      data.status?.id === 6 || Boolean(data.compile_output);
-    const isRuntimeError = data.status?.id >= 7 && data.status?.id <= 12;
-
-    return {
-      status: isCompileError
-        ? "Compilation Error"
-        : isRuntimeError
-          ? "Runtime Error"
-          : "OK",
-      studentStdout: "",
-      actual: rawStdout.trim(),
-      errorText: data.stderr || data.compile_output || null,
-      timeMs: Math.round(parseFloat(data.time || "0") * 1000),
-      memoryKb: data.memory || 0,
-    };
-  } catch (err) {
-    if (err instanceof ApiError) throw err;
-    throw new ApiError(
-      503,
-      "Code execution service is unavailable.",
-      "EXECUTION_UNAVAILABLE",
-    );
-  } finally {
-    clearTimeout(timeout);
-  }
+  const [result] = await executeCodeBatch({
+    language: normLang,
+    fullCode,
+    testcases: [{ stdin: stdin || "" }],
+    timeLimit,
+    memoryLimit,
+  });
+  return result;
 }
 
 /**
@@ -312,26 +424,25 @@ export const runCode = async (req, res, next) => {
       );
     }
 
+    const executionResults = await executeCodeBatch({
+      language: normLang,
+      fullCode,
+      testcases: visibleCases.map((testcase) => ({
+        stdin: testcase.stdinSmall ?? testcase.input ?? "",
+      })),
+      timeLimit: problem.timeLimit || 2000,
+      memoryLimit: problem.memoryLimit || 256,
+    });
+
     const results = [];
     let allPassed = true;
     let overallStatus = "Accepted";
 
-    // Sequential execution (concurrency 1 for KVM1 - do NOT parallelize)
     for (let idx = 0; idx < visibleCases.length; idx++) {
       const tc = visibleCases[idx];
       const testInput = tc.stdinSmall || tc.input || "";
       const expectedOutput = tc.expectedSmall || tc.output || "";
-
-      const execResult = await runSingleTestCase({
-        problem,
-        language: normLang,
-        code: studentCode,
-        fullCode,
-        stdin: testInput,
-        timeLimit: problem.timeLimit || 2000,
-        memoryLimit: problem.memoryLimit || 256,
-        expectedOutput,
-      });
+      const execResult = executionResults[idx];
 
       let caseStatus = execResult.status;
       let isPassed = false;
@@ -380,7 +491,7 @@ export const runCode = async (req, res, next) => {
 
 /**
  * Evaluates every visible and hidden testcase for a problem.
- * Sequential execution (concurrency 1 for KVM1 - do NOT parallelize)
+ * Execute testcases in bounded Judge0 batches.
  */
 async function evaluateAllTestcases(problem, language, code, providedFullCode) {
   const normLang = normalizeLanguage(language) || "cpp";
@@ -407,23 +518,21 @@ async function evaluateAllTestcases(problem, language, code, providedFullCode) {
   const total = allTestcases.length;
   const tier1Count = Math.max(1, Math.floor(total * 0.35));
   const tier2Count = Math.max(tier1Count + 1, Math.floor(total * 0.7));
+  const executionResults = await executeCodeBatch({
+    language: normLang,
+    fullCode,
+    testcases: allTestcases.map((testcase) => ({
+      stdin: testcase.stdinSmall ?? testcase.input ?? "",
+    })),
+    timeLimit: problem.timeLimit || 2000,
+    memoryLimit: problem.memoryLimit || 256,
+  });
 
-  // Sequential execution (concurrency 1 - KVM1 safety)
   for (let idx = 0; idx < total; idx++) {
     const tc = allTestcases[idx];
     const testInput = tc.stdinSmall || tc.input || "";
     const expectedOutput = tc.expectedSmall || tc.output || "";
-
-    const execResult = await runSingleTestCase({
-      problem,
-      language: normLang,
-      code,
-      fullCode,
-      stdin: testInput,
-      timeLimit: problem.timeLimit || 2000,
-      memoryLimit: problem.memoryLimit || 256,
-      expectedOutput,
-    });
+    const execResult = executionResults[idx];
 
     maxTimeMs = Math.max(maxTimeMs, execResult.timeMs || 0);
     maxMemoryKb = Math.max(maxMemoryKb, execResult.memoryKb || 0);

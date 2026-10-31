@@ -17,6 +17,7 @@
     "test:solved-count": "node tests/problemSolvedCount.test.js",
     "test:rewards": "node tests/acceptedSubmissionReward.test.js",
     "test:testcase-results": "node tests/testcaseResults.test.js",
+    "test:execution-batch": "node tests/executionBatch.test.js",
     "test:languages": "node tests/executionLanguages.test.js",
     "problems:sync-solved-counts": "node scripts/sync-problem-solved-counts.js",
     "study:sync": "node scripts/upload-study.js",
