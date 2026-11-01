@@ -17,19 +17,16 @@ async function ensureThemeCatalog() {
 
 export const getAllThemes = async (req, res, next) => {
   try {
-<<<<<<< HEAD
-    const themes = await prisma.theme.findMany({ orderBy: [{ price: "asc" }] });
+    await ensureThemeCatalog();
+
+    const themes = await prisma.theme.findMany({ 
+      orderBy: [{ price: "asc" }] 
+    });
+    
     const owned = await prisma.userTheme.findMany({
       where: { userId: req.user.id },
-=======
-    await ensureThemeCatalog();
-    const themes = await prisma.theme.findMany({ orderBy: [{ price: 'asc' }] });
-    const owned = await prisma.userTheme.findMany({ where: { userId: req.user.id } });
-    const user = await prisma.user.findUnique({ 
-      where: { id: req.user.id }, 
-      include: { activeTheme: true }
->>>>>>> 896b052d7e852ce59ce7fd15eda786010b21702d
     });
+
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
       include: { activeTheme: true },
@@ -63,21 +60,18 @@ export const buyTheme = async (req, res, next) => {
     const { slug } = req.params;
     const userId = req.user.id;
 
-    const catalogTheme = getStoreTheme(slug);
-    if (!catalogTheme) {
+    if (!getStoreTheme(slug)) {
       throw new ApiError(404, "Theme not found", "NOT_FOUND");
     }
+
     await ensureThemeCatalog();
+
     const theme = await prisma.theme.findUnique({ where: { slug } });
     if (!theme) {
       throw new ApiError(404, "Theme not found", "NOT_FOUND");
     }
 
-<<<<<<< HEAD
-    const remainingCoins = await prisma.$transaction(async (tx) => {
-=======
     const purchase = await prisma.$transaction(async (tx) => {
->>>>>>> 896b052d7e852ce59ce7fd15eda786010b21702d
       const alreadyOwned = await tx.userTheme.findFirst({
         where: { userId, themeId: theme.id },
       });
@@ -89,41 +83,17 @@ export const buyTheme = async (req, res, next) => {
 
       const debit = await tx.user.updateMany({
         where: { id: userId, coins: { gte: theme.price } },
-<<<<<<< HEAD
-        data: { coins: { decrement: theme.price } },
-      });
-      if (debit.count !== 1) {
-=======
         data: {
           coins: { decrement: theme.price },
           activeThemeId: theme.id,
         },
       });
+
       if (debit.count === 0) {
->>>>>>> 896b052d7e852ce59ce7fd15eda786010b21702d
         const user = await tx.user.findUnique({
           where: { id: userId },
           select: { coins: true },
         });
-<<<<<<< HEAD
-        throw new ApiError(400, "Not enough coins", "INSUFFICIENT_COINS", {
-          required: theme.price,
-          have: user?.coins ?? 0,
-        });
-      }
-
-      await tx.userTheme.create({ data: { userId, themeId: theme.id } });
-      await tx.user.update({
-        where: { id: userId },
-        data: { activeTheme: { connect: { id: theme.id } } },
-      });
-
-      const user = await tx.user.findUnique({
-        where: { id: userId },
-        select: { coins: true },
-      });
-      return user.coins;
-=======
         if (!user) {
           throw new ApiError(404, "User not found", "USER_NOT_FOUND");
         }
@@ -131,11 +101,12 @@ export const buyTheme = async (req, res, next) => {
           400,
           "Not enough coins",
           "INSUFFICIENT_COINS",
-          { required: theme.price, have: user.coins ?? 0 },
+          { required: theme.price, have: user.coins }
         );
       }
 
       await tx.userTheme.create({ data: { userId, themeId: theme.id } });
+
       const user = await tx.user.findUnique({
         where: { id: userId },
         select: {
@@ -147,24 +118,19 @@ export const buyTheme = async (req, res, next) => {
         },
       });
       return user;
->>>>>>> 896b052d7e852ce59ce7fd15eda786010b21702d
     });
 
     res.json({
       success: true,
       message: `Bought ${theme.name}`,
       theme: { slug: theme.slug, applied: true, owned: true },
-<<<<<<< HEAD
-      coins: remainingCoins,
-=======
       coins: purchase.coins,
       stats: getUserHeaderStats(purchase),
->>>>>>> 896b052d7e852ce59ce7fd15eda786010b21702d
     });
   } catch (e) {
     if (e.code === "P2002") {
       return next(
-        new ApiError(400, "Already owned", "ALREADY_OWNED", { owned: true }),
+        new ApiError(400, "Already owned", "ALREADY_OWNED", { owned: true })
       );
     }
     next(e);
@@ -181,36 +147,25 @@ export const applyTheme = async (req, res, next) => {
     if (!getStoreTheme(slug)) {
       throw new ApiError(404, "Theme not found", "NOT_FOUND");
     }
+
     await ensureThemeCatalog();
+
     const theme = await prisma.theme.findUnique({ where: { slug } });
     if (!theme) {
       throw new ApiError(404, "Theme not found", "NOT_FOUND");
     }
 
-<<<<<<< HEAD
     const owned = await prisma.userTheme.findFirst({
       where: { userId: req.user.id, themeId: theme.id },
     });
-    if (!owned) {
-      throw new ApiError(
-        403,
-        "You don't own this theme, buy first",
-        "FORBIDDEN",
-      );
-=======
-    const owned = await prisma.userTheme.findFirst({ where: { userId: req.user.id, themeId: theme.id } });
+
     if (!owned && !theme.isDefault) {
       throw new ApiError(403, "You don't own this theme, buy first", "FORBIDDEN");
->>>>>>> 896b052d7e852ce59ce7fd15eda786010b21702d
     }
 
     await prisma.user.update({
       where: { id: req.user.id },
-<<<<<<< HEAD
-      data: { activeTheme: { connect: { id: theme.id } } },
-=======
       data: { activeThemeId: theme.id },
->>>>>>> 896b052d7e852ce59ce7fd15eda786010b21702d
     });
 
     res.json({
@@ -226,6 +181,7 @@ export const applyTheme = async (req, res, next) => {
 export const getMyThemeStatus = async (req, res, next) => {
   try {
     await ensureThemeCatalog();
+    
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
       include: { activeTheme: true, ownedThemes: { include: { theme: true } } },
