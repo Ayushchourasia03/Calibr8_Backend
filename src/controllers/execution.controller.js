@@ -12,13 +12,17 @@ import { ApiError } from "../utils/ApiError.js";
 import { syncProblemSolvedCount } from "../utils/problemSolvedCount.js";
 import { applyAcceptedSubmissionReward } from "../utils/acceptedSubmissionReward.js";
 import { publicTestResults } from "../utils/testcaseResults.js";
+import { analyzeComplexity } from "../services/complexityAnalyzer.service.js";
+import { executeCase } from "../utils/codeRunner.js";
 
 const CODEBOX_URL = process.env.CODEBOX_URL;
 const CODEBOX_TOKEN = process.env.CODEBOX_TOKEN;
 const submissionCache = new Map();
 const MAX_CASES_PER_BATCH = 20;
-const BATCH_POLL_INTERVAL_MS = 500;
+const BATCH_POLL_INITIAL_INTERVAL_MS = 250;
+const BATCH_POLL_MAX_INTERVAL_MS = 800;
 const BATCH_TIMEOUT_MS = 60 * 1000;
+const MAX_CONCURRENT_BATCHES = Number(process.env.CODEBOX_MAX_CONCURRENT_BATCHES) || 2;
 
 /**
  * List enabled execution languages, versions and Judge0 IDs.
@@ -78,8 +82,9 @@ export const getLanguages = async (req, res, next) => {
   }
 };
 
-function getCodeboxUrl() {
+function getCodeboxUrl(required = true) {
   if (!CODEBOX_URL || !CODEBOX_TOKEN) {
+    if (!required) return null;
     throw new ApiError(
       503,
       "Code execution service is unavailable.",
@@ -91,6 +96,7 @@ function getCodeboxUrl() {
   try {
     runnerUrl = new URL(CODEBOX_URL);
   } catch {
+    if (!required) return null;
     throw new ApiError(
       503,
       "Code execution service is unavailable.",
@@ -107,6 +113,7 @@ function getCodeboxUrl() {
     runnerUrl.protocol !== "https:" &&
     !(runnerUrl.protocol === "http:" && allowsInsecureLocalHttp)
   ) {
+    if (!required) return null;
     throw new ApiError(
       503,
       "Code execution service is unavailable.",
@@ -176,12 +183,29 @@ export async function executeCodeBatch({
 }) {
   if (!testcases.length) return [];
 
-  const runnerUrl = getCodeboxUrl();
+  const runnerUrl = getCodeboxUrl(false);
+  if (!runnerUrl) {
+    // Local execution fallback for testing/development environments
+    const localResults = [];
+    for (const testcase of testcases) {
+      const res = await executeCase({
+        language,
+        fullCode,
+        stdin: testcase.stdin ?? testcase.stdinSmall ?? testcase.input ?? "",
+        timeLimitMs: timeLimit,
+        memoryLimitKb: memoryLimit * 1024,
+      });
+      localResults.push(res);
+    }
+    return localResults;
+  }
+
   const languageId = LANGUAGE_IDS[language] || 54;
   const cpuTimeLimit = Math.max(1, Math.ceil(timeLimit / 1000));
   const headers = { "Content-Type": "application/json" };
   const results = [];
 
+  // Slices testcases into batches of at most MAX_CASES_PER_BATCH (20)
   for (
     let offset = 0;
     offset < testcases.length;
@@ -225,6 +249,7 @@ export async function executeCodeBatch({
     const tokens = createdSubmissions.map(({ token }) => token);
     const deadline = Date.now() + BATCH_TIMEOUT_MS;
     let completedSubmissions;
+    let currentInterval = BATCH_POLL_INITIAL_INTERVAL_MS;
 
     while (true) {
       const pollUrl = new URL("/submissions/batch", runnerUrl);
@@ -265,8 +290,14 @@ export async function executeCodeBatch({
           "EXECUTION_UNAVAILABLE",
         );
       }
+
       await new Promise((resolve) =>
-        setTimeout(resolve, BATCH_POLL_INTERVAL_MS),
+        setTimeout(resolve, currentInterval),
+      );
+      // Adaptive backoff up to BATCH_POLL_MAX_INTERVAL_MS
+      currentInterval = Math.min(
+        BATCH_POLL_MAX_INTERVAL_MS,
+        Math.round(currentInterval * 1.35),
       );
     }
 
@@ -490,8 +521,9 @@ export const runCode = async (req, res, next) => {
 };
 
 /**
- * Evaluates every visible and hidden testcase for a problem.
- * Execute testcases in bounded Judge0 batches.
+ * Evaluates testcases for a problem using true tier short-circuiting.
+ * Executes Tier 1 first; if any Tier 1 test fails, halts immediately
+ * without executing Tier 2 or Tier 3 batches.
  */
 async function evaluateAllTestcases(problem, language, code, providedFullCode) {
   const normLang = normalizeLanguage(language) || "cpp";
@@ -518,79 +550,101 @@ async function evaluateAllTestcases(problem, language, code, providedFullCode) {
   const total = allTestcases.length;
   const tier1Count = Math.max(1, Math.floor(total * 0.35));
   const tier2Count = Math.max(tier1Count + 1, Math.floor(total * 0.7));
-  const executionResults = await executeCodeBatch({
-    language: normLang,
-    fullCode,
-    testcases: allTestcases.map((testcase) => ({
-      stdin: testcase.stdinSmall ?? testcase.input ?? "",
-    })),
-    timeLimit: problem.timeLimit || 2000,
-    memoryLimit: problem.memoryLimit || 256,
-  });
 
-  for (let idx = 0; idx < total; idx++) {
-    const tc = allTestcases[idx];
-    const testInput = tc.stdinSmall || tc.input || "";
-    const expectedOutput = tc.expectedSmall || tc.output || "";
-    const execResult = executionResults[idx];
+  const tier1Cases = allTestcases.slice(0, tier1Count);
+  const tier2Cases = allTestcases.slice(tier1Count, tier2Count);
+  const tier3Cases = allTestcases.slice(tier2Count);
 
-    maxTimeMs = Math.max(maxTimeMs, execResult.timeMs || 0);
-    maxMemoryKb = Math.max(maxMemoryKb, execResult.memoryKb || 0);
-
-    let isPassed = false;
-    let failureType = execResult.status;
-
-    if (execResult.status === "OK") {
-      isPassed = areOutputsEqual(execResult.actual, expectedOutput);
-      if (!isPassed) failureType = "Wrong Answer";
-    }
-
-    const caseItem = {
-      testIndex: tc.testIndex ?? idx,
-      input: testInput,
-      expected: expectedOutput,
-      actual: execResult.actual,
-      passed: isPassed,
-      isVisible: tc.isVisible === true,
-      time: execResult.timeMs || 0,
-      memory: execResult.memoryKb || 0,
-      status: isPassed ? "Accepted" : failureType,
-      errorText: execResult.errorText,
-    };
-    results.push(caseItem);
-
-    if (isPassed) {
-      passedCount++;
-    } else {
-      if (failureType === "Time Limit Exceeded")
-        finalStatus = "TIME_LIMIT_EXCEEDED";
-      else if (failureType === "Runtime Error") finalStatus = "RUNTIME_ERROR";
-      else if (failureType === "Compilation Error")
-        finalStatus = "COMPILATION_ERROR";
-      else finalStatus = "WRONG_ANSWER";
-
-      const isVisible = Boolean(tc.isVisible);
-      firstFailure = {
-        testIndex: tc.testIndex ?? idx,
-        status: failureType,
-        errorText: execResult.errorText,
-        input: isVisible ? testInput : undefined,
-        expected: isVisible ? expectedOutput : undefined,
-        actual: isVisible ? execResult.actual : undefined,
-        message: isVisible
-          ? `Failed sample test ${idx + 1}: expected '${expectedOutput}', got '${execResult.actual}'`
-          : `Failed on hidden evaluation test case #${idx + 1}.`,
-      };
-    }
-  }
+  const tiers = [
+    { name: "Tier 1", cases: tier1Cases, rankIfFailed: "Tier 0 (Failed)", rankIfPassed: "Tier 1 (Brute Force)" },
+    { name: "Tier 2", cases: tier2Cases, rankIfFailed: "Tier 1 (Brute Force)", rankIfPassed: "Tier 2 (Better)" },
+    { name: "Tier 3", cases: tier3Cases, rankIfFailed: "Tier 2 (Better)", rankIfPassed: "Tier 3 (Optimal)" },
+  ];
 
   let tierReached = "Tier 0 (Failed)";
-  if (passedCount === total) {
-    tierReached = "Tier 3 (Optimal)";
-  } else if (passedCount >= tier2Count) {
-    tierReached = "Tier 2 (Better)";
-  } else if (passedCount >= tier1Count) {
-    tierReached = "Tier 1 (Brute Force)";
+  let shortCircuited = false;
+
+  for (const tier of tiers) {
+    if (!tier.cases.length || shortCircuited) continue;
+
+    const tierExecResults = await executeCodeBatch({
+      language: normLang,
+      fullCode,
+      testcases: tier.cases.map((testcase) => ({
+        stdin: testcase.stdinSmall ?? testcase.input ?? "",
+      })),
+      timeLimit: problem.timeLimit || 2000,
+      memoryLimit: problem.memoryLimit || 256,
+    });
+
+    let tierHasFailure = false;
+
+    for (let idx = 0; idx < tier.cases.length; idx++) {
+      const tc = tier.cases[idx];
+      const testInput = tc.stdinSmall || tc.input || "";
+      const expectedOutput = tc.expectedSmall || tc.output || "";
+      const execResult = tierExecResults[idx];
+
+      maxTimeMs = Math.max(maxTimeMs, execResult.timeMs || 0);
+      maxMemoryKb = Math.max(maxMemoryKb, execResult.memoryKb || 0);
+
+      let isPassed = false;
+      let failureType = execResult.status;
+
+      if (execResult.status === "OK") {
+        isPassed = areOutputsEqual(execResult.actual, expectedOutput);
+        if (!isPassed) failureType = "Wrong Answer";
+      }
+
+      const caseItem = {
+        testIndex: tc.testIndex ?? results.length,
+        input: testInput,
+        expected: expectedOutput,
+        actual: execResult.actual,
+        passed: isPassed,
+        isVisible: tc.isVisible === true,
+        time: execResult.timeMs || 0,
+        memory: execResult.memoryKb || 0,
+        status: isPassed ? "Accepted" : failureType,
+        errorText: execResult.errorText,
+      };
+      results.push(caseItem);
+
+      if (isPassed) {
+        passedCount++;
+      } else {
+        tierHasFailure = true;
+        if (!firstFailure) {
+          if (failureType === "Time Limit Exceeded")
+            finalStatus = "TIME_LIMIT_EXCEEDED";
+          else if (failureType === "Runtime Error") finalStatus = "RUNTIME_ERROR";
+          else if (failureType === "Compilation Error")
+            finalStatus = "COMPILATION_ERROR";
+          else finalStatus = "WRONG_ANSWER";
+
+          const isVisible = Boolean(tc.isVisible);
+          firstFailure = {
+            testIndex: tc.testIndex ?? (results.length - 1),
+            status: failureType,
+            errorText: execResult.errorText,
+            input: isVisible ? testInput : undefined,
+            expected: isVisible ? expectedOutput : undefined,
+            actual: isVisible ? execResult.actual : undefined,
+            message: isVisible
+              ? `Failed sample test ${results.length}: expected '${expectedOutput}', got '${execResult.actual}'`
+              : `Failed on hidden evaluation test case #${results.length}.`,
+          };
+        }
+      }
+    }
+
+    if (tierHasFailure) {
+      tierReached = tier.rankIfFailed;
+      shortCircuited = true;
+      break;
+    } else {
+      tierReached = tier.rankIfPassed;
+    }
   }
 
   return {
@@ -784,6 +838,25 @@ export const submitSolution = async (req, res, next) => {
       }
 
       submissionCache.set(submission.id, updated);
+
+      // Asynchronously trigger complexity analysis without delaying verdict response
+      analyzeComplexity({
+        code: studentCode,
+        language: normLang,
+        problemSlug: problem.slug,
+        executionResult: {
+          timeMs: evaluation.maxTimeMs,
+          memoryKb: evaluation.maxMemoryKb,
+        },
+      })
+        .then((complexity) => {
+          const current = submissionCache.get(submission.id) || {};
+          submissionCache.set(submission.id, { ...current, complexity });
+        })
+        .catch((err) => {
+          console.warn("[Complexity Analyzer Warning]:", err.message);
+        });
+
       return updated;
     };
 
@@ -798,6 +871,19 @@ export const submitSolution = async (req, res, next) => {
       const completed = await runEvaluation();
       const passed = completed.passedCount;
       const total = completed.totalCount;
+
+      let complexity = null;
+      try {
+        complexity = await analyzeComplexity({
+          code: studentCode,
+          language: normLang,
+          problemSlug: problem.slug,
+          executionResult: {
+            timeMs: completed.maxTimeMs,
+            memoryKb: completed.maxMemoryKb,
+          },
+        });
+      } catch {}
 
       return res.status(200).json({
         success: true,
@@ -816,6 +902,7 @@ export const submitSolution = async (req, res, next) => {
         memory: completed.memory || completed.maxMemoryKb,
         firstFailure: completed.firstFailure,
         cases: publicTestResults(completed.results || []),
+        complexity,
         problem: {
           slug: problem.slug,
           title: problem.title,
@@ -923,6 +1010,7 @@ export const getSubmissionStatus = async (req, res, next) => {
         createdAt: submission.createdAt,
         firstFailure: submission.firstFailure || null,
         results: publicTestResults(submission.results || []),
+        complexity: cachedSubmission?.complexity || submission.complexity || null,
         problem: submission.problem || { slug: "problem", title: "Problem" },
       },
     });
@@ -930,3 +1018,34 @@ export const getSubmissionStatus = async (req, res, next) => {
     next(err);
   }
 };
+
+/**
+ * POST /api/execution/analyze-complexity
+ * Standalone complexity analysis endpoint.
+ */
+export const getComplexityAnalysis = async (req, res, next) => {
+  try {
+    const { code, userCode, source_code, language, lang, slug, problemSlug } = req.body;
+    const studentCode = userCode || code || source_code;
+    const rawLang = language || lang || "python";
+    const problemId = slug || problemSlug || "";
+
+    if (!studentCode || !studentCode.trim()) {
+      throw new ApiError(400, "Code is required.", "MISSING_CODE");
+    }
+
+    const complexity = await analyzeComplexity({
+      code: studentCode,
+      language: rawLang,
+      problemSlug: problemId,
+    });
+
+    res.status(200).json({
+      success: true,
+      complexity,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
