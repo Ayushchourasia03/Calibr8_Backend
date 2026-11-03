@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import prisma from "../config/db.js";
-import { areOutputsEqual } from "../utils/codeRunner.js";
+import { areOutputsEqual } from "../utils/outputComparator.js";
 import {
   buildFinalCode,
   LANGUAGE_IDS,
@@ -13,10 +13,7 @@ import { syncProblemSolvedCount } from "../utils/problemSolvedCount.js";
 import { applyAcceptedSubmissionReward } from "../utils/acceptedSubmissionReward.js";
 import { publicTestResults } from "../utils/testcaseResults.js";
 import { analyzeComplexity } from "../services/complexityAnalyzer.service.js";
-import { executeCase } from "../utils/codeRunner.js";
 
-const CODEBOX_URL = process.env.CODEBOX_URL;
-const CODEBOX_TOKEN = process.env.CODEBOX_TOKEN;
 const submissionCache = new Map();
 const MAX_CASES_PER_BATCH = 20;
 const BATCH_POLL_INITIAL_INTERVAL_MS = 250;
@@ -82,8 +79,12 @@ export const getLanguages = async (req, res, next) => {
   }
 };
 
+
 function getCodeboxUrl(required = true) {
-  if (!CODEBOX_URL || !CODEBOX_TOKEN) {
+  const codeboxUrl = process.env.CODEBOX_URL;
+  const codeboxToken = process.env.CODEBOX_TOKEN;
+
+  if (!codeboxUrl || !codeboxToken) {
     if (!required) return null;
     throw new ApiError(
       503,
@@ -93,8 +94,9 @@ function getCodeboxUrl(required = true) {
   }
 
   let runnerUrl;
+
   try {
-    runnerUrl = new URL(CODEBOX_URL);
+    runnerUrl = new URL(codeboxUrl);
   } catch {
     if (!required) return null;
     throw new ApiError(
@@ -104,15 +106,12 @@ function getCodeboxUrl(required = true) {
     );
   }
 
-  const isLoopback = ["localhost", "127.0.0.1", "::1"].includes(
-    runnerUrl.hostname,
-  );
-  const allowsInsecureLocalHttp =
-    process.env.NODE_ENV !== "production" && isLoopback;
-  if (
-    runnerUrl.protocol !== "https:" &&
-    !(runnerUrl.protocol === "http:" && allowsInsecureLocalHttp)
-  ) {
+  const isHttps = runnerUrl.protocol === "https:";
+  const isHttp = runnerUrl.protocol === "http:";
+  const allowInsecureHttp =
+    process.env.CODEBOX_ALLOW_INSECURE_HTTP === "true";
+
+  if (!isHttps && !(isHttp && allowInsecureHttp)) {
     if (!required) return null;
     throw new ApiError(
       503,
@@ -124,23 +123,39 @@ function getCodeboxUrl(required = true) {
   return runnerUrl;
 }
 
+
 async function fetchCodeboxJson(url, options = {}) {
+  const codeboxToken = process.env.CODEBOX_TOKEN;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
+  const timeout = setTimeout(() => controller.abort(), 15_000);
 
   try {
     const response = await fetch(url, {
       ...options,
       redirect: "error",
       headers: {
-        "X-Auth-Token": CODEBOX_TOKEN,
+        "X-Auth-Token": codeboxToken,
         ...options.headers,
       },
       signal: controller.signal,
     });
-    if (!response.ok) throw new Error("Codebox request failed");
+    if (response.status === 401 || response.status === 403) {
+      throw new ApiError(
+        500,
+        "Code execution service authentication failed.",
+        "EXECUTION_AUTH_FAILED",
+      );
+    }
+    if (!response.ok) {
+      throw new ApiError(
+        503,
+        "Code execution service returned an error status.",
+        "EXECUTION_UNAVAILABLE",
+      );
+    }
     return await response.json();
-  } catch {
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
     throw new ApiError(
       503,
       "Code execution service is unavailable.",
@@ -183,22 +198,8 @@ export async function executeCodeBatch({
 }) {
   if (!testcases.length) return [];
 
-  const runnerUrl = getCodeboxUrl(false);
-  if (!runnerUrl) {
-    // Local execution fallback for testing/development environments
-    const localResults = [];
-    for (const testcase of testcases) {
-      const res = await executeCase({
-        language,
-        fullCode,
-        stdin: testcase.stdin ?? testcase.stdinSmall ?? testcase.input ?? "",
-        timeLimitMs: timeLimit,
-        memoryLimitKb: memoryLimit * 1024,
-      });
-      localResults.push(res);
-    }
-    return localResults;
-  }
+  // CodeBox is the exclusive execution engine - no local fallback allowed.
+  const runnerUrl = getCodeboxUrl(true);
 
   const languageId = LANGUAGE_IDS[language] || 54;
   const cpuTimeLimit = Math.max(1, Math.ceil(timeLimit / 1000));
@@ -1062,3 +1063,4 @@ export const getComplexityAnalysis = async (req, res, next) => {
     next(err);
   }
 };
+

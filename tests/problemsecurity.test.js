@@ -1,8 +1,90 @@
 import assert from "node:assert";
-import app from "../src/app.js";
+
+process.env.CODEBOX_URL = "https://codebox.internal";
+process.env.CODEBOX_TOKEN = "test-token";
+
+let lastSubmittedSubmissions = [];
+const originalFetch = globalThis.fetch;
+
+// Intercept fetch calls to CodeBox VPS Judge0 endpoint
+globalThis.fetch = async (input, options = {}) => {
+  const urlStr = typeof input === "string" ? input : input.toString();
+
+  if (urlStr.startsWith("https://codebox.internal")) {
+    const url = new URL(urlStr);
+
+    if (options.method === "POST") {
+      const payload = JSON.parse(options.body || "{}");
+      lastSubmittedSubmissions = payload.submissions || [];
+
+      // Verify batch constraint: never exceeds 20 testcases
+      assert.ok(lastSubmittedSubmissions.length <= 20, "Batch size must not exceed 20");
+      assert.strictEqual(options.headers["X-Auth-Token"], "test-token", "Must pass auth token");
+
+      return new Response(
+        JSON.stringify(
+          lastSubmittedSubmissions.map((_, idx) => ({
+            token: `token-${idx}-${Date.now()}`,
+          })),
+        ),
+        { status: 201 },
+      );
+    }
+
+    // GET /submissions/batch?tokens=...
+    const tokens = (url.searchParams.get("tokens") || "").split(",");
+
+    return new Response(
+      JSON.stringify({
+        submissions: tokens.map((token, idx) => {
+          const sub = lastSubmittedSubmissions[idx] || {};
+          const source = sub.source_code || "";
+          const stdin = sub.stdin || "";
+
+          // Simulate C++ compilation error diagnostic
+          if (source.includes("undeclared_variable")) {
+            return {
+              token,
+              status: { id: 6 }, // Compilation Error
+              compile_output: "error: 'undeclared_variable' was not declared in this scope",
+              stdout: "",
+              time: "0.00",
+              memory: 0,
+            };
+          }
+
+          // Return expected output based on testcase stdin for add-two-numbers
+          let stdout = "7 0 8";
+          if (stdin.includes("1 1\n0\n0") || stdin.startsWith("1 1")) {
+            stdout = "0";
+          } else if (stdin.includes("9 9 9 9 9 9 9")) {
+            stdout = "8 9 9 9 0 0 0 1";
+          } else if (stdin.includes("5 5\n5 5")) {
+            stdout = "0 1 1";
+          } else if (stdin.includes("1 2 3\n9")) {
+            stdout = "0 3 3";
+          }
+
+          return {
+            token,
+            status: { id: 3 }, // Accepted
+            stdout,
+            time: "0.02",
+            memory: 1420,
+          };
+        }),
+      }),
+      { status: 200 },
+    );
+  }
+
+  return originalFetch(input, options);
+};
+
+const app = (await import("../src/app.js")).default;
 
 async function runTests() {
-  console.log("Starting Calibr8 Execution & Function-Only Pipeline Tests...");
+  console.log("Starting Calibr8 Execution & Function-Only Pipeline Tests (CodeBox Exclusive)...");
   const server = app.listen(0);
   const port = server.address().port;
   const baseUrl = `http://localhost:${port}`;
@@ -36,7 +118,7 @@ async function runTests() {
     assert.strictEqual(unsupportedLangRes.status, 422, "Should reject unsupported language");
     console.log("✔ Unsupported language rejected with HTTP 422");
 
-    // 3. Add Two Numbers in C++ (Run Visible Cases)
+    // 3. Add Two Numbers in C++ (Run Visible Cases via CodeBox)
     const cppCode = `ListNode* addTwoNumbers(ListNode* l1, ListNode* l2) {
       ListNode dummy(0);
       ListNode* tail = &dummy;
@@ -65,7 +147,10 @@ async function runTests() {
     const runCppData = await runCppRes.json();
     assert.strictEqual(runCppData.status, "Accepted");
     assert.strictEqual(runCppData.passedCount, runCppData.totalCount);
-    console.log(`✔ Add Two Numbers (C++) Run: ${runCppData.passedCount}/${runCppData.totalCount} passed`);
+    assert.ok(runCppData.complexity, "Complexity analysis should be attached");
+    assert.strictEqual(runCppData.complexity.time.bestEstimate, "O(max(n, m))");
+    assert.strictEqual(runCppData.complexity.space.bestEstimate, "O(1)");
+    console.log(`✔ Add Two Numbers (C++) Run via CodeBox: ${runCppData.passedCount}/${runCppData.totalCount} passed`);
 
     // 4. Add Two Numbers in Python
     const pyCode = `class Solution:
@@ -96,7 +181,7 @@ async function runTests() {
     assert.strictEqual(runPyRes.status, 200);
     const runPyData = await runPyRes.json();
     assert.strictEqual(runPyData.status, "Accepted");
-    console.log(`✔ Add Two Numbers (Python) Run: ${runPyData.passedCount}/${runPyData.totalCount} passed`);
+    console.log(`✔ Add Two Numbers (Python) Run via CodeBox: ${runPyData.passedCount}/${runPyData.totalCount} passed`);
 
     // 5. C++ Compilation Error Diagnostics
     const syntaxErrRes = await fetch(`${baseUrl}/api/problems/add-two-numbers/run`, {
@@ -113,9 +198,31 @@ async function runTests() {
     assert.ok(syntaxErrData.cases[0].errorText.includes("undeclared_variable"));
     console.log("✔ Compiler diagnostics captured and returned correctly for C++ syntax error");
 
+    // 6. Objective A Verification: When CodeBox is unavailable (unset URL), fails with 503 EXECUTION_UNAVAILABLE
+    const savedUrl = process.env.CODEBOX_URL;
+    try {
+      delete process.env.CODEBOX_URL;
+      const unavailRes = await fetch(`${baseUrl}/api/problems/add-two-numbers/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: "add-two-numbers",
+          language: "cpp",
+          code: cppCode
+        })
+      });
+      assert.strictEqual(unavailRes.status, 503, "Should return 503 when CodeBox is unavailable");
+      const unavailData = await unavailRes.json();
+      assert.strictEqual(unavailData.code, "EXECUTION_UNAVAILABLE");
+      console.log("✔ CodeBox unavailable produces controlled 503 EXECUTION_UNAVAILABLE without local fallback");
+    } finally {
+      process.env.CODEBOX_URL = savedUrl;
+    }
+
     console.log("\nALL EXECUTION & REGRESSION TESTS PASSED! 🎉");
   } finally {
     server.close();
+    globalThis.fetch = originalFetch;
   }
 }
 
