@@ -528,20 +528,20 @@ export const runCode = async (req, res, next) => {
 
     const passedCount = results.filter((r) => r.passed).length;
 
-    let complexity = null;
-    try {
-      complexity = await analyzeComplexity({
-        code: studentCode,
-        language: normLang,
-        problemSlug: slug,
-        executionResult: {
-          timeMs: Math.max(...results.map((r) => r.timeMs || 0), 0),
-          memoryKb: Math.max(...results.map((r) => r.memoryKb || 0), 0),
-        },
-        testcases: results,
-        evidenceScope: "visible_tests",
-      });
-    } catch {}
+    // let complexity = null;
+    // try {
+    //   complexity = await analyzeComplexity({
+    //     code: studentCode,
+    //     language: normLang,
+    //     problemSlug: slug,
+    //     executionResult: {
+    //       timeMs: Math.max(...results.map((r) => r.timeMs || 0), 0),
+    //       memoryKb: Math.max(...results.map((r) => r.memoryKb || 0), 0),
+    //     },
+    //     testcases: results,
+    //     evidenceScope: "visible_tests",
+    //   });
+    // } catch {}
 
     res.status(200).json({
       success: true,
@@ -549,7 +549,7 @@ export const runCode = async (req, res, next) => {
       passedCount,
       totalCount: results.length,
       cases: results,
-      complexity,
+     // complexity,
     });
   } catch (err) {
     next(err);
