@@ -13,6 +13,7 @@
     "test:security": "node tests/problemSecurity.test.js",
     "test:activity": "node tests/userActivity.test.js",
     "test:profile": "node tests/profileApi.test.js",
+    "test:onboarding": "node tests/onboarding.test.js",
     "test:themes": "node tests/themesPurchase.test.js",
     "test:theme-catalog": "node tests/themeCatalog.test.js",
     "test:problems": "node tests/problemsCatalog.test.js",

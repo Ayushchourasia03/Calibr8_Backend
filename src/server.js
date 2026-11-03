@@ -1,6 +1,7 @@
 import "dotenv/config";
 import app from "./app.js";
 import prisma from "./config/db.js";
+import { TOPIC_CATALOG } from "./data/topicCatalog.js";
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -37,6 +38,15 @@ async function startServer() {
   if (process.env.DATABASE_URL) {
     try {
       await prisma.$connect();
+      await Promise.all(
+        TOPIC_CATALOG.map((topic) =>
+          prisma.topic.upsert({
+            where: { slug: topic.slug },
+            update: { name: topic.name, category: topic.category },
+            create: topic,
+          }),
+        ),
+      );
       console.log("✅ Connected to database");
     } catch (error) {
       console.warn("⚠ Database connection warning:", error.message);

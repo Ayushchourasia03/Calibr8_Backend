@@ -9,6 +9,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { neonConfig } from "@neondatabase/serverless";
 import ws from "ws";
 import { STORE_THEMES } from "../data/storeThemes.js";
+import { TOPIC_CATALOG } from "../data/topicCatalog.js";
 
 neonConfig.webSocketConstructor = ws;
 
@@ -17,22 +18,10 @@ const __dirname = path.dirname(__filename);
 const STUDY_DIR = path.resolve(__dirname, "../../study-material");
 
 // Initial Seed Data for fallback
-const INITIAL_TOPICS = [
-  { id: "top-1", slug: "dsa-arrays", name: "DSA - Arrays", category: "DSA" },
-  { id: "top-2", slug: "dsa-strings", name: "DSA - Strings", category: "DSA" },
-  { id: "top-3", slug: "dsa-recursion", name: "DSA - Recursion", category: "DSA" },
-  { id: "top-4", slug: "dsa-graphs", name: "DSA - Graphs", category: "DSA" },
-  { id: "top-5", slug: "dsa-sliding-window", name: "DSA - Sliding Window", category: "DSA" },
-  { id: "top-6", slug: "dsa-dp", name: "DSA - DP", category: "DSA" },
-  { id: "top-7", slug: "dsa-graphs-dp", name: "DSA - Graphs & DP", category: "DSA" },
-  { id: "top-8", slug: "dsa-linked-list", name: "DSA - Linked List", category: "DSA" },
-  { id: "top-9", slug: "dsa-stack-queue", name: "DSA - Stack & Queue", category: "DSA" },
-  { id: "top-10", slug: "dsa-trees", name: "DSA - Trees", category: "DSA" },
-  { id: "top-11", slug: "aptitude", name: "Aptitude", category: "CORE" },
-  { id: "top-12", slug: "dbms", name: "DBMS", category: "CORE" },
-  { id: "top-13", slug: "oops", name: "OOPs", category: "CORE" },
-  { id: "top-14", slug: "system-design", name: "System Design", category: "CORE" },
-];
+const INITIAL_TOPICS = TOPIC_CATALOG.map((topic, index) => ({
+  id: `top-${index + 1}`,
+  ...topic,
+}));
 
 // In-Memory Database Store for robust zero-config execution
 class InMemoryStore {
@@ -261,7 +250,35 @@ function createModelProxy(modelName) {
       if (modelName === "topic") {
         let list = [...store.topics.values()];
         if (where.category) {
-          list = list.filter((t) => t.category.toLowerCase() === where.category.toLowerCase());
+          const category =
+            typeof where.category === "object"
+              ? where.category.equals
+              : where.category;
+          const insensitive =
+            typeof where.category === "object" &&
+            where.category.mode === "insensitive";
+          list = list.filter((topic) => {
+            if (category === undefined) return true;
+            return insensitive
+              ? topic.category.toLowerCase() === String(category).toLowerCase()
+              : topic.category === category;
+          });
+        }
+        if (where.OR) {
+          list = list.filter((topic) =>
+            where.OR.some(
+              (condition) =>
+                condition.id?.in?.includes(topic.id) ||
+                condition.slug?.in?.includes(topic.slug),
+            ),
+          );
+        }
+        if (orderBy?.name) {
+          list.sort((a, b) =>
+            orderBy.name === "desc"
+              ? b.name.localeCompare(a.name)
+              : a.name.localeCompare(b.name),
+          );
         }
         return list;
       }
@@ -367,6 +384,19 @@ function createModelProxy(modelName) {
     },
 
     async createMany({ data = [], skipDuplicates = false } = {}) {
+      if (modelName === "userTopic") {
+        let count = 0;
+        for (const record of data) {
+          const key = `${record.userId}_${record.topicId}`;
+          if (skipDuplicates && store.userTopics.has(key)) continue;
+          store.userTopics.set(key, {
+            id: `ut-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            ...record,
+          });
+          count += 1;
+        }
+        return { count };
+      }
       if (modelName !== "userProblemProgress") return { count: 0 };
       let count = 0;
       for (const record of data) {
@@ -480,7 +510,17 @@ function createModelProxy(modelName) {
       return { ...createData };
     },
 
-    async deleteMany() {
+    async deleteMany({ where = {} } = {}) {
+      if (modelName === "userTopic") {
+        let count = 0;
+        for (const [key, record] of store.userTopics.entries()) {
+          if (where.userId && record.userId !== where.userId) continue;
+          if (where.topicId && record.topicId !== where.topicId) continue;
+          store.userTopics.delete(key);
+          count += 1;
+        }
+        return { count };
+      }
       return { count: 0 };
     },
 
