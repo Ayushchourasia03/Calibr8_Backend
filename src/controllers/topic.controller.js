@@ -107,11 +107,46 @@ export const getTopicDetail = async (req, res, next) => {
  */
 export const getAllDsaTopics = async (req, res, next) => {
   try {
-    const topics = await prisma.dsaTopic.findMany({
-      orderBy: { order: "asc" },
-    });
+    let topics = [];
+    try {
+      topics = await prisma.dsaTopic.findMany({
+        orderBy: { order: "asc" },
+      });
+    } catch {}
 
     const problems = await listAllProblems();
+
+    if (!topics || topics.length === 0) {
+      const categoryMap = new Map();
+      const defaultCategories = [
+        { slug: "arrays", name: "Array", order: 1 },
+        { slug: "linked-list", name: "Linked List", order: 2 },
+        { slug: "strings", name: "String", order: 3 },
+        { slug: "math", name: "Math", order: 4 },
+        { slug: "two-pointers", name: "Two Pointers", order: 5 },
+        { slug: "sliding-window", name: "Sliding Window", order: 6 },
+        { slug: "stack", name: "Stack", order: 7 },
+        { slug: "binary-search", name: "Binary Search", order: 8 },
+        { slug: "trees", name: "Trees", order: 9 },
+        { slug: "graphs", name: "Graphs", order: 10 },
+        { slug: "dynamic-programming", name: "Dynamic Programming", order: 11 },
+      ];
+      defaultCategories.forEach((d) => categoryMap.set(d.slug, { id: `dsa-${d.slug}`, ...d }));
+
+      problems.forEach((p) => {
+        if (!p.topicSlug) return;
+        if (!categoryMap.has(p.topicSlug)) {
+          categoryMap.set(p.topicSlug, {
+            id: `dsa-${p.topicSlug}`,
+            slug: p.topicSlug,
+            name: p.topic || p.topicSlug,
+            order: categoryMap.size + 1,
+          });
+        }
+      });
+      topics = [...categoryMap.values()];
+    }
+
     const data = topics.map((t) => ({
       id: t.id,
       slug: t.slug,
@@ -120,7 +155,8 @@ export const getAllDsaTopics = async (req, res, next) => {
       totalProblems: problems.filter(
         (problem) =>
           problem.topicSlug === t.slug ||
-          String(problem.topic).toLowerCase() === t.name.toLowerCase(),
+          String(problem.topic).toLowerCase() === t.name.toLowerCase() ||
+          (t.slug === "arrays" && String(problem.topic).toLowerCase().includes("array")),
       ).length,
     }));
 
@@ -139,9 +175,19 @@ export const getProblemsByDsaTopic = async (req, res, next) => {
     const { slug } = req.params;
     const { difficulty, search } = req.query;
 
-    const topic = await prisma.dsaTopic.findUnique({ where: { slug } });
+    let topic = null;
+    try {
+      topic = await prisma.dsaTopic.findUnique({ where: { slug } });
+    } catch {}
+
     if (!topic) {
-      throw new ApiError(404, `Topic '${slug}' not found.`);
+      const cleanSlug = String(slug).toLowerCase().trim();
+      const prettyName = cleanSlug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      topic = {
+        id: `dsa-${cleanSlug}`,
+        slug: cleanSlug,
+        name: cleanSlug === "arrays" ? "Array" : prettyName,
+      };
     }
 
     const where = { dsaTopicId: topic.id };
@@ -155,33 +201,42 @@ export const getProblemsByDsaTopic = async (req, res, next) => {
       ];
     }
 
-    let problems = await prisma.problem.findMany({
-      where,
-      orderBy: { problemNumber: "asc" },
-      select: {
-        id: true,
-        problemNumber: true,
-        slug: true,
-        title: true,
-        difficulty: true,
-        tags: true,
-      },
-    });
+    let problems = [];
+    try {
+      problems = await prisma.problem.findMany({
+        where,
+        orderBy: { problemNumber: "asc" },
+        select: {
+          id: true,
+          problemNumber: true,
+          slug: true,
+          title: true,
+          difficulty: true,
+          tags: true,
+        },
+      });
+    } catch {}
 
     if (problems.length === 0) {
       const catalog = await listAllProblems({
-        topic: topic.name,
         difficulty,
         search,
       });
-      problems = catalog.map((problem) => ({
-        id: problem.id,
-        problemNumber: problem.problemNumber,
-        slug: problem.slug,
-        title: problem.title,
-        difficulty: problem.difficulty,
-        tags: problem.tags,
-      }));
+      problems = catalog
+        .filter((p) => {
+          if (p.topicSlug === topic.slug) return true;
+          if (String(p.topic).toLowerCase() === String(topic.name).toLowerCase()) return true;
+          if (topic.slug === "arrays" && String(p.topic).toLowerCase().includes("array")) return true;
+          return false;
+        })
+        .map((problem) => ({
+          id: problem.id,
+          problemNumber: problem.problemNumber,
+          slug: problem.slug,
+          title: problem.title,
+          difficulty: problem.difficulty,
+          tags: problem.tags,
+        }));
     }
 
     res.status(200).json({

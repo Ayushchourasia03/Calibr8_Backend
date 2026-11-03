@@ -668,7 +668,7 @@
       <!-- Main Navigation Tabs -->
       <div class="tabs">
         <button class="tab-btn active" id="btnTabExplorer" onclick="switchTab('explorerTab')">
-          🚀 All APIs Console (45 Endpoints)
+          🚀 All APIs Console (46 Endpoints)
         </button>
         <button class="tab-btn" id="btnTabCodeSandbox" onclick="switchTab('codeSandboxTab')">
           ⚡ Code Sandbox (Run & Submit)
@@ -684,17 +684,17 @@
         </button>
       </div>
 
-      <!-- TAB 1: Complete REST API Explorer (All 45 Endpoints) -->
+      <!-- TAB 1: Complete REST API Explorer (All 46 Endpoints) -->
       <div id="explorerTab" class="tab-content active">
         <!-- Category Filter Bar -->
         <div class="cat-filter-bar" id="categoryFilterBar">
-          <button class="cat-pill active" onclick="filterApis('all', this)">All APIs (45)</button>
+          <button class="cat-pill active" onclick="filterApis('all', this)">All APIs (46)</button>
           <button class="cat-pill" onclick="filterApis('auth', this)">🔐 Auth (7)</button>
           <button class="cat-pill" onclick="filterApis('users', this)">👤 Users (5)</button>
           <button class="cat-pill" onclick="filterApis('topics', this)">🎯 Topics (5)</button>
           <button class="cat-pill" onclick="filterApis('onboarding', this)">🚀 Onboarding (4)</button>
           <button class="cat-pill" onclick="filterApis('problems', this)">🧩 Problems (2)</button>
-          <button class="cat-pill" onclick="filterApis('execution', this)">⚡ Execution (4)</button>
+          <button class="cat-pill" onclick="filterApis('execution', this)">⚡ Execution (5)</button>
           <button class="cat-pill" onclick="filterApis('social', this)">🌐 Social (3)</button>
           <button class="cat-pill" onclick="filterApis('study', this)">📚 Study (5)</button>
           <button class="cat-pill" onclick="filterApis('themes', this)">🎨 Themes (4)</button>
@@ -704,7 +704,7 @@
 
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.75rem;">
           <input type="text" id="apiSearchInput" placeholder="🔍 Search endpoint by path or description..." oninput="searchApis(this.value)" style="max-width: 380px; width:100%;" />
-          <span style="font-size: 0.8rem; color: var(--text-muted);" id="apiCountDisplay">Showing 45 endpoints</span>
+          <span style="font-size: 0.8rem; color: var(--text-muted);" id="apiCountDisplay">Showing 46 endpoints</span>
         </div>
 
         <!-- Endpoints Container -->
@@ -832,12 +832,13 @@
               </select>
             </div>
 
-            <!-- Action Selector (Run vs Submit) -->
+            <!-- Action Selector (Run vs Submit vs Analyze) -->
             <div style="display: flex; align-items: center; gap: 0.6rem;">
               <span style="font-weight: 700; font-size: 0.88rem; color: #cbd5e1;">Action:</span>
-              <select id="sandboxActionSelect" onchange="onSandboxActionChange(this.value)" style="font-weight: 600; min-width: 165px; background: #0f172a; border-color: #3b82f6;">
+              <select id="sandboxActionSelect" onchange="onSandboxActionChange(this.value)" style="font-weight: 600; min-width: 175px; background: #0f172a; border-color: #3b82f6;">
                 <option value="run">▶ Run (Visible Cases)</option>
                 <option value="submit">🚀 Submit (All Cases)</option>
+                <option value="analyze">🧠 Analyze Complexity</option>
               </select>
             </div>
 
@@ -913,6 +914,9 @@
                 <button class="btn btn-secondary" id="btnSubmitAll" onclick="handleSubmitAllCases()" style="font-size: 0.85rem; padding: 0.55rem 1rem;">
                   🚀 Submit (All Tests)
                 </button>
+                <button class="btn btn-secondary" id="btnAnalyzeComplexity" onclick="handleAnalyzeComplexity()" style="font-size: 0.85rem; padding: 0.55rem 1rem; background: rgba(168, 85, 247, 0.18); border: 1px solid rgba(168, 85, 247, 0.45); color: #e9d5ff;">
+                  🧠 Analyze Complexity
+                </button>
               </div>
               <div style="display: flex; gap: 0.5rem; align-items: center;">
                 <button class="btn btn-secondary" onclick="toggleCustomInputBox()" style="font-size: 0.78rem;">
@@ -956,6 +960,56 @@
               <div id="sbVerdictBanner" class="verdict-banner accepted">
                 <span id="sbVerdictText">Accepted</span>
                 <span id="sbVerdictMeta" style="font-size: 0.8rem; font-weight: 500;">Runtime: 45ms</span>
+              </div>
+
+              <!-- Dedicated Complexity Analysis Output Panel -->
+              <div id="sbComplexityPanel" style="display: none; background: #0c1322; border: 1px solid rgba(168, 85, 247, 0.35); border-radius: 10px; padding: 1rem; margin-bottom: 0.85rem; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem; border-bottom: 1px solid #1e293b; padding-bottom: 0.6rem;">
+                  <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                    <span style="font-size: 1.1rem;">🧠</span>
+                    <strong style="color: #c084fc; font-size: 0.95rem;">Algorithmic Complexity Analysis</strong>
+                    <span id="sbComplexitySummaryBadge" style="font-size: 0.75rem; background: rgba(168, 85, 247, 0.2); color: #e9d5ff; padding: 0.2rem 0.5rem; border-radius: 4px; font-family: monospace; font-weight: 600;">Time: O(n), Space: O(n)</span>
+                  </div>
+                  <span id="sbComplexityMeta" style="font-size: 0.72rem; color: #94a3b8;">AST & Lexical Structural Evaluation</span>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.85rem; margin-bottom: 0.4rem;">
+                  <!-- Time Complexity Card -->
+                  <div style="background: #070c18; border: 1px solid #1e293b; border-radius: 8px; padding: 0.85rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                      <span style="font-size: 0.78rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">⏱ Time Complexity</span>
+                      <span id="sbTimeConfidenceBadge" style="font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 4px; background: rgba(16, 185, 129, 0.15); color: #34d399; text-transform: capitalize;">Confidence: High</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; gap: 0.6rem; margin-bottom: 0.5rem;">
+                      <span id="sbTimeEstimateVal" style="font-size: 1.6rem; font-weight: 800; font-family: monospace; color: #38bdf8;">O(n)</span>
+                      <span style="font-size: 0.78rem; color: #94a3b8;">upper-bound estimate</span>
+                    </div>
+                    <div style="font-size: 0.76rem; color: #cbd5e1;">
+                      <strong style="color: #94a3b8; display: block; margin-bottom: 0.25rem;">Analysis Evidence:</strong>
+                      <ul id="sbTimeEvidenceList" style="margin: 0; padding-left: 1.2rem; line-height: 1.45; color: #cbd5e1;">
+                        <li>Single iterative loop traversal detected</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <!-- Space Complexity Card -->
+                  <div style="background: #070c18; border: 1px solid #1e293b; border-radius: 8px; padding: 0.85rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                      <span style="font-size: 0.78rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">💾 Space Complexity (Auxiliary)</span>
+                      <span id="sbSpaceConfidenceBadge" style="font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 4px; background: rgba(16, 185, 129, 0.15); color: #34d399; text-transform: capitalize;">Confidence: High</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; gap: 0.6rem; margin-bottom: 0.5rem;">
+                      <span id="sbSpaceEstimateVal" style="font-size: 1.6rem; font-weight: 800; font-family: monospace; color: #c084fc;">O(n)</span>
+                      <span style="font-size: 0.78rem; color: #94a3b8;">auxiliary memory</span>
+                    </div>
+                    <div style="font-size: 0.76rem; color: #cbd5e1;">
+                      <strong style="color: #94a3b8; display: block; margin-bottom: 0.25rem;">Analysis Evidence:</strong>
+                      <ul id="sbSpaceEvidenceList" style="margin: 0; padding-left: 1.2rem; line-height: 1.45; color: #cbd5e1;">
+                        <li>Hash map / auxiliary lookup storage allocated</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <!-- Dedicated Compilation Error / Diagnostics Panel -->
@@ -1037,6 +1091,7 @@
         { id: "exe-2", category: "execution", method: "POST", path: "/api/execution/runs", auth: true, desc: "Synchronously run user code against sample test cases", body: { slug: "two-sum-001", language: "python", code: "class Solution:\n    def twoSum(self, nums, target):\n        lookup = {}\n        for i, n in enumerate(nums):\n            diff = target - n\n            if diff in lookup:\n                return [lookup[diff], i]\n            lookup[n] = i\n" } },
         { id: "exe-3", category: "execution", method: "POST", path: "/api/execution/submissions", auth: true, desc: "Asynchronously submit code for multi-tier evaluation (202 Accepted)", body: { slug: "two-sum-001", language: "python", code: "class Solution:\n    def twoSum(self, nums, target):\n        lookup = {}\n        for i, n in enumerate(nums):\n            diff = target - n\n            if diff in lookup:\n                return [lookup[diff], i]\n            lookup[n] = i\n" } },
         { id: "exe-4", category: "execution", method: "GET", path: "/api/execution/submissions/:id", auth: true, desc: "Get submission evaluation status & tier metrics", pathParams: { id: "sub-demo-id" } },
+        { id: "exe-5", category: "execution", method: "POST", path: "/api/execution/analyze-complexity", auth: false, desc: "Perform static AST and lexical complexity analysis (Time & Space O-notation with evidence)", body: { slug: "two-sum-001", language: "python", code: "class Solution:\n    def twoSum(self, nums, target):\n        lookup = {}\n        for i, n in enumerate(nums):\n            diff = target - n\n            if diff in lookup:\n                return [lookup[diff], i]\n            lookup[n] = i\n        return []" } },
 
         // Social & GitHub OAuth
         { id: "soc-1", category: "social", method: "GET", path: "/api/social/:provider/link-url", auth: true, desc: "Generate GitHub OAuth authorization link", pathParams: { provider: "github" } },
@@ -1896,7 +1951,20 @@
         updateRequestPreview();
       }
 
-      function onSandboxActionChange() {
+      function onSandboxActionChange(val) {
+        const unifiedBtn = document.getElementById("btnExecuteUnified");
+        if (unifiedBtn) {
+          if (val === "submit") {
+            unifiedBtn.innerHTML = "🚀 Submit";
+            unifiedBtn.style.background = "#059669";
+          } else if (val === "analyze") {
+            unifiedBtn.innerHTML = "🧠 Analyze";
+            unifiedBtn.style.background = "#9333ea";
+          } else {
+            unifiedBtn.innerHTML = "⚡ Execute";
+            unifiedBtn.style.background = "#2563eb";
+          }
+        }
         updateRequestPreview();
       }
 
@@ -1950,8 +2018,12 @@
       function updateRequestPreview() {
         const actionSelect = document.getElementById("sandboxActionSelect");
         const action = actionSelect ? actionSelect.value : "run";
-        const isRun = action === "run";
-        const endpoint = isRun ? "/api/execution/runs" : "/api/execution/submissions?wait=true";
+        let endpoint = "/api/execution/runs";
+        if (action === "submit") {
+          endpoint = "/api/execution/submissions?wait=true";
+        } else if (action === "analyze") {
+          endpoint = "/api/execution/analyze-complexity";
+        }
         const code = (document.getElementById("sbCodeEditor") || {}).value || "";
         const slug = sbCurrentProblem ? sbCurrentProblem.slug : "two-sum-001";
 
@@ -1962,9 +2034,14 @@
           ? code.slice(0, 350) + `\n... [${code.length - 350} more characters]`
           : code;
 
-        const payload = isRun
-          ? { slug, language: sbCurrentLanguage, code: previewCode }
-          : { slug, language: sbCurrentLanguage, code: previewCode, wait: true };
+        let payload;
+        if (action === "analyze") {
+          payload = { slug, language: sbCurrentLanguage, code: previewCode };
+        } else if (action === "submit") {
+          payload = { slug, language: sbCurrentLanguage, code: previewCode, wait: true };
+        } else {
+          payload = { slug, language: sbCurrentLanguage, code: previewCode };
+        }
 
         const previewJson = document.getElementById("sbRequestPreviewJson");
         if (previewJson) {
@@ -2059,11 +2136,12 @@
         const unifiedBtn = document.getElementById("btnExecuteUnified");
         const runBtn = document.getElementById("btnRunVisible");
         const submitBtn = document.getElementById("btnSubmitAll");
+        const analyzeBtn = document.getElementById("btnAnalyzeComplexity");
         const editor = document.getElementById("sbCodeEditor");
 
         if (unifiedBtn) {
           unifiedBtn.disabled = isExecuting;
-          unifiedBtn.innerHTML = isExecuting ? '⏳ Executing...' : '⚡ Execute';
+          unifiedBtn.innerHTML = isExecuting ? '⏳ Working...' : '⚡ Execute';
         }
         if (runBtn) {
           runBtn.disabled = isExecuting;
@@ -2072,6 +2150,10 @@
         if (submitBtn) {
           submitBtn.disabled = isExecuting;
           submitBtn.innerHTML = isExecuting ? '⏳ Submitting...' : '🚀 Submit (All Tests)';
+        }
+        if (analyzeBtn) {
+          analyzeBtn.disabled = isExecuting;
+          analyzeBtn.innerHTML = isExecuting ? '⏳ Analyzing...' : '🧠 Analyze Complexity';
         }
         if (editor) {
           editor.readOnly = isExecuting;
@@ -2083,8 +2165,150 @@
         const action = actionSelect ? actionSelect.value : "run";
         if (action === "submit") {
           await handleSubmitAllCases();
+        } else if (action === "analyze") {
+          await handleAnalyzeComplexity();
         } else {
           await handleRunVisibleCases();
+        }
+      }
+
+      function renderComplexityAnalysis(complexity) {
+        const panel = document.getElementById("sbComplexityPanel");
+        if (!panel) return;
+        if (!complexity || (!complexity.time && !complexity.space)) {
+          panel.style.display = "none";
+          return;
+        }
+
+        panel.style.display = "block";
+
+        const summaryBadge = document.getElementById("sbComplexitySummaryBadge");
+        if (summaryBadge) {
+          summaryBadge.textContent = complexity.summary || `Time: ${complexity.time?.bestEstimate || 'O(n)'}, Space: ${complexity.space?.bestEstimate || 'O(1)'}`;
+        }
+
+        const timeEst = document.getElementById("sbTimeEstimateVal");
+        if (timeEst) timeEst.textContent = complexity.time?.bestEstimate || "Unknown";
+
+        const timeConf = document.getElementById("sbTimeConfidenceBadge");
+        if (timeConf) {
+          const conf = complexity.time?.confidence || "medium";
+          timeConf.textContent = "Confidence: " + conf;
+          timeConf.style.color = conf === "high" ? "#34d399" : (conf === "medium" ? "#fbbf24" : "#94a3b8");
+          timeConf.style.background = conf === "high" ? "rgba(16, 185, 129, 0.15)" : (conf === "medium" ? "rgba(245, 158, 11, 0.15)" : "rgba(100, 116, 139, 0.2)");
+        }
+
+        const timeList = document.getElementById("sbTimeEvidenceList");
+        if (timeList) {
+          const evidence = complexity.time?.evidence || [];
+          if (evidence.length === 0) {
+            timeList.innerHTML = "<li>Standard runtime bounds</li>";
+          } else {
+            timeList.innerHTML = evidence.map((ev) => `<li>${escapeHtml(ev)}</li>`).join("");
+          }
+        }
+
+        const spaceEst = document.getElementById("sbSpaceEstimateVal");
+        if (spaceEst) spaceEst.textContent = complexity.space?.bestEstimate || "Unknown";
+
+        const spaceConf = document.getElementById("sbSpaceConfidenceBadge");
+        if (spaceConf) {
+          const conf = complexity.space?.confidence || "medium";
+          spaceConf.textContent = "Confidence: " + conf;
+          spaceConf.style.color = conf === "high" ? "#34d399" : (conf === "medium" ? "#fbbf24" : "#94a3b8");
+          spaceConf.style.background = conf === "high" ? "rgba(16, 185, 129, 0.15)" : (conf === "medium" ? "rgba(245, 158, 11, 0.15)" : "rgba(100, 116, 139, 0.2)");
+        }
+
+        const spaceList = document.getElementById("sbSpaceEvidenceList");
+        if (spaceList) {
+          const evidence = complexity.space?.evidence || [];
+          if (evidence.length === 0) {
+            spaceList.innerHTML = "<li>Minimal auxiliary memory allocated</li>";
+          } else {
+            spaceList.innerHTML = evidence.map((ev) => `<li>${escapeHtml(ev)}</li>`).join("");
+          }
+        }
+      }
+
+      async function handleAnalyzeComplexity() {
+        const code = document.getElementById("sbCodeEditor").value;
+        const slug = sbCurrentProblem ? sbCurrentProblem.slug : "two-sum-001";
+
+        if (!code || !code.trim()) {
+          const compBox = document.getElementById("sbCompilationErrorBox");
+          compBox.style.display = "block";
+          document.getElementById("sbCompilationErrorText").textContent = "Please write or select code in the editor before analyzing complexity.";
+          return;
+        }
+
+        setExecutingState(true);
+
+        const resultsCard = document.getElementById("sbResultsCard");
+        resultsCard.style.display = "block";
+        const banner = document.getElementById("sbVerdictBanner");
+        banner.className = "verdict-banner";
+        banner.style.background = "rgba(168, 85, 247, 0.15)";
+        banner.style.border = "1px solid rgba(168, 85, 247, 0.4)";
+        banner.style.color = "#c084fc";
+        document.getElementById("sbVerdictText").textContent = "🧠 Analyzing Algorithm Complexity...";
+        document.getElementById("sbVerdictMeta").textContent = "Running AST parsing and structural evaluation...";
+        document.getElementById("sbCompilationErrorBox").style.display = "none";
+        document.getElementById("sbCaseTabsBar").innerHTML = "";
+
+        const startTime = Date.now();
+
+        try {
+          const res = await fetch("/api/execution/analyze-complexity", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(authToken ? { "Authorization": "Bearer " + authToken } : {})
+            },
+            body: JSON.stringify({
+              code,
+              language: sbCurrentLanguage,
+              slug
+            })
+          });
+
+          const latency = Date.now() - startTime;
+          const data = await res.json().catch(() => ({}));
+          logConsole("POST /api/execution/analyze-complexity (" + res.status + ")", data);
+
+          document.getElementById("sbHttpStatusBadge").textContent = "HTTP " + res.status + " " + res.statusText;
+          document.getElementById("sbHttpStatusBadge").style.color = res.ok ? "#34d399" : "#f87171";
+          document.getElementById("sbLatencyBadge").textContent = "Latency: " + latency + "ms";
+
+          if (!res.ok) {
+            banner.className = "verdict-banner failed";
+            document.getElementById("sbVerdictText").textContent = data.code || "Analysis Error";
+            document.getElementById("sbVerdictMeta").textContent = data.message || "Failed to analyze code";
+            return;
+          }
+
+          banner.className = "verdict-banner";
+          banner.style.background = "rgba(168, 85, 247, 0.15)";
+          banner.style.border = "1px solid rgba(168, 85, 247, 0.4)";
+          banner.style.color = "#c084fc";
+          document.getElementById("sbVerdictText").textContent = "🧠 " + (data.complexity?.summary || "Complexity Analysis Complete");
+          document.getElementById("sbVerdictMeta").textContent = "AST & Lexical parsing executed in " + latency + "ms";
+
+          renderComplexityAnalysis(data.complexity);
+
+          const activeDetail = document.getElementById("sbActiveCaseDetail");
+          activeDetail.innerHTML =
+            '<div style="color:#c084fc; font-weight:700; font-size:0.95rem; margin-bottom:0.4rem;">AST & Lexical Complexity Breakdown</div>' +
+            '<div style="color:#cbd5e1; font-size:0.82rem; line-height:1.6;">' +
+              '<div>⏱ <strong>Estimated Time Complexity:</strong> <span style="color:#38bdf8; font-weight:700; font-family:monospace;">' + escapeHtml(data.complexity?.time?.bestEstimate || "Unknown") + '</span> (Confidence: ' + escapeHtml(data.complexity?.time?.confidence || "medium") + ')</div>' +
+              '<div>💾 <strong>Estimated Auxiliary Space:</strong> <span style="color:#a855f7; font-weight:700; font-family:monospace;">' + escapeHtml(data.complexity?.space?.bestEstimate || "Unknown") + '</span> (Confidence: ' + escapeHtml(data.complexity?.space?.confidence || "medium") + ')</div>' +
+              '<div style="margin-top:0.4rem; color:#94a3b8; font-size:0.78rem;">Analyzer evaluated AST loops, function calls, recursive branches, container instantiations, and language-specific algorithmic patterns.</div>' +
+            '</div>';
+        } catch (err) {
+          banner.className = "verdict-banner failed";
+          document.getElementById("sbVerdictText").textContent = "Analysis Request Failed";
+          document.getElementById("sbVerdictMeta").textContent = err.message;
+        } finally {
+          setExecutingState(false);
         }
       }
 
@@ -2147,6 +2371,13 @@
 
           sbRunCases = data.cases || [];
           const allPassed = data.status === "Accepted" && data.passedCount === data.totalCount;
+
+          if (data.complexity) {
+            renderComplexityAnalysis(data.complexity);
+          } else {
+            const compPanel = document.getElementById("sbComplexityPanel");
+            if (compPanel) compPanel.style.display = "none";
+          }
 
           // Check if any case had a compilation error or runtime error
           const compErrCase = sbRunCases.find(c => c.status === "Compilation Error" || (c.errorText && c.errorText.includes("error:")));
@@ -2287,6 +2518,13 @@
 
           document.getElementById("sbVerdictMeta").textContent =
             "Passed: " + data.passedCount + "/" + data.totalCount + " • Time: " + (data.time || "45ms");
+
+          if (data.complexity) {
+            renderComplexityAnalysis(data.complexity);
+          } else {
+            const compPanel = document.getElementById("sbComplexityPanel");
+            if (compPanel) compPanel.style.display = "none";
+          }
 
           const detail = document.getElementById("sbActiveCaseDetail");
           if (isAccepted) {

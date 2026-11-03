@@ -374,26 +374,34 @@ export async function listAllProblems({
   // Fallback to /problems/*.json if DB returned no problems
   if (!problems || problems.length === 0) {
     const local = loadLocalProblems();
-    problems = local.map((p) => ({
-      id: p.id,
-      problemNumber: p.problemNumber,
-      slug: p.slug,
-      title: p.title,
-      difficulty: p.difficulty,
-      topic: p.topic,
-      topicSlug: null,
-      tags: p.tags || [],
-      isSolved: false,
-      acceptanceRate: null,
-      points: pointsForDifficulty(p.difficulty),
-      createdAt: null,
-      timeLimit: p.timeLimit,
-      memoryLimit: p.memoryLimit,
-      _count: {
-        testcases: (p.testcases || []).length,
-        templates: Object.keys(p.templatesMap || {}).length,
-      },
-    }));
+    problems = local.map((p) => {
+      const topic = p.topic || "Array";
+      const topicSlug = String(topic)
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+      return {
+        id: p.id,
+        problemNumber: p.problemNumber,
+        slug: p.slug,
+        title: p.title,
+        difficulty: p.difficulty,
+        topic,
+        topicSlug,
+        tags: p.tags || [],
+        isSolved: false,
+        acceptanceRate: null,
+        points: pointsForDifficulty(p.difficulty),
+        createdAt: null,
+        timeLimit: p.timeLimit,
+        memoryLimit: p.memoryLimit,
+        _count: {
+          testcases: (p.testcases || []).length,
+          templates: Object.keys(p.templatesMap || {}).length,
+        },
+      };
+    });
   } else {
     problems = problems.map((problem) => {
       const stats = submissionsByProblem.get(problem.id);
