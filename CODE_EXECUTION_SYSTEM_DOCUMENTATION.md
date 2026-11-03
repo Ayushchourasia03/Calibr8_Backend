@@ -102,7 +102,8 @@ The Calibr8 Code Execution System provides a secure, sandboxed, high-throughput 
 | `src/routers/execution.router.js` | Routing Layer | Registers execution endpoints (`/languages`, `/runs`, `/run`, `/submissions`, `/submit`, `/submissions/:id`), attaching auth and rate limiters. |
 | `src/controllers/execution.controller.js` | Controller / Business Logic | Coordinates run/submit flows, Codebox batch dispatch, polling loop, tier calculation, gamification rewards, and response shaping. |
 | `src/utils/codeBuilder.js` | Code Synthesis Engine | Normalizes language keys, maps Judge0 language IDs, validates function-only constraints (forbids `main`), injects language drivers, bridges, and headers/footers. |
-| `src/utils/codeRunner.js` | Local Sandbox & Comparison | Implements output comparison (`areOutputsEqual`, `normalizeOutput`), reflection drivers, and fallback execution via `child_process.spawn`. |
+| `src/utils/outputComparator.js` | Output Comparison Engine | Implements normalized output comparison (`areOutputsEqual`, `normalizeOutput`) with line-ending and whitespace tolerance. |
+| `src/services/complexityAnalyzer.service.js` | Algorithmic Complexity Analyzer | Multi-language static source-code analyzer computing time and auxiliary/output/total space complexity. |
 | `src/utils/problemResolver.js` | Data Ingestion & Caching | Resolves problem metadata, templates, and test cases from PostgreSQL or fallback `/problems/*.json` with in-memory TTL caching. |
 | `src/utils/testcaseResults.js` | Data Sanitization | Sanitizes test results before returning to client (`publicTestResults`), stripping inputs/outputs from hidden test cases. |
 | `src/middlewares/rateLimit.middleware.js` | Traffic Shaping & Security | Enforces per-user rate limits (10 runs/min, 6 submits/min) and concurrent in-flight job caps (max 2 per user). |
@@ -322,32 +323,26 @@ Handles multi-format equality normalization:
 
 ---
 
-## 5. The Dual Execution Engine (Codebox VPS vs. Local Worker)
+## 5. The Execution Engine (Exclusive Codebox VPS)
 
-The codebase contains two execution strategies:
+The codebase routes all code execution exclusively through the Codebox VPS (Judge0 CE API):
 
 ```
-                              Execution Dispatcher
-                                       |
-                 +---------------------+---------------------+
-                 |                                           |
-                 v                                           v
-       [Primary Production]                         [Local Development]
-       executeCodeBatch()                             executeCase()
-                 |                                           |
-    Dispatches to Codebox VPS                      Uses child_process.spawn()
-    (Judge0 containerized sandbox)                 (Runs g++, gcc, javac, python3, node)
+                              Calibr8 Execution Controller
+                                           |
+                                           v
+                              executeCodeBatch() (Batching <= 20)
+                                           |
+                                           v
+                              Codebox VPS (Judge0 CE REST API)
+                                (cgroup containerized sandbox)
 ```
 
 1. **Codebox VPS (`executeCodeBatch` in `execution.controller.js`):**
-   - Active whenever `CODEBOX_URL` and `CODEBOX_TOKEN` are set.
-   - Dispatches batches to the remote Judge0 instance via HTTP REST APIs.
+   - Sole execution engine. Dispatches batches to the remote Judge0 VPS instance via HTTP REST APIs.
+   - Slices requests into batches of at most 20 testcases, polling status with adaptive backoff.
    - Completely sandboxed with Linux `cgroup` resource isolation, ptrace limits, and disabled network access.
-
-2. **Local Worker (`executeCase` in `codeRunner.js`):**
-   - Direct execution via Node's `child_process.spawn`.
-   - Used for unit testing and offline development when a remote Judge0 VPS is not reachable.
-   - Creates a temporary directory per run (`/tmp/calibr8-<lang>-<random>/`), compiles if necessary, pipes `stdin`, and monitors wall-clock timers.
+   - If CodeBox is unreachable or unconfigured, the execution controller fails securely with a controlled 503 (`EXECUTION_UNAVAILABLE`) error without executing code locally.
 
 ---
 
