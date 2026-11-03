@@ -4,8 +4,9 @@ import {
   runCode,
   submitSolution,
   getSubmissionStatus,
+  getComplexityAnalysis,
 } from "../controllers/execution.controller.js";
-import { protect } from "../middlewares/auth.middleware.js";
+import { protect, optionalAuth } from "../middlewares/auth.middleware.js";
 import {
   inFlightLimiter,
   runLimiter,
@@ -13,24 +14,29 @@ import {
 } from "../middlewares/rateLimit.middleware.js";
 const router = Router();
 
-// GET /api/execution/languages
+// ==========================================
+// TARGET PUBLIC EXECUTION APIS (PRD Sec 7)
+// ==========================================
+
+// GET /api/execution/languages - supported language definitions
 router.get("/languages", getLanguages);
 
-// POST /api/execution/runs (and /run alias) - run sample test cases synchronously
-router.post("/runs", protect, runLimiter, inFlightLimiter, runCode);
+// POST /api/execution/run - execute sample visible test cases
 router.post("/run", protect, runLimiter, inFlightLimiter, runCode);
 
-// POST /api/execution/submissions (and /submit alias) - full multi-tier submission
-router.post(
-  "/submissions",
-  protect,
-  submitLimiter,
-  inFlightLimiter,
-  submitSolution,
-);
+// POST /api/execution/submit - full multi-tier judging
 router.post("/submit", protect, submitLimiter, inFlightLimiter, submitSolution);
 
-// GET /api/execution/submissions/:id - poll submission status & tier progress
+// GET /api/execution/submissions/:id - poll submission status, verdict & complexity
 router.get("/submissions/:id", protect, getSubmissionStatus);
+
+// POST /api/execution/analyze-complexity - standalone static & empirical complexity analysis
+router.post("/analyze-complexity", optionalAuth, runLimiter, getComplexityAnalysis);
+
+// ==========================================
+// BACKWARD-COMPATIBLE ALIASES
+// ==========================================
+router.post("/runs", protect, runLimiter, inFlightLimiter, runCode);
+router.post("/submissions", protect, submitLimiter, inFlightLimiter, submitSolution);
 
 export default router;

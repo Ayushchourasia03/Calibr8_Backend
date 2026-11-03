@@ -403,7 +403,7 @@ export async function executeCase({
       // Compile
       const compileStart = Date.now();
       const compileRes = await new Promise((resolve) => {
-        const gpp = spawn('g++', ['-O2', '-std=c++20', srcPath, '-o', binPath], {
+       const gpp = spawn('g++', ['-O2', '-std=c++17', srcPath, '-o', binPath], {
           cwd: tmpDir,
           stdio: ['ignore', 'pipe', 'pipe'],
         });

@@ -1477,10 +1477,20 @@ _Allowed Language Keys_:
 
 ## 10. Code Execution Sandbox APIs (`/api/execution`)
 
+Calibr8 operates an isolated, multi-tier code execution and complexity analysis engine supporting C++, C, Java, Python 3, and JavaScript.
+
+**Core Execution Guarantees:**
+1. **100% Batch-Only Execution:** All testcase executions are strictly batched via Codebox (`POST /submissions/batch?base64_encoded=false`), with an immutable ceiling of **20 testcases per batch**. Individual submission APIs (`POST /submissions` or wait queries) are completely disallowed.
+2. **True Tier Short-Circuiting:** Multi-tier evaluation checks Tier 1 first; if any Tier 1 test fails, execution halts immediately without wasting judge cycles on Tier 2 or Tier 3 batches.
+3. **Asynchronous Complexity Analysis:** A dedicated hybrid analyzer (static AST + empirical cross-referencing) analyzes time and auxiliary space complexity in the background without blocking the submission verdict.
+4. **Anti-Leak Privacy:** Hidden testcase inputs, expected outputs, and student outputs are stripped from client payloads via `publicTestResults()`.
+
+---
+
 ### 10.1 List Supported Languages
 
 - **Method & Path**: `GET /api/execution/languages`
-- **Protected**: No (`Authorization: Bearer <token>`)
+- **Protected**: No
 - **Success Response (200 OK)**:
 
 ```json
@@ -1489,33 +1499,43 @@ _Allowed Language Keys_:
   "languages": [
     {
       "key": "python",
-      "label": "Python",
+      "label": "Python 3",
       "version": "Python 3.10",
-      "starterAvailable": true
+      "judge0Id": 71,
+      "starterAvailable": true,
+      "monacoLanguage": "python"
     },
     {
       "key": "javascript",
       "label": "JavaScript",
       "version": "Node.js 22",
-      "starterAvailable": true
+      "judge0Id": 63,
+      "starterAvailable": true,
+      "monacoLanguage": "javascript"
     },
     {
       "key": "cpp",
-      "label": "C++",
-      "version": "GCC 13",
-      "starterAvailable": true
+      "label": "C++ (GCC)",
+      "version": "GCC 13 (C++20)",
+      "judge0Id": 54,
+      "starterAvailable": true,
+      "monacoLanguage": "cpp"
     },
     {
       "key": "c",
-      "label": "C",
+      "label": "C (GCC)",
       "version": "GCC 13",
-      "starterAvailable": true
+      "judge0Id": 50,
+      "starterAvailable": true,
+      "monacoLanguage": "c"
     },
     {
       "key": "java",
-      "label": "Java",
+      "label": "Java (OpenJDK)",
       "version": "OpenJDK 17",
-      "starterAvailable": true
+      "judge0Id": 62,
+      "starterAvailable": true,
+      "monacoLanguage": "java"
     }
   ]
 }
@@ -1523,25 +1543,22 @@ _Allowed Language Keys_:
 
 ---
 
-### 10.2 Synchronous Run (Sample Testcases)
+### 10.2 Synchronous Run (Sample Testcases Only)
 
-- **Method & Path**: `POST /api/execution/runs`
+- **Method & Path**: `POST /api/execution/run` (Alias: `POST /api/execution/runs`)
 - **Protected**: Yes (`Authorization: Bearer <token>`)
-- **Rate Limit**: 10 requests / min / user
-- **Headers**:
-  - `Authorization: Bearer <token>`
-  - `Content-Type: application/json`
+- **Rate Limit**: 10 requests / min / user; Max 2 in-flight executions.
 - **Request Body**:
 
 ```json
 {
-  "slug": "two-sum-001",
+  "slug": "two-sum",
   "language": "python",
-  "code": "class Solution:\n    def twoSum(self, nums, target):\n        print('debugging:', target)\n        lookup = {}\n        for i, n in enumerate(nums):\n            diff = target - n\n            if diff in lookup:\n                return [lookup[diff], i]\n            lookup[n] = i\n"
+  "code": "class Solution:\n    def twoSum(self, nums: list[int], target: int) -> list[int]:\n        seen = {}\n        for i, n in enumerate(nums):\n            diff = target - n\n            if diff in seen: return [seen[diff], i]\n            seen[n] = i\n        return []"
 }
 ```
 
-_Note_: Also accepts `problemId` in place of `slug`. Maximum code size is 64 KB.
+_Note_: Maximum source code size is 64 KB. Submitting `main()` or manual stdin parsing throws `400 FUNCTION_ONLY_REQUIRED`.
 
 - **Success Response (200 OK)**:
 
@@ -1556,14 +1573,15 @@ _Note_: Also accepts `problemId` in place of `slug`. Maximum code size is 64 KB.
       "index": 0,
       "testIndex": 0,
       "isVisible": true,
-      "input": "4\n2 7 11 15\n9",
+      "input": "4 9\n2 7 11 15",
       "expected": "0 1",
       "actual": "0 1",
-      "studentStdout": "debugging: 9\n",
+      "studentStdout": "",
       "passed": true,
       "status": "Accepted",
-      "timeMs": 42,
-      "memoryKb": 12800
+      "timeMs": 45,
+      "memoryKb": 12800,
+      "errorText": null
     }
   ]
 }
@@ -1571,57 +1589,61 @@ _Note_: Also accepts `problemId` in place of `slug`. Maximum code size is 64 KB.
 
 ---
 
-### 10.3 Asynchronous Submit (Full Multi-Tier Judging)
+### 10.3 Full Submission (Multi-Tier Judging)
 
-- **Method & Path**: `POST /api/execution/submissions`
+- **Method & Path**: `POST /api/execution/submit` (Alias: `POST /api/execution/submissions`)
 - **Protected**: Yes (`Authorization: Bearer <token>`)
-- **Rate Limit**: 6 requests / min / user
+- **Rate Limit**: 6 requests / min / user; Max 2 in-flight executions.
 - **Headers**:
   - `Authorization: Bearer <token>`
   - `Content-Type: application/json`
-  - `Idempotency-Key`: Optional UUID string to deduplicate requests.
+  - `Idempotency-Key`: Optional UUID string to deduplicate submission requests.
 - **Request Body**:
 
 ```json
 {
-  "slug": "two-sum-001",
+  "slug": "two-sum",
   "language": "python",
-  "code": "class Solution:\n    def twoSum(self, nums, target):\n        lookup = {}\n        for i, n in enumerate(nums):\n            diff = target - n\n            if diff in lookup:\n                return [lookup[diff], i]\n            lookup[n] = i\n"
+  "code": "class Solution:\n    def twoSum(self, nums: list[int], target: int) -> list[int]:\n        seen = {}\n        for i, n in enumerate(nums):\n            diff = target - n\n            if diff in seen: return [seen[diff], i]\n            seen[n] = i\n        return []",
+  "wait": false
 }
 ```
 
+- **Execution Flow**:
+  1. Default asynchronous mode (`wait: false`): Returns `202 Accepted` immediately with `submissionId` and polling URL.
+  2. Direct execute mode (`wait: true` or path `/api/execute/submit`): Holds connection until evaluation and complexity analysis settle.
 - **Success Response (202 Accepted)**:
 
 ```json
 {
   "success": true,
-  "submissionId": "sub-91bc-2234-5678",
+  "submissionId": "sub_1740001234_abc89f",
   "status": "QUEUED",
-  "pollUrl": "/api/execution/submissions/sub-91bc-2234-5678",
-  "message": "Submission received and queued for execution."
+  "pollUrl": "/api/execution/submissions/sub_1740001234_abc89f",
+  "message": "Submission received and queued for execution.",
+  "problem": {
+    "slug": "two-sum",
+    "title": "Two Sum"
+  }
 }
 ```
 
-The submission is evaluated against all visible and hidden testcases. Poll the returned URL until the status is terminal. A completed response includes per-testcase `results`; visible testcase details include input and outputs, while hidden testcase details include only the testcase index, pass status, verdict, and resource usage.
-
-For an authenticated user, a fully accepted submission also returns `reward` with the server-calculated points, score and coin awards, and updated header stats. Rewards are granted once per user/problem. Points are 10/25/50 for Easy/Medium/Hard; score units are points × 10; coins are points × 2 + 10. Streaks update at most once per UTC day for any fully accepted submission, including repeat solves that do not earn another reward. Client-submitted mode, hints, and points do not affect rewards. If the verdict is accepted but reward persistence fails, `rewardError` is `true`; refresh the user session before displaying updated stats.
-
 ---
 
-### 10.4 Poll Submission Status
+### 10.4 Poll Submission Status, Verdict & Complexity
 
 - **Method & Path**: `GET /api/execution/submissions/:id`
 - **Protected**: Yes (`Authorization: Bearer <token>`)
-- **Path Parameter**: `:id` (submissionId string from 10.3)
+- **Path Parameter**: `:id` (submissionId string)
 - **Security Rule**: Owner-only. Non-owners receive `404 SUBMISSION_NOT_FOUND`.
-- **Success Response (200 OK - Finished)**:
+- **Success Response (200 OK - Terminal State)**:
 
 ```json
 {
   "success": true,
   "submission": {
-    "id": "sub-91bc-2234-5678",
-    "problemId": "prob-1",
+    "id": "sub_1740001234_abc89f",
+    "problemId": "prob-two-sum",
     "language": "python",
     "status": "ACCEPTED",
     "verdict": "ACCEPTED",
@@ -1632,8 +1654,8 @@ For an authenticated user, a fully accepted submission also returns `reward` wit
       "scoreDelta": 100,
       "coinsEarned": 30,
       "stats": {
-        "rating": 830,
-        "tier": "Pulse II",
+        "rating": 810,
+        "tier": "Prism I",
         "score": 10,
         "scoreUnits": 100,
         "coins": 130,
@@ -1642,34 +1664,99 @@ For an authenticated user, a fully accepted submission also returns `reward` wit
       }
     },
     "rewardError": false,
-    "passedCount": 15,
-    "totalCount": 15,
+    "passedCount": 5,
+    "totalCount": 5,
+    "time": "48ms",
+    "memory": 13400,
+    "createdAt": "2026-11-03T07:15:00.000Z",
+    "firstFailure": null,
     "results": [
       {
         "testIndex": 0,
         "isVisible": true,
         "passed": true,
         "status": "Accepted",
-        "input": "4\n2 7 11 15\n9",
+        "input": "4 9\n2 7 11 15",
         "expected": "0 1",
         "actual": "0 1"
       },
       {
-        "testIndex": 1,
+        "testIndex": 2,
         "isVisible": false,
         "passed": true,
         "status": "Accepted",
-        "time": 58,
-        "memory": 14200
+        "time": 46,
+        "memory": 13400
       }
     ],
-    "time": "58ms",
-    "memory": 14200,
-    "createdAt": "2026-10-24T06:55:00.000Z",
+    "complexity": {
+      "version": "1.0.0",
+      "time": {
+        "bestEstimate": "O(n)",
+        "confidence": "high",
+        "evidence": [
+          "Single loop with linear iteration step",
+          "Empirical execution time: 48ms"
+        ]
+      },
+      "space": {
+        "bestEstimate": "O(n)",
+        "confidence": "high",
+        "evidence": [
+          "Auxiliary containers allocated: dict",
+          "Observed process peak memory: 13400 KB"
+        ]
+      },
+      "summary": "Time: O(n), Space: O(n) auxiliary",
+      "analyzedAt": "2026-11-03T07:15:01.000Z"
+    },
     "problem": {
-      "slug": "two-sum-001",
+      "slug": "two-sum",
       "title": "Two Sum"
     }
+  }
+}
+```
+
+---
+
+### 10.5 Standalone Complexity Analysis
+
+- **Method & Path**: `POST /api/execution/analyze-complexity`
+- **Protected**: Optional / Yes
+- **Rate Limit**: 10 requests / min
+- **Request Body**:
+
+```json
+{
+  "language": "python",
+  "code": "class Solution:\n    def twoSum(self, nums, target):\n        lookup = {}\n        for i, n in enumerate(nums):\n            diff = target - n\n            if diff in lookup: return [lookup[diff], i]\n            lookup[n] = i\n        return []"
+}
+```
+
+- **Success Response (200 OK)**:
+
+```json
+{
+  "success": true,
+  "complexity": {
+    "version": "1.0.0",
+    "time": {
+      "bestEstimate": "O(n)",
+      "confidence": "high",
+      "evidence": [
+        "Single loop with linear iteration step"
+      ]
+    },
+    "space": {
+      "bestEstimate": "O(n)",
+      "confidence": "high",
+      "evidence": [
+        "Auxiliary containers allocated: dict"
+      ]
+    },
+    "summary": "Time: O(n), Space: O(n) auxiliary",
+    "analyzedAt": "2026-11-03T07:16:18.613Z"
   }
 }
 ```
