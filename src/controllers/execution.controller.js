@@ -179,13 +179,22 @@ function normalizeRunnerResult(data) {
             ? "Runtime Error"
             : "OK";
 
+  const cpuTimeMs = Math.round(parseFloat(data.time || "0") * 1000);
+  const wallTimeMs = Math.round(parseFloat(data.wall_time || data.time || "0") * 1000);
+  const memoryKb = Number(data.memory) || 0;
+  const exitCode = data.exit_code !== undefined ? Number(data.exit_code) : (status === "OK" ? 0 : 1);
+
   return {
     status,
     studentStdout: "",
     actual: (data.stdout || "").trim(),
     errorText: data.stderr || data.compile_output || data.message || null,
-    timeMs: Math.round(parseFloat(data.time || "0") * 1000),
-    memoryKb: data.memory || 0,
+    timeMs: cpuTimeMs,
+    cpuTimeMs,
+    wallTimeMs,
+    memoryKb,
+    memorySource: data.memory_source || "max-rss",
+    exitCode,
   };
 }
 
@@ -302,7 +311,14 @@ export async function executeCodeBatch({
       );
     }
 
-    results.push(...completedSubmissions.map(normalizeRunnerResult));
+    const batchResults = completedSubmissions.map((sub, i) => {
+      const normalized = normalizeRunnerResult(sub);
+      const originalCase = cases[i];
+      const stdinStr = String(originalCase?.stdin ?? "");
+      normalized.inputBytes = Buffer.byteLength(stdinStr, "utf-8");
+      return normalized;
+    });
+    results.push(...batchResults);
   }
 
   return results;
@@ -502,7 +518,10 @@ export const runCode = async (req, res, next) => {
         status: caseStatus,
         passed: isPassed,
         timeMs: execResult.timeMs,
+        cpuTimeMs: execResult.cpuTimeMs ?? execResult.timeMs,
+        wallTimeMs: execResult.wallTimeMs ?? execResult.timeMs,
         memoryKb: execResult.memoryKb,
+        inputBytes: execResult.inputBytes ?? Buffer.byteLength(testInput, "utf-8"),
         errorText: execResult.errorText,
       });
     }
@@ -519,6 +538,8 @@ export const runCode = async (req, res, next) => {
           timeMs: Math.max(...results.map((r) => r.timeMs || 0), 0),
           memoryKb: Math.max(...results.map((r) => r.memoryKb || 0), 0),
         },
+        testcases: results,
+        evidenceScope: "visible_tests",
       });
     } catch {}
 
@@ -619,7 +640,12 @@ async function evaluateAllTestcases(problem, language, code, providedFullCode) {
         passed: isPassed,
         isVisible: tc.isVisible === true,
         time: execResult.timeMs || 0,
+        timeMs: execResult.timeMs || 0,
+        cpuTimeMs: execResult.cpuTimeMs ?? execResult.timeMs ?? 0,
+        wallTimeMs: execResult.wallTimeMs ?? execResult.timeMs ?? 0,
         memory: execResult.memoryKb || 0,
+        memoryKb: execResult.memoryKb || 0,
+        inputBytes: execResult.inputBytes ?? Buffer.byteLength(testInput, "utf-8"),
         status: isPassed ? "Accepted" : failureType,
         errorText: execResult.errorText,
       };
@@ -852,25 +878,28 @@ export const submitSolution = async (req, res, next) => {
         }
       }
 
-      submissionCache.set(submission.id, updated);
-
-      // Asynchronously trigger complexity analysis without delaying verdict response
-      analyzeComplexity({
-        code: studentCode,
-        language: normLang,
-        problemSlug: problem.slug,
-        executionResult: {
-          timeMs: evaluation.maxTimeMs,
-          memoryKb: evaluation.maxMemoryKb,
-        },
-      })
-        .then((complexity) => {
-          const current = submissionCache.get(submission.id) || {};
-          submissionCache.set(submission.id, { ...current, complexity });
-        })
-        .catch((err) => {
-          console.warn("[Complexity Analyzer Warning]:", err.message);
+      let complexity = null;
+      try {
+        complexity = await analyzeComplexity({
+          code: studentCode,
+          language: normLang,
+          problemSlug: problem.slug,
+          executionResult: {
+            timeMs: evaluation.maxTimeMs,
+            memoryKb: evaluation.maxMemoryKb,
+          },
+          testcases: evaluation.results || [],
+          evidenceScope: "submission_tests",
         });
+      } catch (err) {
+        console.warn("[Complexity Analyzer Warning]:", err.message);
+      }
+
+      updated = {
+        ...updated,
+        complexity,
+      };
+      submissionCache.set(submission.id, updated);
 
       return updated;
     };
@@ -886,19 +915,6 @@ export const submitSolution = async (req, res, next) => {
       const completed = await runEvaluation();
       const passed = completed.passedCount;
       const total = completed.totalCount;
-
-      let complexity = null;
-      try {
-        complexity = await analyzeComplexity({
-          code: studentCode,
-          language: normLang,
-          problemSlug: problem.slug,
-          executionResult: {
-            timeMs: completed.maxTimeMs,
-            memoryKb: completed.maxMemoryKb,
-          },
-        });
-      } catch {}
 
       return res.status(200).json({
         success: true,
@@ -917,7 +933,7 @@ export const submitSolution = async (req, res, next) => {
         memory: completed.memory || completed.maxMemoryKb,
         firstFailure: completed.firstFailure,
         cases: publicTestResults(completed.results || []),
-        complexity,
+        complexity: completed.complexity || null,
         problem: {
           slug: problem.slug,
           title: problem.title,
@@ -1063,4 +1079,3 @@ export const getComplexityAnalysis = async (req, res, next) => {
     next(err);
   }
 };
-

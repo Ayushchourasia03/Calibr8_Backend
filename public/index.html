@@ -963,52 +963,154 @@
               </div>
 
               <!-- Dedicated Complexity Analysis Output Panel -->
-              <div id="sbComplexityPanel" style="display: none; background: #0c1322; border: 1px solid rgba(168, 85, 247, 0.35); border-radius: 10px; padding: 1rem; margin-bottom: 0.85rem; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem; border-bottom: 1px solid #1e293b; padding-bottom: 0.6rem;">
-                  <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-                    <span style="font-size: 1.1rem;">🧠</span>
-                    <strong style="color: #c084fc; font-size: 0.95rem;">Algorithmic Complexity Analysis</strong>
-                    <span id="sbComplexitySummaryBadge" style="font-size: 0.75rem; background: rgba(168, 85, 247, 0.2); color: #e9d5ff; padding: 0.2rem 0.5rem; border-radius: 4px; font-family: monospace; font-weight: 600;">Time: O(n), Space: O(n)</span>
+              <div id="sbComplexityPanel" style="display: none; background: #0c1322; border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; box-shadow: 0 4px 20px rgba(0,0,0,0.4);">
+                <!-- Header with Badges -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.6rem; border-bottom: 1px solid #1e293b; padding-bottom: 0.75rem;">
+                  <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+                    <span style="font-size: 1.25rem;">🧠</span>
+                    <div>
+                      <strong style="color: #c084fc; font-size: 1rem; letter-spacing: -0.01em;">Algorithmic Complexity Analysis</strong>
+                      <div style="font-size: 0.72rem; color: #94a3b8;">Calibr8 Hybrid Complexity Engine (AST Structural + CodeBox Runtime)</div>
+                    </div>
                   </div>
-                  <span id="sbComplexityMeta" style="font-size: 0.72rem; color: #94a3b8;">AST & Lexical Structural Evaluation</span>
+                  <div style="display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;">
+                    <span id="sbComplexityEngineVersion" style="font-size: 0.72rem; background: rgba(59, 130, 246, 0.15); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.3); padding: 0.2rem 0.55rem; border-radius: 4px; font-weight: 600;">v2.0.0</span>
+                    <span id="sbComplexityScopeBadge" style="font-size: 0.72rem; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); padding: 0.2rem 0.55rem; border-radius: 4px; font-weight: 600;">Static + Dynamic</span>
+                    <span id="sbComplexitySummaryBadge" style="font-size: 0.75rem; background: rgba(168, 85, 247, 0.2); color: #e9d5ff; border: 1px solid rgba(168, 85, 247, 0.4); padding: 0.2rem 0.6rem; border-radius: 4px; font-family: monospace; font-weight: 700;">Time: O(n), Space: O(1) aux</span>
+                  </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.85rem; margin-bottom: 0.4rem;">
-                  <!-- Time Complexity Card -->
-                  <div style="background: #070c18; border: 1px solid #1e293b; border-radius: 8px; padding: 0.85rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-                      <span style="font-size: 0.78rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">⏱ Time Complexity</span>
-                      <span id="sbTimeConfidenceBadge" style="font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 4px; background: rgba(16, 185, 129, 0.15); color: #34d399; text-transform: capitalize;">Confidence: High</span>
+                <!-- 3-Column Core Asymptotic Analysis Grid -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.9rem; margin-bottom: 1rem;">
+                  <!-- Card 1: Time Complexity -->
+                  <div style="background: #070c18; border: 1px solid #1e293b; border-radius: 8px; padding: 0.9rem; display: flex; flex-direction: column;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.3rem;">
+                      <span style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">⏱ Time Complexity</span>
+                      <div style="display: flex; gap: 0.35rem;">
+                        <span id="sbTimeClassBadge" style="font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.4rem; border-radius: 4px; background: rgba(56, 189, 248, 0.15); color: #38bdf8;">LINEAR</span>
+                        <span id="sbTimeConfidenceBadge" style="font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.4rem; border-radius: 4px; background: rgba(16, 185, 129, 0.15); color: #34d399;">High</span>
+                      </div>
                     </div>
                     <div style="display: flex; align-items: baseline; gap: 0.6rem; margin-bottom: 0.5rem;">
-                      <span id="sbTimeEstimateVal" style="font-size: 1.6rem; font-weight: 800; font-family: monospace; color: #38bdf8;">O(n)</span>
-                      <span style="font-size: 0.78rem; color: #94a3b8;">upper-bound estimate</span>
+                      <span id="sbTimeEstimateVal" style="font-size: 1.7rem; font-weight: 800; font-family: monospace; color: #38bdf8;">O(n)</span>
+                      <span style="font-size: 0.75rem; color: #94a3b8;">upper-bound growth</span>
                     </div>
-                    <div style="font-size: 0.76rem; color: #cbd5e1;">
-                      <strong style="color: #94a3b8; display: block; margin-bottom: 0.25rem;">Analysis Evidence:</strong>
+                    <div style="font-size: 0.76rem; color: #cbd5e1; flex: 1;">
+                      <strong style="color: #94a3b8; display: block; margin-bottom: 0.25rem;">Structural Evidence:</strong>
                       <ul id="sbTimeEvidenceList" style="margin: 0; padding-left: 1.2rem; line-height: 1.45; color: #cbd5e1;">
-                        <li>Single iterative loop traversal detected</li>
+                        <li>Single iterative traversal detected</li>
                       </ul>
                     </div>
                   </div>
 
-                  <!-- Space Complexity Card -->
-                  <div style="background: #070c18; border: 1px solid #1e293b; border-radius: 8px; padding: 0.85rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-                      <span style="font-size: 0.78rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">💾 Space Complexity (Auxiliary)</span>
-                      <span id="sbSpaceConfidenceBadge" style="font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 4px; background: rgba(16, 185, 129, 0.15); color: #34d399; text-transform: capitalize;">Confidence: High</span>
+                  <!-- Card 2: Space Complexity Triad -->
+                  <div style="background: #070c18; border: 1px solid #1e293b; border-radius: 8px; padding: 0.9rem; display: flex; flex-direction: column;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.3rem;">
+                      <span style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">💾 Space Complexity (Triad)</span>
+                      <span id="sbSpaceConfidenceBadge" style="font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.4rem; border-radius: 4px; background: rgba(16, 185, 129, 0.15); color: #34d399;">High</span>
                     </div>
-                    <div style="display: flex; align-items: baseline; gap: 0.6rem; margin-bottom: 0.5rem;">
-                      <span id="sbSpaceEstimateVal" style="font-size: 1.6rem; font-weight: 800; font-family: monospace; color: #c084fc;">O(n)</span>
-                      <span style="font-size: 0.78rem; color: #94a3b8;">auxiliary memory</span>
+
+                    <!-- Triad Metrics Pill Row -->
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin-bottom: 0.65rem; background: #0b1120; padding: 0.5rem; border-radius: 6px; border: 1px solid #1e293b;">
+                      <div style="text-align: center;">
+                        <span style="font-size: 0.68rem; color: #94a3b8; display: block;">Auxiliary</span>
+                        <strong id="sbSpaceAuxVal" style="font-size: 1.05rem; font-family: monospace; color: #c084fc;">O(1)</strong>
+                      </div>
+                      <div style="text-align: center; border-left: 1px solid #1e293b; border-right: 1px solid #1e293b;">
+                        <span style="font-size: 0.68rem; color: #94a3b8; display: block;">Output</span>
+                        <strong id="sbSpaceOutVal" style="font-size: 1.05rem; font-family: monospace; color: #f472b6;">O(max(n, m))</strong>
+                      </div>
+                      <div style="text-align: center;">
+                        <span style="font-size: 0.68rem; color: #94a3b8; display: block;">Total Addl</span>
+                        <strong id="sbSpaceTotalVal" style="font-size: 1.05rem; font-family: monospace; color: #38bdf8;">O(max(n, m))</strong>
+                      </div>
                     </div>
-                    <div style="font-size: 0.76rem; color: #cbd5e1;">
-                      <strong style="color: #94a3b8; display: block; margin-bottom: 0.25rem;">Analysis Evidence:</strong>
+
+                    <div style="font-size: 0.76rem; color: #cbd5e1; flex: 1;">
+                      <strong style="color: #94a3b8; display: block; margin-bottom: 0.25rem;">Memory Allocation Evidence:</strong>
                       <ul id="sbSpaceEvidenceList" style="margin: 0; padding-left: 1.2rem; line-height: 1.45; color: #cbd5e1;">
-                        <li>Hash map / auxiliary lookup storage allocated</li>
+                        <li>Auxiliary space: scalar pointers only</li>
                       </ul>
                     </div>
                   </div>
+
+                  <!-- Card 3: Detected AST & Algorithmic Patterns -->
+                  <div style="background: #070c18; border: 1px solid #1e293b; border-radius: 8px; padding: 0.9rem; display: flex; flex-direction: column;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                      <span style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">🧩 Algorithmic & AST Patterns</span>
+                      <span style="font-size: 0.68rem; color: #64748b;">AST Lexical Graph</span>
+                    </div>
+                    <div id="sbPatternsContainer" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.65rem;">
+                      <!-- Populated dynamically -->
+                    </div>
+                    <div style="font-size: 0.76rem; color: #cbd5e1; flex: 1;">
+                      <strong style="color: #94a3b8; display: block; margin-bottom: 0.25rem;">Assumptions & Model Notes:</strong>
+                      <ul id="sbAssumptionsList" style="margin: 0; padding-left: 1.2rem; line-height: 1.45; color: #94a3b8;">
+                        <li>Inputs n and m scale independently</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Dynamic CodeBox Execution Evidence (Data Points & Benchmarks) -->
+                <div id="sbDynamicEvidenceBox" style="background: #080d1a; border: 1px solid #1e293b; border-radius: 8px; padding: 0.85rem; margin-bottom: 0.75rem;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; flex-wrap: wrap; gap: 0.4rem;">
+                    <div style="display: flex; align-items: center; gap: 0.45rem;">
+                      <span style="font-size: 0.95rem;">📊</span>
+                      <strong style="font-size: 0.85rem; color: #38bdf8;">Dynamic CodeBox Execution Evidence</strong>
+                    </div>
+                    <span id="sbDynFitSummary" style="font-size: 0.72rem; color: #34d399; font-weight: 600;">Model Fit: Linear Scaling</span>
+                  </div>
+
+                  <!-- Dynamic Metrics Quick Bar -->
+                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.5rem; margin-bottom: 0.65rem;">
+                    <div style="background: #050811; padding: 0.4rem 0.6rem; border-radius: 6px; border: 1px solid #1e293b; font-size: 0.75rem;">
+                      <span style="color: #94a3b8; display: block; font-size: 0.68rem;">Testcases Evaluated</span>
+                      <strong id="sbDynTestcaseCount" style="color: #f8fafc; font-size: 0.88rem;">0</strong>
+                    </div>
+                    <div style="background: #050811; padding: 0.4rem 0.6rem; border-radius: 6px; border: 1px solid #1e293b; font-size: 0.75rem;">
+                      <span style="color: #94a3b8; display: block; font-size: 0.68rem;">Peak CPU Execution</span>
+                      <strong id="sbDynMaxCpuTime" style="color: #38bdf8; font-size: 0.88rem;">0ms</strong>
+                    </div>
+                    <div style="background: #050811; padding: 0.4rem 0.6rem; border-radius: 6px; border: 1px solid #1e293b; font-size: 0.75rem;">
+                      <span style="color: #94a3b8; display: block; font-size: 0.68rem;">Peak Process Memory</span>
+                      <strong id="sbDynMaxMemory" style="color: #c084fc; font-size: 0.88rem;">0 KB</strong>
+                    </div>
+                    <div style="background: #050811; padding: 0.4rem 0.6rem; border-radius: 6px; border: 1px solid #1e293b; font-size: 0.75rem;">
+                      <span style="color: #94a3b8; display: block; font-size: 0.68rem;">Memory Scaling Trend</span>
+                      <strong id="sbDynMemoryTrend" style="color: #34d399; font-size: 0.88rem;">Flat Baseline</strong>
+                    </div>
+                  </div>
+
+                  <!-- Per-Testcase Benchmark Table -->
+                  <div style="overflow-x: auto; margin-bottom: 0.5rem;">
+                    <table id="sbDynBenchmarkTable" style="width: 100%; border-collapse: collapse; font-size: 0.75rem; font-family: monospace; text-align: left;">
+                      <thead>
+                        <tr style="border-bottom: 1px solid #1e293b; color: #94a3b8;">
+                          <th style="padding: 0.35rem 0.5rem;">Case</th>
+                          <th style="padding: 0.35rem 0.5rem;">Input Bytes</th>
+                          <th style="padding: 0.35rem 0.5rem;">CPU Time</th>
+                          <th style="padding: 0.35rem 0.5rem;">Wall Time</th>
+                          <th style="padding: 0.35rem 0.5rem;">Process Memory</th>
+                          <th style="padding: 0.35rem 0.5rem;">Verdict</th>
+                        </tr>
+                      </thead>
+                      <tbody id="sbDynBenchmarkTableBody">
+                        <!-- Populated dynamically -->
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <!-- Dynamic Correlation Notes -->
+                  <div id="sbDynNotesContainer" style="font-size: 0.74rem; color: #94a3b8; line-height: 1.45;"></div>
+                </div>
+
+                <!-- Methodological Limitations & Inconclusive Warnings -->
+                <div id="sbLimitationsBox" style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 6px; padding: 0.6rem 0.85rem; font-size: 0.74rem; color: #fbbf24;">
+                  <strong style="display: block; margin-bottom: 0.2rem;">⚠️ Methodological Scope & Limitations:</strong>
+                  <ul id="sbLimitationsList" style="margin: 0; padding-left: 1.2rem; line-height: 1.4; color: #fde68a;">
+                    <li>Asymptotic derivation is based on static AST traversal; dynamic execution observations validate against polynomial divergence.</li>
+                  </ul>
                 </div>
               </div>
 
