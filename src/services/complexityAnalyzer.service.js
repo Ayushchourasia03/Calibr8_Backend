@@ -1,11 +1,11 @@
 import * as babelParser from "@babel/parser";
- 
-export const ANALYZER_VERSION = "3.0.0";
- 
+
+export const ANALYZER_VERSION = "3.0.1";
+
 const MAX_CACHE_ENTRIES = 500;
 const MAX_CODE_LENGTH = 200_000;
 const cache = new Map(); // LRU: key -> { ir, ctx, time?, space? }
- 
+
 const PY = "py";
 const JS = "js";
 const BRACE = "brace";
@@ -13,19 +13,19 @@ const HIGH = 2;
 const MED = 1;
 const LOW = 0;
 const CONF = ["low", "medium", "high"];
- 
+
 /* ───────────────────────── text utilities ───────────────────────── */
- 
+
 const C_STRIP =
   /\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\[\s\S]|[^"\\\n])*"|'(?:\\[\s\S]|[^'\\\n])*'|`(?:\\[\s\S]|[^`\\])*`/g;
 const PY_STRIP =
   /#[^\n]*|"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'/g;
 const blankOut = (m) => m.replace(/[^\n]/g, " ");
- 
+
 /** Length-preserving removal of comments/strings (offsets stay valid). */
 const stripSource = (code, fam) =>
   code.replace(fam === PY ? PY_STRIP : C_STRIP, blankOut);
- 
+
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const isWs = (c) => c === " " || c === "\n" || c === "\t" || c === "\r";
 const skipWs = (s, i) => {
@@ -37,7 +37,7 @@ const lastIdent = (s) => {
   const m = /([A-Za-z_$][\w$]*)[\s\])]*$/.exec(s || "");
   return m ? m[1] : null;
 };
- 
+
 function matchForward(s, open, o = "(", c = ")") {
   let d = 0;
   for (let i = open; i < s.length; i++) {
@@ -47,7 +47,7 @@ function matchForward(s, open, o = "(", c = ")") {
   }
   return -1;
 }
- 
+
 function splitTop(text, sep = ",", angle = false) {
   const out = [];
   let d = 0;
@@ -65,7 +65,7 @@ function splitTop(text, sep = ",", angle = false) {
   if (tail || out.length) out.push(tail);
   return out;
 }
- 
+
 function stmtEnd(s, from, close) {
   let d = 0;
   for (let i = from; i < s.length; i++) {
@@ -79,7 +79,7 @@ function stmtEnd(s, from, close) {
   }
   return s.length;
 }
- 
+
 function paramNames(text, fam) {
   return splitTop(text, ",", true)
     .map((p, i) => {
@@ -91,20 +91,20 @@ function paramNames(text, fam) {
     })
     .filter((n) => n !== "self" && n !== "cls" && n !== "this");
 }
- 
+
 /* ───────────────────────── regex catalogue ───────────────────────── */
- 
+
 const KEYWORDS = new Set([
   "if", "for", "while", "switch", "catch", "else", "do", "try", "return", "sizeof",
   "synchronized", "new", "delete", "throw", "case", "function", "typeof", "await",
   "foreach", "elif", "with", "using", "lock",
 ]);
- 
+
 const FN_HDR =
   /([A-Za-z_~]\w*)\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)\s*(?:(?:const|noexcept|override|final|mutable|volatile)\s+)*(?:throws\s+[\w.,\s]+?)?(?:->\s*[\w:<>*&,\s]+?)?\s*$/;
 const LAMBDA_HDR =
   /(?:([A-Za-z_]\w*)\s*(?::\s*[\w:<>,\s*&]+?)?\s*=\s*)?\[[^\][]*\]\s*(?:\(([^()]*)\))?\s*(?:mutable\s*)?(?:->\s*[\w:<>*&,\s]+?)?\s*$/;
- 
+
 const MEMO_RE =
   /\b(?:memo|memoize|memoization|cache|cached|dp|mem|lru_cache|dpTable)\b|@(?:functools\.)?(?:lru_)?cache/;
 const GRAPH_RE =
@@ -123,7 +123,7 @@ const DIR_NAMES = /^(?:dirs?|directions?|deltas?|moves|dx|dy|DIRS|DIRECTIONS)$/;
 const DEFAULT_QUEUES = [
   "q", "que", "queue", "stack", "stk", "dq", "pq", "heap", "frontier", "todo",
 ];
- 
+
 const ITER_METHODS = new Set([
   "forEach", "map", "filter", "reduce", "reduceRight", "some", "every", "find",
   "findIndex", "findLast", "findLastIndex", "flatMap",
@@ -136,19 +136,19 @@ const SKIP_KEYS = new Set([
   "loc", "extra", "comments", "leadingComments", "trailingComments",
   "innerComments", "range", "errors", "tokens", "start", "end", "type",
 ]);
- 
+
 /* ───────────────────── complexity algebra ───────────────────── */
- 
+
 const LETTERS = ["n", "m", "k", "p", "q", "r"];
 const mk = (lin = 0, log = 0, extra = {}) => ({
   lin, log, sq: 0, dims: null, special: null, ...extra,
 });
 const ZERO_CX = mk();
 const EMPTY_CHAIN = { lin: 0, log: 0, sq: 0, keys: [], logOp: false, special: null };
- 
+
 const rank = (c) =>
   c.rank !== undefined ? c.rank : c.lin * 10 + c.log + (c.sq || 0) * 5;
- 
+
 function label(c) {
   if (c.label) return c.label;
   if (c.special === "max") return "O(max(n, m))";
@@ -171,7 +171,7 @@ function label(c) {
   else if (c.log > 1) parts.push(`log^${c.log} n`);
   return parts.length ? `O(${parts.join(" ")})` : "O(1)";
 }
- 
+
 const CLASS_BY_LABEL = {
   "O(1)": "CONSTANT", "O(log n)": "LOGARITHMIC", "O(n)": "LINEAR",
   "O(n + m)": "LINEAR_MULTI", "O(max(n, m))": "LINEAR_MAX",
@@ -181,7 +181,7 @@ const CLASS_BY_LABEL = {
 };
 const classOf = (l) =>
   CLASS_BY_LABEL[l] || (/\^n\)$/.test(l) ? "EXPONENTIAL" : "POLYNOMIAL");
- 
+
 function sumCx(a, b) {
   if (a.label || b.label || a.special || b.special || a.rank !== undefined || b.rank !== undefined)
     return null;
@@ -190,9 +190,9 @@ function sumCx(a, b) {
     dims: a.dims && b.dims ? [...a.dims, ...b.dims] : null,
   });
 }
- 
+
 /* ───────────────────────── IR construction ───────────────────────── */
- 
+
 const makeFn = (name, params, hdrStart, bodyStart, end) => ({
   name, params, hdrStart, bodyStart, end,
   loops: [], selfCalls: [], sorts: [], deco: "", chains: null, cx: null, rec: null,
@@ -203,7 +203,7 @@ const makeLoop = (kind, start, bodyStart, end, header, fn, parent) => ({
   var: null, init: null, test: null, update: null, iter: null,
   key: null, weight: "lin", logOp: false, parallel: null, skip: false,
 });
- 
+
 function fnAt(fns, root, pos) {
   let best = root;
   for (const f of fns) {
@@ -212,7 +212,7 @@ function fnAt(fns, root, pos) {
   }
   return best;
 }
- 
+
 /** JS/TS through Babel — single traversal. */
 function buildAstIR(src, text, ts) {
   const ast = babelParser.parse(src, {
@@ -231,7 +231,7 @@ function buildAstIR(src, text, ts) {
   const inline = new Set();
   let fn = root;
   let loop = null;
- 
+
   const isFn = (n) => n && FN_TYPES.has(n.type);
   const keyName = (k) => (k ? k.name ?? (typeof k.value === "string" ? k.value : null) : null);
   const astParam = (p, i) =>
@@ -240,14 +240,14 @@ function buildAstIR(src, text, ts) {
       : p.type === "RestElement" ? astParam(p.argument, i)
       : p.type === "TSParameterProperty" ? astParam(p.parameter, i)
       : `$${i}`;
- 
+
   const pushLoop = (kind, node, bodyStart, header) => {
     const L = makeLoop(kind, node.start, bodyStart, node.end, header, fn, loop);
     fn.loops.push(L);
     loops.push(L);
     return L;
   };
- 
+
   function kids(node) {
     for (const k of Object.keys(node)) {
       if (SKIP_KEYS.has(k)) continue;
@@ -258,7 +258,7 @@ function buildAstIR(src, text, ts) {
       } else if (typeof v.type === "string") visit(v);
     }
   }
- 
+
   function visit(node) {
     const t = node.type;
     if (FN_TYPES.has(t)) {
@@ -342,11 +342,11 @@ function buildAstIR(src, text, ts) {
     }
     kids(node);
   }
- 
+
   visit(ast.program || ast);
   return { fns, root, loops, parseErrors: ast.errors ? ast.errors.length : 0 };
 }
- 
+
 /** C / C++ / Java / C# (and JS fallback): brace scanner on cleaned source. */
 function buildBraceIR(text) {
   const n = text.length;
@@ -375,7 +375,7 @@ function buildBraceIR(text) {
     const l = LAMBDA_HDR.exec(pre);
     if (l) fns.push(makeFn(l[1] || "<lambda>", paramNames(l[2] || "", BRACE), i - l[0].length, i + 1, end));
   }
- 
+
   const loops = [];
   const kw = /\b(for|while|do|foreach)\b/g;
   const add = (kind, at, bodyStart, endPos, header) => {
@@ -415,7 +415,7 @@ function buildBraceIR(text) {
   }
   return finishScanIR(fns, root, loops, text, BRACE);
 }
- 
+
 function buildPyIR(text) {
   const lines = [];
   const starts = [];
@@ -458,7 +458,7 @@ function buildPyIR(text) {
     const rest = text.slice(colon + 1, lines[li].e);
     return /\S/.test(rest) ? lines[li].e : blockEnd(li, indent);
   };
- 
+
   const root = makeFn("<global>", [], 0, 0, text.length);
   const fns = [root];
   const loops = [];
@@ -510,7 +510,7 @@ function buildPyIR(text) {
   }
   return finishScanIR(fns, root, loops, text, PY);
 }
- 
+
 function finishScanIR(fns, root, loops, text, fam) {
   loops.sort((a, b) => a.start - b.start);
   const stack = [];
@@ -554,9 +554,9 @@ function finishScanIR(fns, root, loops, text, fam) {
   }
   return { fns, root, loops, parseErrors: 0 };
 }
- 
+
 /* ───────────────────────── shared context ───────────────────────── */
- 
+
 function buildCtx(text, fam) {
   const alias = Object.create(null);
   const a1 =
@@ -571,7 +571,7 @@ function buildCtx(text, fam) {
       alias[m[2]] = m[4];
     }
   }
- 
+
   const queueNames = new Set(DEFAULT_QUEUES);
   const heapNames = new Set();
   const qd =
@@ -579,7 +579,7 @@ function buildCtx(text, fam) {
   while ((m = qd.exec(text))) queueNames.add(m[1]);
   const pyq = /\b(\w+)\s*=\s*(?:collections\.)?deque\(/g;
   while ((m = pyq.exec(text))) queueNames.add(m[1]);
- 
+
   const parts = [];
   if (/priority_queue|PriorityQueue|heapq|TreeMap|TreeSet|Sorted(?:List|Dict|Set)|(?<![\w:])(?:std::)?(?:multi)?(?:map|set)\s*<|bisect|lower_bound|upper_bound|binary_search/.test(text)) {
     const hd =
@@ -599,9 +599,9 @@ function buildCtx(text, fam) {
   }
   return { text, fam, alias, queueNames, heapNames, logOpRe: parts.length ? new RegExp(parts.join("|")) : null };
 }
- 
+
 /* ───────────────────────── loop enrichment ───────────────────────── */
- 
+
 function pyIter(e) {
   e = (e || "").trim();
   let m = /^(?:enumerate|reversed|sorted|list|set|iter|tuple)\s*\(([\s\S]*)\)$/.exec(e);
@@ -615,7 +615,7 @@ function pyIter(e) {
   }
   return e.replace(/\.\s*(?:items|keys|values)\(\)$/, "");
 }
- 
+
 function parseHeader(L, fam) {
   const h = L.header || "";
   if (L.kind === "while" || L.kind === "do") {
@@ -647,7 +647,7 @@ function parseHeader(L, fam) {
     L.iter = m[2].trim();
   }
 }
- 
+
 /** Normalised loop-bound key: { id, coll } or null (unknown) or "const". */
 function boundKey(L, ctx) {
   let expr = null;
@@ -688,13 +688,13 @@ function boundKey(L, ctx) {
   }
   return null;
 }
- 
+
 function sameDim(a, b) {
   if (!a || !b || typeof a === "string" || typeof b === "string") return true;
   if (a.id === b.id) return true;
   return a.coll !== b.coll; // scalar vs collection → assume same dimension
 }
- 
+
 const geoRe = (x) => {
   const q = esc(x);
   return new RegExp(
@@ -714,7 +714,7 @@ const advanceRe = (x) => {
     `\\b${q}\\s*(?:\\+\\+|--|\\+=|-=)|(?:\\+\\+|--)\\s*${q}\\b|\\b${q}\\s*=\\s*[^;\\n=]*?(?:next|Next|nxt|\\b${q}\\s*[-+]\\s*\\d)`,
   );
 };
- 
+
 function enrichLoops(ir, ctx) {
   const { text, fam } = ctx;
   for (const L of ir.loops) {
@@ -723,7 +723,7 @@ function enrichLoops(ir, ctx) {
     const testIds = [...new Set(words(L.test))].filter((w) => !KEYWORDS.has(w)).slice(0, 8);
     const whileLike = L.kind === "while" || L.kind === "do" || (L.kind === "for" && !L.init);
     L.key = boundKey(L, ctx);
- 
+
     // constant-bound loops do not scale with input
     if (L.key === "const") {
       L.weight = "zero";
@@ -732,9 +732,8 @@ function enrichLoops(ir, ctx) {
     // amortised inner loops (two pointers, sliding window, monotonic stack)
     if (L.parent && whileLike) {
       const pre = text.slice(L.parent.bodyStart, L.start);
-      const pvar = L.parent.var;
       for (const x of testIds) {
-        if (x === pvar || !modifiesRe(x).test(body)) continue;
+        if (!modifiesRe(x).test(body)) continue;
         if (resetRe(x).test(pre)) continue;
         L.weight = "zero";
         L.amortized = true;
@@ -786,9 +785,9 @@ function enrichLoops(ir, ctx) {
     if (ctx.logOpRe && ctx.logOpRe.test(body)) L.logOp = true;
   }
 }
- 
+
 /* ───────────────────────── per-function analysis ───────────────────────── */
- 
+
 const chainAdd = (c, L) => {
   if (L.weight === "zero") return c;
   const n = { ...c };
@@ -803,7 +802,7 @@ const chainAdd = (c, L) => {
   return n;
 };
 const chainRank = (c) => c.lin * 10 + c.log + (c.logOp ? 1 : 0) + c.sq * 5;
- 
+
 function chainToCx(c) {
   const groups = [];
   for (const k of c.keys) {
@@ -818,7 +817,7 @@ function chainToCx(c) {
     multiDim: groups.length > 1,
   });
 }
- 
+
 function stateParamCount(fn) {
   if (!fn.params.length) return 1;
   let k = 0;
@@ -832,9 +831,35 @@ function stateParamCount(fn) {
   });
   return Math.max(1, k);
 }
- 
+
+function boundedDepth(fn, ctx) {
+  if (fn._bd !== undefined) return fn._bd;
+  fn._bd = null;
+  const { text } = ctx;
+  const body = text.slice(fn.bodyStart, fn.end);
+  fn.params.forEach((p, i) => {
+    if (fn._bd) return;
+    const dec = new RegExp(`^${esc(p)}\\s*-\\s*1$`);
+    if (!fn.selfCalls.every((c) => c.args[i] !== undefined && dec.test(c.args[i].replace(/^\s*\w+\s*=(?!=)\s*/, "").trim()))) return;
+    const re = new RegExp(`(?<![\\w.>:$])${esc(fn.name)}\\s*\\(|(?:\\bthis\\s*(?:->|\\.)|\\bself\\.|\\b\\w+::)${esc(fn.name)}\\s*\\(`, "g");
+    const lits = [];
+    let m;
+    while ((m = re.exec(text))) {
+      if (m.index >= fn.hdrStart && m.index < fn.end) continue;
+      const open = m.index + m[0].length - 1;
+      const r = matchForward(text, open);
+      if (r < 0) continue;
+      lits.push((splitTop(text.slice(open + 1, r))[i] || "").trim());
+    }
+    if (!lits.length || !lits.every((a) => /^\d+$/.test(a) && Number(a) <= 20)) return;
+    const bm = new RegExp(`\\b${esc(p)}\\s*(?:==|<=)\\s*(\\d+)`).exec(body);
+    fn._bd = { D: Math.max(...lits.map(Number)), b: bm ? Number(bm[1]) : 0 };
+  });
+  return fn._bd;
+}
+
 const inLoop = (L, pos) => pos >= L.bodyStart && pos < L.end;
- 
+
 function analyzeRecursion(fn, ctx) {
   const calls = fn.selfCalls;
   if (!calls.length) return null;
@@ -844,7 +869,7 @@ function analyzeRecursion(fn, ctx) {
   const driven = calls.filter((k) => fn.loops.some((L) => inLoop(L, k.pos))).length;
   const retCalls = calls.filter((k) => /\breturn\s*\(?\s*$/.test(text.slice(Math.max(0, k.pos - 24), k.pos))).length;
   const ce = calls.length - retCalls + (retCalls ? 1 : 0); // mutually exclusive returned calls count once
- 
+
   let work = 0;
   for (const L of fn.loops) {
     if (calls.some((k) => inLoop(L, k.pos))) continue;
@@ -855,12 +880,12 @@ function analyzeRecursion(fn, ctx) {
   }
   const copy = COPY_RE.test(argText) || /\bmerge\s*\(/.test(body);
   if (copy && work === 0) work = 1;
- 
+
   const memo = MEMO_RE.test(body) || MEMO_RE.test(fn.deco);
   const halving = HALVE_RE.test(argText);
   const step = STEP_RE.test(argText);
   const out = { cx: ZERO_CX, aux: ZERO_CX, pat: "", ev: [], conf: HIGH };
- 
+
   if (memo) {
     const k = stateParamCount(fn);
     const d = Math.max(0, ...fn.loops.filter((L) => L.weight === "lin").map((L) => L.depth));
@@ -891,6 +916,13 @@ function analyzeRecursion(fn, ctx) {
     out.pat = "tree_traversal";
     out.ev.push("Recursive traversal over tree/graph children: each node visited once (n = nodes, h = height)");
     out.conf = work ? MED : HIGH;
+  } else if ((driven > 0 || ce >= 2) && boundedDepth(fn, ctx)) {
+    const { D, b } = boundedDepth(fn, ctx);
+    out.cx = mk(Math.max(1, D - b + work));
+    out.aux = ZERO_CX;
+    out.pat = "bounded_depth_recursion";
+    out.ev.push(`Recursion depth is bounded by a constant (${D}) that shrinks by 1 per call; ${D - b} branching level(s) plus O(n^${work}) work at the base`);
+    out.conf = MED;
   } else if (driven > 0 || ce >= 2) {
     const perm = PERM_RE.test(body) && driven > 0;
     const base = driven > 0 ? 2 : ce;
@@ -914,7 +946,20 @@ function analyzeRecursion(fn, ctx) {
   }
   return out;
 }
- 
+
+function isConstantSort(text, pos) {
+  const back = /([A-Za-z_$][\w$]*)\s*\.\s*$/.exec(text.slice(Math.max(0, pos - 40), pos));
+  let x = back ? back[1] : null;
+  if (!x) {
+    const open = text.indexOf("(", pos);
+    const r = open < 0 ? -1 : matchForward(text, open);
+    x = r > 0 ? lastIdent((splitTop(text.slice(open + 1, r))[0] || "").replace(/\.\s*(?:begin|rbegin)\(\)/, "")) : null;
+  }
+  if (!x) return false;
+  const m = new RegExp(`\\b${esc(x)}\\s*(?:=\\s*)?[\\[{]([^\\]}]*)[\\]}]`).exec(text);
+  return !!m && !/\bfor\b/.test(m[1]) && (m[1].match(/,/g) || []).length < 16;
+}
+
 function analyzeFn(fn, ctx) {
   const ev = [];
   const pats = [];
@@ -922,7 +967,7 @@ function analyzeFn(fn, ctx) {
   const loops = fn.loops;
   const fnBody = ctx.text.slice(fn.bodyStart, fn.end);
   const cands = [];
- 
+
   // queue / stack driven traversals (BFS, iterative DFS, level order, topo sort)
   for (const L of loops) {
     if (L.parent && L.parent.skip) { L.skip = true; continue; }
@@ -939,7 +984,7 @@ function analyzeFn(fn, ctx) {
       cands.push({ cx, pat: /stack|stk/i.test(L.test) ? "depth_first_search" : "breadth_first_search", ev: `Queue/stack driven traversal${visited ? " with visited tracking" : ""}`, conf: visited ? HIGH : MED });
     }
   }
- 
+
   // loop nests
   const chains = new Map();
   let best = EMPTY_CHAIN;
@@ -981,19 +1026,20 @@ function analyzeFn(fn, ctx) {
     pats.push("amortized_inner_loop");
     ev.push("Inner while loop advances a pointer/stack monotonically (amortized O(1) per outer step)");
   }
- 
+
   // sorting
   for (const pos of fn.sorts) {
+    if (isConstantSort(ctx.text, pos)) continue;
     let c = EMPTY_CHAIN;
     for (const L of loops) if (!L.skip && inLoop(L, pos) && chains.get(L) && chainRank(chains.get(L)) >= chainRank(c)) c = chains.get(L);
     const withSort = { ...c, lin: c.lin + 1, log: c.log + 1, keys: c.keys.concat([null]) };
     cands.push({ cx: chainToCx(withSort), pat: c.lin ? "sorting_with_linear_pass" : "standard_sort", ev: "Comparison sort (O(n log n))", conf: HIGH });
   }
- 
+
   // recursion
   fn.rec = analyzeRecursion(fn, ctx);
   if (fn.rec) cands.push({ cx: fn.rec.cx, pat: fn.rec.pat, ev: fn.rec.ev.join("; "), conf: fn.rec.conf });
- 
+
   let top = null;
   for (const c of cands) if (!top || rank(c.cx) > rank(top.cx)) top = c;
   if (!top) {
@@ -1005,7 +1051,7 @@ function analyzeFn(fn, ctx) {
   fn.cx = top.cx;
   fn.info = { ev, pats, conf: Math.min(conf, top.conf), evMain: top.ev };
 }
- 
+
 /** A non-recursive helper called inside a loop multiplies its cost into the caller. */
 function applyHelperCalls(ir, ctx) {
   const callees = ir.fns.filter(
@@ -1034,7 +1080,7 @@ function applyHelperCalls(ir, ctx) {
     }
   }
 }
- 
+
 function computeTime(entry) {
   const { ir, ctx } = entry;
   enrichLoops(ir, ctx);
@@ -1058,9 +1104,9 @@ function computeTime(entry) {
     topFn: top,
   };
 }
- 
+
 /* ───────────────────────── space analysis ───────────────────────── */
- 
+
 const SMALL = (s) => /^\s*\d+\s*$/.test(s) && Number(s) <= 1024;
 const ALLOC_RES = [
   /\bnew\s+(?!\w*Node\b)[\w.]+(?:\s*<[^>;]*>)?\s*((?:\[[^\]\n]*\]\s*)+)/g,
@@ -1079,7 +1125,7 @@ const DECL_RES = [
 ];
 const RET_RE = /\breturn\s+(?:\(\s*)?([A-Za-z_$][\w$]*)(?!\s*[[(\w$])/g;
 const NODE_ALLOC = /\bnew\s+\w*Node\s*[([]/g;
- 
+
 function computeSpace(entry, time) {
   const { ir, ctx } = entry;
   const { text } = ctx;
@@ -1088,7 +1134,7 @@ function computeSpace(entry, time) {
   let out = ZERO_CX;
   let conf = HIGH;
   const bump = (cur, c) => (rank(c) > rank(cur) ? c : cur);
- 
+
   // recursion + traversal containers
   for (const f of ir.fns) {
     if (f.rec && rank(f.rec.aux) > rank(aux)) {
@@ -1104,7 +1150,7 @@ function computeSpace(entry, time) {
       }
     }
   }
- 
+
   const returned = new Set();
   let m;
   RET_RE.lastIndex = 0;
@@ -1126,7 +1172,7 @@ function computeSpace(entry, time) {
     }
     conf = Math.min(conf, MED);
   };
- 
+
   // sized allocations
   const lines = text.split("\n");
   let off = 0;
@@ -1153,7 +1199,7 @@ function computeSpace(entry, time) {
     const c = dims >= 2 ? mk(dims, 0, { dims: dims === 2 ? [1, 1] : null }) : mk(1);
     place(nm ? nm[1] : null, c, `${dims}-dimensional allocation sized by input`, here);
   }
- 
+
   // growing containers
   const decls = new Set();
   for (const re of DECL_RES) {
@@ -1187,7 +1233,7 @@ function computeSpace(entry, time) {
     aux = mk(1);
     ev.push("sorted() returns a new list");
   }
- 
+
   const total = rank(out) >= rank(aux) ? out : aux;
   return {
     auxiliary: label(aux),
@@ -1197,9 +1243,9 @@ function computeSpace(entry, time) {
     evidence: ev.length ? ev : ["Only scalar variables / in-place updates detected"],
   };
 }
- 
+
 /* ───────────────────────── dynamic evidence ───────────────────────── */
- 
+
 function correlateDynamicEvidence(testcases, evidenceScope, timeRank, includePoints) {
   const pts = (Array.isArray(testcases) ? testcases : [])
     .map((tc, i) => ({
@@ -1212,7 +1258,7 @@ function correlateDynamicEvidence(testcases, evidenceScope, timeRank, includePoi
     .filter((p) => p.status !== "Compilation Error");
   const base = { scope: evidenceScope, testcaseCount: pts.length };
   if (!pts.length) return { ...base, timeModelFit: { model: "inconclusive", confidence: "low" }, memoryTrend: "unknown" };
- 
+
   const maxT = Math.max(...pts.map((p) => p.cpuTimeMs));
   const mem = pts.map((p) => p.memoryKb);
   const memoryTrend = Math.max(...mem) - Math.min(...mem) > 4096 ? "growing" : "flat_baseline";
@@ -1241,9 +1287,9 @@ function correlateDynamicEvidence(testcases, evidenceScope, timeRank, includePoi
   if (includePoints) res.dataPoints = pts;
   return res;
 }
- 
+
 /* ───────────────────────── public API ───────────────────────── */
- 
+
 function getEntry(code, language) {
   const norm = code.includes("\r") ? code.replace(/\r\n?/g, "\n") : code;
   const lang = String(language || "").toLowerCase().trim();
@@ -1271,7 +1317,7 @@ function getEntry(code, language) {
   cache.set(key, entry);
   return entry;
 }
- 
+
 function unknownResult(reason, compat) {
   const r = {
     version: ANALYZER_VERSION,
@@ -1290,7 +1336,7 @@ function unknownResult(reason, compat) {
     assumptions: [],
   };
 }
- 
+
 /**
  * @param {object} p
  * @param {string} p.code
@@ -1312,7 +1358,7 @@ export async function analyzeComplexity({
 }) {
   if (!code || typeof code !== "string" || !code.trim()) return unknownResult("Source code was empty or whitespace only", compat);
   if (code.length > MAX_CODE_LENGTH) return unknownResult("Source code too large to analyze", compat);
- 
+
   const want = new Set(include);
   const full = verbose || compat;
   let entry;
@@ -1332,12 +1378,12 @@ export async function analyzeComplexity({
     (want.has("dynamic") || compat) && Array.isArray(testcases) && testcases.length
       ? correlateDynamicEvidence(testcases, evidenceScope, t.rank, full)
       : null;
- 
+
   const timeOut = { bestEstimate: t.bestEstimate, confidence: t.confidence, asymptoticClass: t.asymptoticClass };
   const summaryParts = [];
   if (want.has("time") || compat) summaryParts.push(`Time: ${t.bestEstimate}`);
   if (s) summaryParts.push(`Space: ${s.auxiliary} auxiliary, ${s.output} output (${s.total} total)`);
- 
+
   const res = { version: ANALYZER_VERSION, status: "completed", summary: summaryParts.join(", ") };
   if (want.has("time") || compat) {
     res.time = timeOut;
@@ -1356,7 +1402,7 @@ export async function analyzeComplexity({
     }
   }
   if (dyn) res.dynamicEvidence = dyn;
- 
+
   if (compat) {
     res.analysisVersion = ANALYZER_VERSION;
     res.analysisStatus = "completed";
@@ -1370,4 +1416,3 @@ export async function analyzeComplexity({
   }
   return res;
 }
- 
