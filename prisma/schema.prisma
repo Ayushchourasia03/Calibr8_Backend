@@ -1,3 +1,4 @@
+// old prisma schmema
 generator client {
   provider = "prisma-client-js"
 }
@@ -264,4 +265,335 @@ model StudyMCQ {
   difficulty   String     @default("Easy")
   order        Int
   topic        StudyTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+new prisma schema
+
+generator client {
+  provider = "prisma-client-js"
+  // On Prisma 5.x enable join-based relation loading (one query instead of N):
+  // previewFeatures = ["relationJoins"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") // pooled URL (PgBouncer / pooler) for the app
+  // directUrl = env("DIRECT_URL") // non-pooled URL, used by `prisma migrate`
+}
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  passwordHash      String
+  name              String
+  difficulty        String?
+  rating            Int       @default(800)
+  score             Int       @default(0)
+  streak            Int       @default(0)
+  strictPercent     Int       @default(0)
+  tier              String    @default("Prism I")
+  college           String?
+  branch            String?
+  batch             String?
+  state             String?
+  country           String?   @default("India")
+  onboarded         Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  preferredLanguage String    @default("cpp") @map("preferred_language")
+  coins             Int       @default(100)
+  activeThemeId     String?   @map("activeThemeId")
+  lastStreakDate    DateTime?
+  longestStreak     Int       @default(0)
+
+  // REMOVED: active_theme_id + its relation (duplicate of activeThemeId)
+
+  socialAccounts  SocialAccount[]
+  problemProgress UserProblemProgress[]
+  ownedThemes     UserTheme[]
+  topics          UserTopic[]
+  submissions     Submission[]
+  activeTheme     Theme?                @relation("ActiveTheme", fields: [activeThemeId], references: [id])
+
+  // Keep ONLY the leaderboards you actually serve. Every solve changes `score`,
+  // so each index below is rewritten on every accepted submission.
+  @@index([score(sort: Desc)]) // global leaderboard (replaces [country, score] when nearly all users are "India")
+  @@index([college, score(sort: Desc)])
+  @@index([branch, score(sort: Desc)])
+  @@index([batch, score(sort: Desc)])
+  // @@index([state, score]) // drop unless a state leaderboard exists
+  @@map("users")
+}
+
+model Topic {
+  id       String      @id @default(uuid())
+  slug     String      @unique
+  name     String
+  category String      @default("CORE")
+  users    UserTopic[]
+
+  @@map("topics")
+}
+
+model UserTopic {
+  id      String @id @default(uuid())
+  userId  String
+  topicId String
+  level   String @default("easy")
+  topic   Topic  @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, topicId])
+  @@index([topicId]) // ADDED: FK index (Postgres does not create one automatically)
+  @@map("user_topics")
+}
+
+model SocialAccount {
+  id             String   @id @default(cuid())
+  userId         String
+  provider       String
+  providerUserId String
+  username       String?
+  name           String?
+  email          String?
+  avatarUrl      String?
+  profileUrl     String?
+  bio            String?
+  headline       String?
+  stats          Json?
+  connectedAt    DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@unique([provider, providerUserId])
+  @@map("social_accounts")
+}
+
+model Theme {
+  id             String      @id @default(dbgenerated("(gen_random_uuid())::text"))
+  slug           String      @unique
+  name           String
+  price          Int         @default(0)
+  previewColor   String?
+  cssVars        Json?
+  isDefault      Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+  purchases      UserTheme[]
+  activeForUsers User[]      @relation("ActiveTheme")
+
+  @@map("themes")
+}
+
+model UserTheme {
+  id          String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  userId      String   @map("userId")
+  themeId     String   @map("themeId")
+  purchasedAt DateTime @default(now())
+  theme       Theme    @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, themeId]) // already serves lookups by userId
+  // REMOVED: @@index([userId]) (redundant prefix of the unique index)
+  @@map("user_themes")
+}
+
+model Problem {
+  id            String                @id @default(cuid())
+  problemNumber Int                   @unique @default(autoincrement()) @map("problemNumber")
+  slug          String                @unique
+  title         String
+  description   String // large text: never load it in list endpoints (use select)
+  difficulty    String                @default("Easy")
+  solvedCount   Int                   @default(0) @map("solvedCount")
+  timeLimit     Int                   @default(1000) @map("timeLimit")
+  memoryLimit   Int                   @default(256) @map("memoryLimit")
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  dsaTopicId    String?               @map("dsaTopicId")
+  tags          String[]              @default([])
+  templates     CodeTemplate[]
+  dsaTopic      DsaTopic?             @relation(fields: [dsaTopicId], references: [id])
+  testcases     Testcase[]
+  submissions   Submission[]
+  userProgress  UserProblemProgress[]
+
+  @@index([dsaTopicId, problemNumber]) // ADDED: problems of a topic, in order
+  @@index([difficulty, problemNumber]) // ADDED: filter by difficulty
+  @@index([tags], type: Gin) // ADDED: tag filtering with `has` / `hasSome`
+  @@map("problems")
+}
+
+model UserProblemProgress {
+  userId       String   @map("userId")
+  problemId    String   @map("problemId")
+  points       Int // CHECK: if this always equals scoreAwarded, drop it
+  scoreAwarded Int      @default(0) @map("scoreAwarded")
+  coinsAwarded Int      @default(0) @map("coinsAwarded")
+  solvedAt     DateTime @default(now()) @map("solvedAt")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem      Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@id([userId, problemId])
+  @@index([problemId])
+  @@map("user_problem_progress")
+}
+
+model DsaTopic {
+  id       String    @id @default(cuid())
+  slug     String    @unique
+  name     String
+  order    Int       @default(0)
+  problems Problem[]
+
+  @@map("dsa_topics")
+}
+
+model Testcase {
+  id            String  @id @default(cuid())
+  problemId     String  @map("problemId")
+  testIndex     Int     @map("testIndex")
+  isVisible     Boolean @default(false) @map("isVisible")
+  stdinSmall    String  @map("stdinSmall")
+  expectedSmall String  @map("expectedSmall")
+  sizeBytes     Int     @default(0) @map("sizeBytes")
+  r2Key         String? @map("r2Key")
+  problem       Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@unique([problemId, testIndex])
+  @@map("testcases")
+}
+
+model CodeTemplate {
+  id        String  @id @default(cuid())
+  problemId String  @map("problemId")
+  language  String
+  code      String
+  problem   Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@unique([problemId, language])
+  @@map("code_templates")
+}
+
+model Submission {
+  id          String   @id @default(cuid())
+  problemId   String   @map("problemId")
+  userId      String?  @map("userId")
+  language    String
+  code        String // large text: exclude from list queries
+  status      String // ACCEPTED, WRONG_ANSWER...
+  passedCount Int      @default(0) @map("passedCount")
+  totalCount  Int      @default(0) @map("totalCount")
+  time        String?
+  memory      Int?
+  createdAt   DateTime @default(now())
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem     Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@index([problemId, status])
+  @@index([userId, status, createdAt(sort: Desc)])
+  @@index([userId, problemId, createdAt(sort: Desc)]) // ADDED: "my submissions for this problem"
+  // REMOVED: @@index([userId, status]) (redundant prefix of the 3-column index)
+  @@map("submissions")
+}
+
+model StudySubject {
+  id          String         @id @default(cuid())
+  slug        String         @unique
+  name        String
+  description String?
+  icon        String?
+  order       Int            @default(0)
+  createdAt   DateTime       @default(now())
+  chapters    StudyChapter[]
+}
+
+model StudyChapter {
+  id        String       @id @default(cuid())
+  slug      String
+  name      String
+  subjectId String
+  order     Int
+  subject   StudySubject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topics    StudyTopic[]
+
+  @@unique([subjectId, slug])
+  @@index([subjectId, order]) // ADDED
+}
+
+model StudyTopic {
+  id          String       @id @default(cuid())
+  slug        String
+  name        String
+  chapterId   String
+  order       Int
+  content     String // large text: exclude from list queries
+  isPublished Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  mcqs        StudyMCQ[]
+  chapter     StudyChapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@unique([chapterId, slug])
+  @@index([chapterId, order]) // ADDED
+}
+
+model StudyMCQ {
+  id           String     @id @default(cuid())
+  topicId      String
+  question     String
+  options      Json
+  correctIndex Int
+  explanation  String?
+  difficulty   String     @default("Easy")
+  order        Int
+  topic        StudyTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([topicId, order]) // ADDED: FK index
 }
