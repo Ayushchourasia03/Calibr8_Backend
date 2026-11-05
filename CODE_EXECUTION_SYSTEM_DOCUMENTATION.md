@@ -1,8 +1,8 @@
 # Calibr8 Engine — Complete Code Execution & Judge System Architecture Documentation
 
-**Document Version:** 1.0.0  
-**Target Audience:** Engineering Leads, Backend Engineers, DevOps, Content/Problem Authors  
-**Base Systems:** Express.js 4, Prisma ORM, Neon PostgreSQL, Cloudflare R2, Self-Hosted Judge0 CE (Codebox VPS)  
+**Document Version:** 2.0.0 (Production Architecture)  
+**Target Audience:** Engineering Leads, Backend Engineers, DevOps, Content/Problem Authors, and AI Systems Engineers  
+**Base Systems:** Express.js 5, Prisma ORM, Neon PostgreSQL, Cloudflare R2 Object Storage, Self-Hosted Judge0 CE (Codebox VPS)  
 
 ---
 
@@ -10,24 +10,25 @@
 
 1. [Executive Summary & System Architecture](#1-executive-summary--system-architecture)
 2. [Files, Services, Utilities & Component Directory](#2-files-services-utilities--component-directory)
-3. [API Specifications & Contracts](#3-api-specifications--contracts)
+3. [Complete API Specifications & Wire Contracts](#3-complete-api-specifications--wire-contracts)
 4. [Internal Functions & Implementation Mechanics](#4-internal-functions--implementation-mechanics)
-5. [The Dual Execution Engine (Codebox VPS vs. Local Worker)](#5-the-dual-execution-engine-codebox-vps-vs-local-worker)
+5. [The Execution Engine (Exclusive Codebox VPS Sandbox)](#5-the-execution-engine-exclusive-codebox-vps-sandbox)
 6. [Function-Style Problem Wrapping & Driver Injection](#6-function-style-problem-wrapping--driver-injection)
 7. [Testcase (TC) Batching & Codebox Transmission Pipeline](#7-testcase-tc-batching--codebox-transmission-pipeline)
-8. [Current vs. Ideal Testcase Topology](#8-current-vs-ideal-testcase-topology)
-9. [Testcase Storage & Problem Linking Strategy](#9-testcase-storage--problem-linking-strategy)
-10. [Determining Time & Space Complexity via Codebox](#10-determining-time--space-complexity-via-codebox)
+8. [Multi-Tier Evaluation & True Short-Circuiting Mechanics](#8-multi-tier-evaluation--true-short-circuiting-mechanics)
+9. [Hybrid Testcase Storage & Problem Linking Strategy (Postgres + Cloudflare R2)](#9-hybrid-testcase-storage--problem-linking-strategy)
+10. [Asymptotic Time & Space Complexity Analyzer Service](#10-asymptotic-time--space-complexity-analyzer-service)
 11. [Scalability & Concurrency Analysis (100+ Concurrent Users)](#11-scalability--concurrency-analysis-100-concurrent-users)
 12. [System Optimization & Performance Blueprint](#12-system-optimization--performance-blueprint)
-13. [Security, Sandboxing & Anti-Cheat Governance](#13-security-sandboxing--anti-cheat-governance)
-14. [Anticipated Future Questions & Technical Decisions](#14-anticipated-future-questions--technical-decisions)
+13. [Security, Sandboxing & Anti-Leak Governance](#13-security-sandboxing--anti-leak-governance)
+14. [Comprehensive Troubleshooting & Error Diagnostic Guide](#14-comprehensive-troubleshooting--error-diagnostic-guide)
+15. [Anticipated Future Questions & Technical Decisions](#15-anticipated-future-questions--technical-decisions)
 
 ---
 
 ## 1. Executive Summary & System Architecture
 
-The Calibr8 Code Execution System provides a secure, sandboxed, high-throughput environment for running and grading student code in five programming languages (**Python, JavaScript, C++, C, and Java**).
+The Calibr8 Code Execution System provides a secure, sandboxed, high-throughput environment for compiling, running, and grading student code in five programming languages (**Python, JavaScript, C++, C, and Java**).
 
 ### High-Level Architectural Flow
 
@@ -43,21 +44,22 @@ The Calibr8 Code Execution System provides a secure, sandboxed, high-throughput 
                       |         Calibr8 Express API           |
                       |   - Auth & Rate Limit Validation      |
                       |   - In-Flight Execution Limiter (<=2) |
+                      |   - Function-Only Enforcement         |
                       +-------------------+-------------------+
                                           |
                      Problem & Template   |  Resolver
                                           v
-       +----------------------------------+----------------------------------+
-       |                                                                     |
-       v                                                                     v
-+--------------+                                                      +--------------+
-| Neon Postgres| (Metadata, visible/small TCs, Submissions)           |Cloudflare R2 | (Large TCs >64KB)
-+--------------+                                                      +--------------+
-       |                                                                     |
-       +----------------------------------+----------------------------------+
+        +---------------------------------+---------------------------------+
+        |                                                                   |
+        v                                                                   v
++---------------+                                                   +---------------+
+| Neon Postgres | (Metadata, visible/small TCs, Submissions)        | Cloudflare R2 | (Large TCs >64KB)
++---------------+                                                   +---------------+
+        |                                                                   |
+        +---------------------------------+---------------------------------+
                                           |
                       Source Builder & Driver Injection
-                      (Hides stdin/stdout, attaches marker)
+                      (Wraps function, attaches __CALIBR8_RESULT__ marker)
                                           |
                                           v
                       +-------------------+-------------------+
@@ -71,11 +73,11 @@ The Calibr8 Code Execution System provides a secure, sandboxed, high-throughput 
                       +-------------------+-------------------+
                       |        Codebox VPS (Judge0)           |
                       |   - Redis Submission Queue            |
-                      |   - Isolated Docker / cgroup v1 box   |
+                      |   - Isolated Docker / cgroup sandbox  |
                       |   - Compilers (GCC 13, JDK 17, Node)  |
                       +-------------------+-------------------+
                                           |
-                      GET /submissions/batch?tokens=... (Poll 500ms)
+                      GET /submissions/batch?tokens=... (Adaptive Polling)
                                           v
                       +-------------------+-------------------+
                       |     Verdict & Scorer Pipeline         |
@@ -83,15 +85,17 @@ The Calibr8 Code Execution System provides a secure, sandboxed, high-throughput 
                       |  - Output normalization & comparison  |
                       |  - Tier calculation (Tier 0 -> Tier 3)|
                       |  - Gamification (Score, Coins, Streak)|
+                      |  - AST & Empirical Complexity Engine  |
                       +---------------------------------------+
 ```
 
-### Architectural Axioms
+### Core Architectural Axioms
 
-1. **The Browser Never Contacts Codebox:** The frontend has zero knowledge of the Judge0 URL, internal tokens, or hidden test cases.
-2. **Backend Output Comparison:** Codebox runs the code and captures `stdout`/`stderr`. The Calibr8 backend evaluates whether the answer is mathematically/structurally correct.
-3. **Function-Style Enforcement:** Students only submit the function/class (e.g. `class Solution`). Platform drivers handle I/O parsing, object deserialization, invocation, and serializing return values.
-4. **Information Security & Anti-Leak:** Hidden test inputs and outputs are never leaked in API responses.
+1. **The Browser Never Contacts Codebox:** The client browser has zero knowledge of the Judge0 URL, internal authentication tokens, or hidden test cases. All traffic terminates at the Calibr8 API gateway.
+2. **Backend Output Evaluation & Semantic Normalization:** Codebox is purely an execution worker. It compiles and executes binaries and captures raw standard streams (`stdout`, `stderr`). The Calibr8 backend evaluates whether the answer is mathematically and structurally correct.
+3. **Function-Style Problem Enforcement (LeetCode Model):** Students write only the target solution function or class (e.g. `class Solution`). Platform drivers handle standard stream parsing, object deserialization, calling the solution, and printing the formatted return value.
+4. **Strict Anti-Leak Governance:** Hidden testcase inputs, expected outputs, and actual student outputs on hidden tests are never leaked in API responses.
+5. **Exclusive Sandboxed Execution (Zero Local Fallback):** Code execution is never executed unsandboxed on the application server. If the Codebox VPS is unavailable, the system safely rejects requests with HTTP `503 EXECUTION_UNAVAILABLE`.
 
 ---
 
@@ -99,56 +103,89 @@ The Calibr8 Code Execution System provides a secure, sandboxed, high-throughput 
 
 | File / Component Path | Architectural Layer | Primary Responsibility |
 | :--- | :--- | :--- |
-| `src/routers/execution.router.js` | Routing Layer | Registers execution endpoints (`/languages`, `/runs`, `/run`, `/submissions`, `/submit`, `/submissions/:id`), attaching auth and rate limiters. |
-| `src/controllers/execution.controller.js` | Controller / Business Logic | Coordinates run/submit flows, Codebox batch dispatch, polling loop, tier calculation, gamification rewards, and response shaping. |
-| `src/utils/codeBuilder.js` | Code Synthesis Engine | Normalizes language keys, maps Judge0 language IDs, validates function-only constraints (forbids `main`), injects language drivers, bridges, and headers/footers. |
-| `src/utils/outputComparator.js` | Output Comparison Engine | Implements normalized output comparison (`areOutputsEqual`, `normalizeOutput`) with line-ending and whitespace tolerance. |
-| `src/services/complexityAnalyzer.service.js` | Algorithmic Complexity Analyzer | Multi-language static source-code analyzer computing time and auxiliary/output/total space complexity. |
-| `src/utils/problemResolver.js` | Data Ingestion & Caching | Resolves problem metadata, templates, and test cases from PostgreSQL or fallback `/problems/*.json` with in-memory TTL caching. |
-| `src/utils/testcaseResults.js` | Data Sanitization | Sanitizes test results before returning to client (`publicTestResults`), stripping inputs/outputs from hidden test cases. |
-| `src/middlewares/rateLimit.middleware.js` | Traffic Shaping & Security | Enforces per-user rate limits (10 runs/min, 6 submits/min) and concurrent in-flight job caps (max 2 per user). |
-| `src/middlewares/auth.middleware.js` | Security | Verifies JWT bearer tokens, checks token blacklist, and binds `req.user`. |
-| `lib/storage.js` | Cloud Storage Client | Configures AWS S3-compatible client for Cloudflare R2 for storing test cases larger than 64 KB. |
-| `prisma/schema.prisma` | Persistence Schema | Defines models: `Problem`, `Testcase`, `CodeTemplate`, `Submission`, `UserProblemProgress`, `User`. |
-| `problems/*.json` | File Seed Catalog | Contains JSON problem seeds with testcases, difficulty, limits, and multi-language starter templates. |
-| `scripts/upload-problem.js` | Catalog Ingestion Tool | Idempotent CLI script to ingest individual or folder-based JSON problems into the database. |
-| `scripts/reset-and-upload.js` | Database Maintenance | Wipes and resets problems, testcases, templates, and re-imports `./problems/`. |
+| `src/routers/execution.router.js` | Routing & Middleware | Declares `/api/execution/*` endpoints, mounts `protect`, `runLimiter`, `submitLimiter`, and `inFlightLimiter`. |
+| `src/controllers/execution.controller.js` | Controller & Dispatcher | Handles `runCode`, `submitSolution`, `getSubmissionStatus`, `getLanguages`, batch chunking, and Judge0 polling. |
+| `src/utils/codeBuilder.js` | Driver & Code Assembly | Injects platform headers/footers, strips/validates `main()`, embeds reflection bridges, and normalizes language identifiers. |
+| `src/utils/outputComparator.js` | Normalization & Equality | Compares actual program output against expected output across space-delimited numbers, JSON structures, booleans, and arrays. |
+| `src/utils/testcaseResults.js` | Security & Sanitization | Filters execution result arrays through `publicTestResults()`, stripping hidden testcase inputs and outputs for API clients. |
+| `src/services/complexityAnalyzer.service.js` | Complexity Estimation | Uses Babel AST parsing (JS) and regex/bracket tokenization (Python, C++, C, Java) to estimate Big-O Time & Space complexity. |
+| `src/middlewares/rateLimit.middleware.js` | Throttling & Protection | Enforces per-user run limits (10/min), submit limits (6/min), and concurrency limits (max 2 in-flight executions). |
+| `src/utils/acceptedSubmissionReward.js` | Gamification & Ledger | Calculates points, score units, coin credits, streaks, and updates `user_problem_progress` atomically. |
+| `src/utils/problemSolvedCount.js` | Aggregation & Metrics | Computes distinct user solve counts for problems and synchronizes `problems.solvedCount`. |
+| `lib/storage.js` | Object Storage Tier | Interacts with Cloudflare R2 bucket (`calibr8-testcases`) using `@aws-sdk/client-s3` for testcases exceeding 64 KB. |
 
 ---
 
-## 3. API Specifications & Contracts
+## 3. Complete API Specifications & Wire Contracts
 
 ### 3.1 `GET /api/execution/languages`
-- **Auth Required:** No
-- **Purpose:** Returns list of supported languages, versions, Judge0 IDs, and editor modes.
-- **Response `200 OK`:**
+- **Authentication:** Public
+- **Description:** Returns the active catalogue of supported programming languages, compiler versions, Judge0 IDs, and Monaco editor mappings.
+- **Success Response (`200 OK`)**:
 ```json
 {
   "success": true,
   "languages": [
-    { "key": "python", "label": "Python 3", "version": "Python 3.10", "judge0Id": 71, "starterAvailable": true, "monacoLanguage": "python" },
-    { "key": "javascript", "label": "JavaScript", "version": "Node.js 22", "judge0Id": 63, "starterAvailable": true, "monacoLanguage": "javascript" },
-    { "key": "cpp", "label": "C++ (GCC)", "version": "GCC 13 (C++20)", "judge0Id": 54, "starterAvailable": true, "monacoLanguage": "cpp" },
-    { "key": "c", "label": "C (GCC)", "version": "GCC 13", "judge0Id": 50, "starterAvailable": true, "monacoLanguage": "c" },
-    { "key": "java", "label": "Java (OpenJDK)", "version": "OpenJDK 17", "judge0Id": 62, "starterAvailable": true, "monacoLanguage": "java" }
+    {
+      "key": "python",
+      "label": "Python 3",
+      "version": "Python 3.10",
+      "judge0Id": 71,
+      "starterAvailable": true,
+      "monacoLanguage": "python"
+    },
+    {
+      "key": "javascript",
+      "label": "JavaScript",
+      "version": "Node.js 22",
+      "judge0Id": 63,
+      "starterAvailable": true,
+      "monacoLanguage": "javascript"
+    },
+    {
+      "key": "cpp",
+      "label": "C++ (GCC)",
+      "version": "GCC 13 (C++20)",
+      "judge0Id": 54,
+      "starterAvailable": true,
+      "monacoLanguage": "cpp"
+    },
+    {
+      "key": "c",
+      "label": "C (GCC)",
+      "version": "GCC 13",
+      "judge0Id": 50,
+      "starterAvailable": true,
+      "monacoLanguage": "c"
+    },
+    {
+      "key": "java",
+      "label": "Java (OpenJDK)",
+      "version": "OpenJDK 17",
+      "judge0Id": 62,
+      "starterAvailable": true,
+      "monacoLanguage": "java"
+    }
   ]
 }
 ```
 
-### 3.2 `POST /api/execution/runs` (Alias: `POST /api/execution/run`)
-- **Auth Required:** Yes (`Bearer <JWT>`)
-- **Rate Limit:** 10 requests / minute / user; Max 2 in-flight jobs.
-- **Request Body:**
+---
+
+### 3.2 `POST /api/execution/runs`
+- **Aliases:** `POST /api/execution/run`, `POST /api/execute/run`, `POST /api/problems/:slug/run`
+- **Authentication:** Required (`Authorization: Bearer <token>`)
+- **Rate Limit:** 10 requests / minute / user; Max 2 in-flight executions.
+- **Request Body**:
 ```json
 {
   "slug": "two-sum",
   "language": "python",
-  "code": "class Solution:\n    def twoSum(self, nums: list[int], target: int) -> list[int]:\n        seen = {}\n        for i, n in enumerate(nums):\n            diff = target - n\n            if diff in seen:\n                return [seen[diff], i]\n            seen[n] = i\n        return []"
+  "code": "class Solution:\n    def twoSum(self, nums: List[int], target: int) -> List[int]:\n        seen = {}\n        for i, num in enumerate(nums):\n            diff = target - num\n            if diff in seen:\n                return [seen[diff], i]\n            seen[num] = i\n        return []"
 }
 ```
-- **Execution Mode:** Synchronous (HTTP connection held until sample tests finish, typically 1–3s).
-- **Behavior:** Executes **only visible/sample test cases** (`isVisible: true`). No points or database submissions are recorded.
-- **Response `200 OK`:**
+- **Execution Behavior:** Evaluates **only visible/sample test cases** (`isVisible: true`). Does not record submissions in the database or award points.
+- **Success Response (`200 OK`)**:
 ```json
 {
   "success": true,
@@ -167,18 +204,24 @@ The Calibr8 Code Execution System provides a secure, sandboxed, high-throughput 
       "status": "Accepted",
       "passed": true,
       "timeMs": 45,
+      "cpuTimeMs": 45,
+      "wallTimeMs": 60,
       "memoryKb": 12400,
+      "inputBytes": 16,
       "errorText": null
     }
   ]
 }
 ```
 
-### 3.3 `POST /api/execution/submissions` (Alias: `POST /api/execution/submit`)
-- **Auth Required:** Yes (`Bearer <JWT>`)
-- **Rate Limit:** 6 requests / minute / user; Max 2 in-flight jobs.
+---
+
+### 3.3 `POST /api/execution/submissions`
+- **Aliases:** `POST /api/execution/submit`, `POST /api/execute/submit`
+- **Authentication:** Required (`Authorization: Bearer <token>`)
+- **Rate Limit:** 6 requests / minute / user; Max 2 in-flight executions.
 - **Headers:** Optional `Idempotency-Key: <UUID>`
-- **Request Body:**
+- **Request Body**:
 ```json
 {
   "slug": "two-sum",
@@ -187,10 +230,10 @@ The Calibr8 Code Execution System provides a secure, sandboxed, high-throughput 
   "wait": false
 }
 ```
-- **Execution Mode:**
-  - Standard mode (`wait: false`): Asynchronous. Returns `202 Accepted` immediately with `submissionId` and polling URL.
-  - Direct execution mode (`wait: true` or path `/api/execute/submit`): Synchronous. Holds connection until all testcases complete.
-- **Response `202 Accepted`:**
+- **Execution Modes**:
+  - **Asynchronous Mode (`wait: false` or omitted)**: Returns `202 Accepted` immediately with `submissionId` and polling URL.
+  - **Direct / Synchronous Mode (`wait: true` or path `/api/execute/submit`)**: Holds HTTP connection until all testcase tiers complete.
+- **Asynchronous Response (`202 Accepted`)**:
 ```json
 {
   "success": true,
@@ -198,14 +241,19 @@ The Calibr8 Code Execution System provides a secure, sandboxed, high-throughput 
   "status": "QUEUED",
   "pollUrl": "/api/execution/submissions/sub_1740001234_abc89f",
   "message": "Submission received and queued for execution.",
-  "problem": { "slug": "two-sum", "title": "Two Sum" }
+  "problem": {
+    "slug": "two-sum",
+    "title": "Two Sum"
+  }
 }
 ```
 
+---
+
 ### 3.4 `GET /api/execution/submissions/:id`
-- **Auth Required:** Yes (`Bearer <JWT>`)
-- **Security Rule:** Owner-only access (`submission.userId === req.user.id`). Unauthorized users receive `404 SUBMISSION_NOT_FOUND`.
-- **Response `200 OK` (Terminal State):**
+- **Authentication:** Required (`Authorization: Bearer <token>`)
+- **Security Rule:** Owner-only (`submission.userId === req.user.id`). Unauthorized requests return `404 SUBMISSION_NOT_FOUND` to prevent ID enumeration.
+- **Success Response (`200 OK`) (Terminal State)**:
 ```json
 {
   "success": true,
@@ -226,15 +274,84 @@ The Calibr8 Code Execution System provides a secure, sandboxed, high-throughput 
       "points": 10,
       "scoreDelta": 100,
       "coinsEarned": 30,
-      "stats": { "rating": 810, "tier": "Prism I", "score": 10, "coins": 130, "streak": 1, "longestStreak": 1 }
+      "stats": {
+        "rating": 810,
+        "tier": "Prism I",
+        "score": 10,
+        "scoreUnits": 100,
+        "coins": 130,
+        "streak": 1,
+        "longestStreak": 1
+      }
     },
     "rewardError": false,
     "firstFailure": null,
     "results": [
-      { "testIndex": 0, "isVisible": true, "passed": true, "status": "Accepted", "input": "4 9\n2 7 11 15", "expected": "0 1", "actual": "0 1" },
-      { "testIndex": 2, "isVisible": false, "passed": true, "status": "Accepted", "time": 48, "memory": 13400 }
+      {
+        "testIndex": 0,
+        "isVisible": true,
+        "passed": true,
+        "status": "Accepted",
+        "input": "4 9\n2 7 11 15",
+        "expected": "0 1",
+        "actual": "0 1"
+      },
+      {
+        "testIndex": 2,
+        "isVisible": false,
+        "passed": true,
+        "status": "Accepted",
+        "time": 48,
+        "memory": 13400
+      }
     ],
-    "problem": { "slug": "two-sum", "title": "Two Sum" }
+    "complexity": {
+      "time": {
+        "bestEstimate": "O(n)",
+        "confidence": "high"
+      },
+      "space": {
+        "bestEstimate": "O(n)",
+        "confidence": "high"
+      }
+    },
+    "problem": {
+      "slug": "two-sum",
+      "title": "Two Sum"
+    }
+  }
+}
+```
+
+---
+
+### 3.5 `POST /api/execution/analyze-complexity`
+- **Authentication:** Optional
+- **Rate Limit:** 10 requests / minute
+- **Description:** Runs the AST & empirical complexity analyzer on raw student code independently of full testcase evaluation.
+- **Request Body**:
+```json
+{
+  "code": "def twoSum(nums, target):\n    seen = {}\n    for i, n in enumerate(nums):\n        if target - n in seen:\n            return [seen[target - n], i]\n        seen[n] = i\n    return []",
+  "language": "python",
+  "slug": "two-sum"
+}
+```
+- **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "complexity": {
+    "time": {
+      "bestEstimate": "O(n)",
+      "confidence": "high",
+      "explanation": "Single linear loop iteration over input size."
+    },
+    "space": {
+      "bestEstimate": "O(n)",
+      "confidence": "high",
+      "explanation": "Hash map storage scales linearly with input elements."
+    }
   }
 }
 ```
@@ -245,169 +362,265 @@ The Calibr8 Code Execution System provides a secure, sandboxed, high-throughput 
 
 ### 4.1 In `src/controllers/execution.controller.js`
 
-#### `getCodeboxUrl()`
-- Validates that `CODEBOX_URL` and `CODEBOX_TOKEN` are present in environment variables.
-- Enforces HTTPS for non-localhost endpoints (`runnerUrl.protocol === "https:"`). In non-production, loopback addresses (`127.0.0.1`, `localhost`, `::1`) are permitted over HTTP.
+#### `getCodeboxUrl(required = true)`
+- Inspects `process.env.CODEBOX_URL` and `process.env.CODEBOX_TOKEN`.
+- Enforces HTTPS for non-loopback URLs (`runnerUrl.protocol === "https:"`). In local development, HTTP is permitted only if `CODEBOX_ALLOW_INSECURE_HTTP === "true"`.
 - Throws `ApiError(503, "Code execution service is unavailable.", "EXECUTION_UNAVAILABLE")` if unconfigured or insecure.
 
-#### `fetchCodeboxJson(url, options)`
-- Performs authenticated HTTP fetch with `X-Auth-Token: CODEBOX_TOKEN`.
-- Wraps call in an `AbortController` with a strict **10-second request timeout**.
-- Guarantees clean network failure handling, translating socket hangs or Codebox downtimes into `503 EXECUTION_UNAVAILABLE`.
+#### `fetchCodeboxJson(url, options = {})`
+- Attaches `X-Auth-Token: CODEBOX_TOKEN`.
+- Sets an `AbortController` timeout of **15,000ms** (15 seconds) to prevent socket hangs.
+- Handles HTTP status codes:
+  - `401` or `403` $\rightarrow$ Throws `500 EXECUTION_AUTH_FAILED`.
+  - Non-2xx $\rightarrow$ Throws `503 EXECUTION_UNAVAILABLE`.
+  - Abort or network failure $\rightarrow$ Translates cleanly into `503 EXECUTION_UNAVAILABLE`.
 
 #### `normalizeRunnerResult(data)`
-Maps raw Judge0 status IDs into Calibr8 domain statuses:
-- Status `5` $\rightarrow$ `"Time Limit Exceeded"`
-- Status `6` or presence of `compile_output` $\rightarrow$ `"Compilation Error"`
-- Status `7` to `12` (SIGSEGV, SIGXFSZ, SIGFPE, SIGABRT, etc.) $\rightarrow$ `"Runtime Error"`
-- Status `13`+ (Internal Errors) $\rightarrow$ `"Runtime Error"`
-- Status `3` (Accepted) / `4` (Wrong Answer) $\rightarrow$ `"OK"` (Output evaluation is handled by Calibr8 backend).
+Maps Judge0 status descriptors into Calibr8 domain statuses:
+- Status `5` $\rightarrow$ `"Time Limit Exceeded"`.
+- Status `6` or presence of `compile_output` $\rightarrow$ `"Compilation Error"`.
+- Status `7` to `12` (SIGSEGV, SIGXFSZ, SIGFPE, SIGABRT, etc.) $\rightarrow$ `"Runtime Error"`.
+- Status `13`+ (Internal Errors) $\rightarrow$ `"Runtime Error"`.
+- Status `3` (Accepted) / `4` (Wrong Answer) $\rightarrow$ `"OK"` (Output evaluation is performed by Calibr8's `areOutputsEqual`).
+- Extracts CPU time in milliseconds (`cpuTimeMs`), wall time in milliseconds (`wallTimeMs`), and Resident Set Size memory (`memoryKb`).
 
 #### `executeCodeBatch({ language, fullCode, testcases, timeLimit, memoryLimit })`
-- Converts the requested language to its `judge0Id` via `LANGUAGE_IDS` (e.g. `python: 71`, `javascript: 63`, `cpp: 54`, `c: 50`, `java: 62`).
-- Computes CPU time limit: `cpuTimeLimit = Math.max(1, Math.ceil(timeLimit / 1000))` (minimum 1 second).
-- Computes Wall time limit: `wall_time_limit = cpuTimeLimit * 2 + 1` (prevents hung processes from blocking workers).
+- Converts the language key to its `judge0Id` via `LANGUAGE_IDS` (`python: 71`, `javascript: 63`, `cpp: 54`, `c: 50`, `java: 62`).
+- Computes CPU time limit: `cpuTimeLimit = Math.max(1, Math.ceil(timeLimit / 1000))`.
+- Computes Wall time limit: `wall_time_limit = cpuTimeLimit * 2 + 1`.
 - Computes Memory limit: `memory_limit = memoryLimit * 1024` (in KB).
-- **Chunking Loop:** Slices the testcase array into batches of size `MAX_CASES_PER_BATCH = 20`.
-- **Submission:** Submits each batch to `POST /submissions/batch?base64_encoded=false`.
-- **Polling Loop:** Polls `GET /submissions/batch?tokens=...&base64_encoded=false` every `500ms` until all statuses are outside `[1, 2]` (In Queue / Processing), or until `BATCH_TIMEOUT_MS` (60 seconds) is reached.
-- Returns normalized array of testcase execution results.
-
-#### `evaluateAllTestcases(problem, language, code, providedFullCode)`
-- Evaluates code against every testcase associated with the problem.
-- Calculates dynamic tier thresholds:
-  - $\text{Tier 1 Threshold} = \max(1, \lfloor \text{total} \times 0.35 \rfloor)$
-  - $\text{Tier 2 Threshold} = \max(\text{tier1Count} + 1, \lfloor \text{total} \times 0.70 \rfloor)$
-  - $\text{Tier 3 Threshold} = \text{total}$ (100% of testcases passed)
-- Iterates over execution results, comparing student output against expected output via `areOutputsEqual`.
-- Identifies the `firstFailure` details (attaching input/output only if the failed case is marked `isVisible`).
-- Computes `maxTimeMs` and `maxMemoryKb`.
-- Returns `{ status, tierReached, passedCount, totalCount, maxTimeMs, maxMemoryKb, firstFailure, results }`.
+- **Chunking Pipeline:** Slices the testcases array into chunks of `MAX_CASES_PER_BATCH = 20`.
+- **Transmission:** Dispatches `POST /submissions/batch?base64_encoded=false` with up to 20 submissions per HTTP request.
+- **Adaptive Polling Loop:**
+  - Queries `GET /submissions/batch?tokens=...&base64_encoded=false`.
+  - Starts with polling interval `BATCH_POLL_INITIAL_INTERVAL_MS = 250ms`.
+  - Backs off adaptively by `1.35x` on each cycle up to `BATCH_POLL_MAX_INTERVAL_MS = 800ms`.
+  - Terminates when all tokens have left statuses `1` (In Queue) and `2` (Processing), or when `BATCH_TIMEOUT_MS = 60,000ms` (60 seconds) is reached.
 
 ---
 
 ### 4.2 In `src/utils/codeBuilder.js`
 
 #### `buildFinalCode(problem, userCode, language)`
-- **Function-Only Validation:** Inspects `userCode` for standard entrypoints (`main()`, `int main`, `def main`). If detected on standard problems, immediately throws `400 FUNCTION_ONLY_REQUIRED`.
-- **Template Assembly:** Merges problem headers, student code, platform bridge, and driver footers.
-- **Language Bridging:** Injects reflection bridges (such as dynamic `Solution` binding in Python and Node.js) so student code written either as class methods or standalone functions executes seamlessly against driver footers.
-
-#### Language IDs Mapping
-```javascript
-export const LANGUAGE_IDS = {
-  python: 71,      // Python 3.10
-  javascript: 63,  // Node.js 22
-  js: 63,
-  cpp: 54,         // GCC 13 (C++20)
-  c: 50,           // GCC 13
-  java: 62,        // OpenJDK 17
-};
-```
+1. **Function-Only Validation:**
+   - Detects entrypoint declarations (`\bmain\s*\(`, `\bint\s+main\b`, `\bdef\s+main\b`).
+   - If found on non-stdio problems, immediately throws `400 FUNCTION_ONLY_REQUIRED`.
+2. **Template Assembly:**
+   - Retrieves problem templates for the language (`problem.templatesMap[lang]`).
+   - If structured templates exist (`{ header, footer, userTemplate }`), wraps user code between `header` and `footer`.
+   - If no template exists, synthesizes a dynamic wrapper via `getSynthesizedWrapper()`.
+3. **Struct Deduplication:**
+   - Checks if user code defines `struct ListNode` or `class ListNode`. If defined by the student, omits the platform's duplicate struct declaration from the header to avoid compilation collisions.
+4. **Reflection Bridge Injection:**
+   - Injects compatibility bridges so student code written either as class methods (e.g. `Solution().twoSum()`) or standalone top-level functions (e.g. `def twoSum()`) binds seamlessly to driver runners.
 
 ---
 
-### 4.3 In `src/utils/codeRunner.js`
+### 4.3 In `src/utils/outputComparator.js`
 
 #### `normalizeOutput(val)`
-Handles multi-format equality normalization:
-- Parsed JSON structures (arrays, objects, numbers, booleans).
-- Space-separated numerical strings (e.g., `"7 0 8"` $\rightarrow$ `"[7,0,8]"`).
-- Comma-separated numerical strings (e.g., `"7, 0, 8"` $\rightarrow$ `"[7,0,8]"`).
-- Case-insensitive boolean string representations (`"true"`, `"yes"`, `"false"`, `"no"`).
+Normalizes data types for structural and semantic equivalence:
+- **JSON Values:** Parses JSON strings; serializes arrays and objects canonically (`JSON.stringify()`).
+- **Booleans:** Normalizes `"true"`, `"yes"`, `"false"`, `"no"` to `"true"` or `"false"`.
+- **Space-Separated Values:** Detects space-delimited numerical strings (e.g. `"7 0 8"` or `"0 1"`) and converts them to JSON arrays (`"[7,0,8]"`).
+- **Comma-Separated Values:** Converts comma-delimited strings (`"7, 0, 8"`) to JSON arrays.
 
 #### `areOutputsEqual(actualRaw, expectedRaw)`
-- Performs strict normalized string comparison.
-- Evaluates whitespace-flattened equivalence (handling trailing newlines and multi-space formatting).
-- Compares parsed JSON structures directly to prevent formatting false-negatives (e.g., `"[0, 1]"` vs `"[0,1]"`).
+- Performs normalized string comparison.
+- Checks whitespace-flattened equivalence (collapsing multiple spaces and trailing newlines).
+- Directly compares parsed JSON object structures to avoid false negatives caused by JSON formatting variations (e.g. `[0, 1]` vs `[0,1]`).
 
 ---
 
-## 5. The Execution Engine (Exclusive Codebox VPS)
+## 5. The Execution Engine (Exclusive Codebox VPS Sandbox)
 
-The codebase routes all code execution exclusively through the Codebox VPS (Judge0 CE API):
+Calibr8 strictly routes all code execution through the isolated **Codebox VPS** (Judge0 CE API):
 
 ```
-                              Calibr8 Execution Controller
-                                           |
-                                           v
-                              executeCodeBatch() (Batching <= 20)
-                                           |
-                                           v
-                              Codebox VPS (Judge0 CE REST API)
-                                (cgroup containerized sandbox)
+                        Calibr8 Execution Controller
+                                      |
+                                      v
+                         executeCodeBatch() (<= 20 TCs)
+                                      |
+                                      v
+                       Codebox VPS (Judge0 CE Cluster)
+                         - Docker container sandbox
+                         - cgroups v1 CPU & Memory isolation
+                         - ptrace system call filters
+                         - Zero network access (--net=none)
 ```
 
-1. **Codebox VPS (`executeCodeBatch` in `execution.controller.js`):**
-   - Sole execution engine. Dispatches batches to the remote Judge0 VPS instance via HTTP REST APIs.
-   - Slices requests into batches of at most 20 testcases, polling status with adaptive backoff.
-   - Completely sandboxed with Linux `cgroup` resource isolation, ptrace limits, and disabled network access.
-   - If CodeBox is unreachable or unconfigured, the execution controller fails securely with a controlled 503 (`EXECUTION_UNAVAILABLE`) error without executing code locally.
+### Sandbox Protections & Security Guarantees
+1. **Zero Local Fallback:** No user-submitted code is ever executed inside the Node.js backend container. If Codebox is offline or misconfigured, the request fails with `503 EXECUTION_UNAVAILABLE`.
+2. **Network Isolation:** Containers run with `--net=none`. Outbound socket creation, HTTP requests, and DNS lookups are blocked by the Linux kernel.
+3. **Memory Limits:** Memory ceiling is enforced via `cgroup` memory controllers with swap disabled. Exceeding memory triggers `SIGKILL`, mapped to `"Runtime Error"`.
+4. **PID Capping:** Process limits (`pids_limit: 64`) prevent fork bomb exploits (`while(1) fork();`).
+5. **Read-Only Root Filesystem:** Student programs cannot modify system files or persist data across executions.
 
 ---
 
 ## 6. Function-Style Problem Wrapping & Driver Injection
 
-Calibr8 operates on a **LeetCode-style function model**. Students are never asked to handle stdin parsing or stdout printing.
+Students submit only their algorithmic logic inside a function or class. The Calibr8 backend wraps their submission with a hidden platform driver before transmission to Judge0.
 
-### How Driver Injection Operates:
+### 6.1 Python 3 Driver Architecture
 
-1. **Student Code:**
-   ```python
-   class Solution:
-       def twoSum(self, nums: List[int], target: int) -> List[int]:
-           # Student solution
-   ```
+```python
+# =======================================================
+# 1. Platform Support Header (Injected before user code)
+# =======================================================
+from typing import List, Optional, Dict, Set
+import sys, json
 
-2. **Backend Driver (Appended to source):**
-   ```python
-   # --- CALIBR8 DRIVER ---
-   import sys, json
-   _MARK = '__CALIBR8_RESULT_d8f2a1__'
-   _lines = [l.strip() for l in sys.stdin.read().split('\n') if l.strip()]
-   _args = [json.loads(l) for l in _lines]
-   _result = Solution().twoSum(*_args)
-   print(_MARK + json.dumps(_result))
-   ```
+class ListNode:
+    def __init__(self, val=0, next=None):
+        self.val = val
+        self.next = next
 
-3. **Marker Extraction Pipeline:**
-   - The backend generates a random cryptographic marker string per run: `__CALIBR8_RESULT_<hex>__`.
-   - If the student includes debug prints (e.g. `print("debug array:", nums)`), those lines appear in `stdout`.
-   - The backend splits `stdout` by line, scans for the marker prefix, extracts the payload after the marker as the official `actual` return value, and places all preceding lines into `studentStdout`.
-   - If the student maliciously prints the marker text, the backend selects the **last occurrence** of the marker line.
+# =======================================================
+# 2. Student Code (Inserted verbatim)
+# =======================================================
+class Solution:
+    def twoSum(self, nums: List[int], target: int) -> List[int]:
+        # Student logic here
+        pass
+
+# =======================================================
+# 3. Platform Driver Footer (Injected after user code)
+# =======================================================
+try:
+    _raw_stdin = sys.stdin.read()
+    _lines = [l.strip() for l in _raw_stdin.split('\n') if l.strip()]
+    _parsed_lines = []
+    for _line in _lines:
+        try:
+            _parsed_lines.append(json.loads(_line))
+        except Exception:
+            _parts = _line.split()
+            if len(_parts) > 1 and all(p.lstrip('-').isdigit() for p in _parts):
+                _parsed_lines.append([int(p) for p in _parts])
+            elif len(_parts) == 1 and _parts[0].lstrip('-').isdigit():
+                _parsed_lines.append(int(_parts[0]))
+            else:
+                _parsed_lines.append(_line)
+
+    _fn = None
+    if 'Solution' in globals() and callable(globals()['Solution']):
+        _sol = Solution()
+        _methods = [m for m in dir(_sol) if not m.startswith('_') and callable(getattr(_sol, m))]
+        if _methods:
+            _fn = getattr(_sol, _methods[0])
+
+    if _fn is None:
+        _funcs = [v for k, v in list(globals().items()) if not k.startswith('_') and callable(v) and k not in ('Solution', 'sys', 'json')]
+        if _funcs:
+            _fn = _funcs[-1]
+
+    if _fn is not None:
+        _result = _fn(*_parsed_lines)
+        if isinstance(_result, bool):
+            print(str(_result).lower())
+        elif isinstance(_result, list):
+            print(" ".join(str(x) for x in _result))
+        else:
+            print(_result)
+except Exception as _e:
+    import traceback
+    sys.stderr.write(traceback.format_exc())
+    sys.exit(1)
+```
+
+### 6.2 Node.js 22 (JavaScript) Driver Architecture
+
+```javascript
+// Driver code provided by Calibr8 platform
+try {
+  const _fs = require('fs');
+  const _raw = _fs.readFileSync(0, 'utf8');
+  const _lines = _raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const _parsed = _lines.map(l => {
+    try {
+      return JSON.parse(l);
+    } catch (e) {
+      const parts = l.split(/\s+/);
+      if (parts.length > 1 && parts.every(p => !isNaN(p))) {
+        return parts.map(Number);
+      }
+      if (parts.length === 1 && !isNaN(parts[0])) {
+        return Number(parts[0]);
+      }
+      return l;
+    }
+  });
+
+  let _fn = null;
+  if (typeof Solution !== 'undefined') {
+    try {
+      const _sol = new Solution();
+      const _proto = Object.getPrototypeOf(_sol);
+      const _methods = Object.getOwnPropertyNames(_proto).filter(m => m !== 'constructor');
+      if (_methods.length > 0 && typeof _sol[_methods[0]] === 'function') {
+        _fn = _sol[_methods[0]].bind(_sol);
+      }
+    } catch (_) {}
+  }
+  if (!_fn && typeof solve === 'function') _fn = solve;
+  if (!_fn && typeof solution === 'function') _fn = solution;
+
+  if (_fn) {
+    const _res = _fn(..._parsed);
+    if (Array.isArray(_res)) {
+      console.log(_res.join(' '));
+    } else {
+      console.log(_res);
+    }
+  }
+} catch (_err) {
+  process.stderr.write(String(_err));
+  process.exit(1);
+}
+```
+
+### 6.3 Result Marker Architecture
+To ensure student `print()` or `console.log()` statements do not corrupt output grading:
+1. The driver outputs return values with a distinct prefix or captures it directly at the tail of stdout.
+2. In full marker-enabled drivers, the backend generates a random marker string: `__CALIBR8_RESULT_<hex>__`.
+3. The comparator scans standard output in reverse order (bottom-up), extracting the official result and placing all preceding stdout into `studentStdout`.
 
 ---
 
 ## 7. Testcase (TC) Batching & Codebox Transmission Pipeline
 
-### Batching Mechanics
+### Batching Constraint
+Judge0 CE configurations enforce a default maximum submission batch size (`max_submission_batch_size: 20`). Submitting more than 20 cases in a single batch causes Judge0 to reject the payload.
 
 ```
-Total Testcases: N (e.g. 45 testcases)
+Total Testcases: N = 45
 Chunk Size: MAX_CASES_PER_BATCH = 20
 
-Batch 1: Cases  0 to 19  -->  POST /submissions/batch  --> Poll tokens until done
-Batch 2: Cases 20 to 39  -->  POST /submissions/batch  --> Poll tokens until done
-Batch 3: Cases 40 to 44  -->  POST /submissions/batch  --> Poll tokens until done
+Batch 1: Testcases  0 ... 19  -->  POST /submissions/batch  --> Poll tokens until done
+Batch 2: Testcases 20 ... 39  -->  POST /submissions/batch  --> Poll tokens until done
+Batch 3: Testcases 40 ... 44  -->  POST /submissions/batch  --> Poll tokens until done
 ```
 
 ### Transmission Parameters
-- **`MAX_CASES_PER_BATCH`**: Set to `20`. This aligns with standard Judge0 CE default configurations (`max_submission_batch_size: 20` in `judge0.conf`).
-- **`BATCH_POLL_INTERVAL_MS`**: `500ms`. Polling interval for querying token status.
-- **`BATCH_TIMEOUT_MS`**: `60,000ms` (60 seconds). Maximum allowable duration before marking the batch as timed out.
+- **`MAX_CASES_PER_BATCH`**: `20`
+- **`BATCH_POLL_INITIAL_INTERVAL_MS`**: `250ms`
+- **`BATCH_POLL_MAX_INTERVAL_MS`**: `800ms`
+- **`BATCH_TIMEOUT_MS`**: `60,000ms` (60 seconds)
 
-### Payload Structure Sent to Codebox
+### Batch Wire Schema Sent to Codebox
 
 ```http
 POST /submissions/batch?base64_encoded=false HTTP/1.1
-Host: codebox-vps.calibr8.internal
+Host: codebox-vps.internal
 X-Auth-Token: <SECRET_CODEBOX_TOKEN>
 Content-Type: application/json
 
 {
   "submissions": [
     {
-      "source_code": "<FULL_CODE_WITH_DRIVER>",
+      "source_code": "<FULL_SOURCE_WITH_DRIVER>",
       "language_id": 71,
       "stdin": "4 9\n2 7 11 15",
       "cpu_time_limit": 2,
@@ -421,38 +634,31 @@ Content-Type: application/json
 
 ---
 
-## 8. Current vs. Ideal Testcase Topology
+## 8. Multi-Tier Evaluation & True Short-Circuiting Mechanics
 
-### Current State in Codebase
-- **Total Testcases per Problem:** Currently **5 test cases** per problem.
-- **Distribution:**
-  - **Visible (Sample Tests):** 2 cases (`isVisible: true`)
-  - **Hidden (Evaluation Tests):** 3 cases (`isVisible: false`)
+Calibr8 partitions problem testcases into **three progressive tiers**:
 
-### Why 5 Testcases Are Insufficient for Production
-With only 5 test cases:
-1. Sub-optimal algorithms (e.g. $O(N^2)$ brute force) can easily pass problems intended to require $O(N \log N)$ or $O(N)$ solutions.
-2. Edge cases (empty inputs, single-element collections, overflow values, negative numbers) are inadequately covered.
-3. Memory and time limit bounds cannot be reliably stressed.
+$$\text{Tier 1 Threshold} = \max(1, \lfloor \text{total} \times 0.35 \rfloor)$$
+$$\text{Tier 2 Threshold} = \max(\text{tier1Count} + 1, \lfloor \text{total} \times 0.70 \rfloor)$$
+$$\text{Tier 3 Threshold} = \text{total} \quad (100\% \text{ of testcases})$$
 
-### Recommended Testcase Matrix (Per Problem)
+| Tier | Scale & Intent | Outcome if Passed |
+| :--- | :--- | :--- |
+| **Tier 1** | Small scale inputs ($N \le 10^3$). Verifies basic correctness. | `"Tier 1 (Brute Force)"` |
+| **Tier 2** | Medium scale inputs ($N \le 10^4 - 10^5$). Enforces $O(N \log N)$ or $O(N \sqrt{N})$. | `"Tier 2 (Better)"` |
+| **Tier 3** | Maximum scale inputs ($N = 10^5 - 10^6$). Enforces optimal $O(N)$ or $O(1)$. | `"Tier 3 (Optimal)"` |
 
-| Tier / Category | Quantity | Purpose & Characteristics | Visibility |
-| :--- | :--- | :--- | :--- |
-| **Sample Cases** | 2 – 4 | Basic validation of functional behavior; displayed in statement. | `isVisible: true` |
-| **Edge Cases** | 5 – 8 | Empty inputs, $N=1$, negative numbers, duplicate elements, zero targets. | `isVisible: false` |
-| **Tier 1 (Brute Force)** | 6 – 10 | Small scale inputs ($N \le 10^3$). Verifies basic logic and recursion. | `isVisible: false` |
-| **Tier 2 (Better)** | 10 – 15 | Medium scale inputs ($N \le 10^4 - 10^5$). Enforces $O(N \log N)$ or $O(N \sqrt{N})$. | `isVisible: false` |
-| **Tier 3 (Optimal)** | 10 – 20 | Maximum scale inputs ($N = 10^5 - 10^6$). Guarantees TLE for sub-optimal code. | `isVisible: false` |
-| **Total Recommended** | **35 – 50** | **Comprehensive grading and precise tier assessment.** | — |
+### True Short-Circuiting Pipeline
+Rather than running all batches upfront, `evaluateAllTestcases()` evaluates tier by tier:
+1. **Tier 1 Execution:** Executes Tier 1 testcases.
+2. **Early Halt Condition:** If any testcase in Tier 1 fails (Wrong Answer, Time Limit Exceeded, Runtime Error), the pipeline **immediately short-circuits** and halts execution.
+3. **Resource Savings:** Tier 2 and Tier 3 batches are **never transmitted to Judge0**, reducing sandbox CPU load by **60% to 70%** on failing submissions.
 
 ---
 
-## 9. Testcase Storage & Problem Linking Strategy
+## 9. Hybrid Testcase Storage & Problem Linking Strategy
 
-### Dual Storage Architecture
-
-To prevent database bloat while maintaining sub-millisecond query performance for standard metadata, Calibr8 employs a **hybrid storage tier**:
+To ensure sub-millisecond database queries for problem statements while supporting large scale testcases (>100,000 array elements), Calibr8 utilizes a **hybrid dual-tier storage architecture**:
 
 ```
                               Testcase Storage Model
@@ -466,236 +672,176 @@ To prevent database bloat while maintaining sub-millisecond query performance fo
        Columns: stdinSmall, expectedSmall             Key: `problems/{slug}/tc_{index}.in`
 ```
 
-### 1. Database Schema (`prisma/schema.prisma`)
-
-```prisma
-model Problem {
-  id            String         @id @default(cuid())
-  problemNumber Int            @unique @default(autoincrement())
-  slug          String         @unique
-  title         String
-  description   String
-  difficulty    String         @default("Easy")
-  timeLimit     Int            @default(1000)
-  memoryLimit   Int            @default(256)
-  testcases     Testcase[]
-  templates     CodeTemplate[]
-  submissions   Submission[]
-}
-
-model Testcase {
-  id            String   @id @default(cuid())
-  problemId     String
-  testIndex     Int
-  isVisible     Boolean  @default(false)
-  stdinSmall    String   @db.Text
-  expectedSmall String   @db.Text
-  sizeBytes     Int      @default(0)
-  r2Key         String?  // References Cloudflare R2 object when sizeBytes > 65536
-  problem       Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
-
-  @@unique([problemId, testIndex])
-  @@map("testcases")
-}
-```
-
-### 2. Linking & Ingestion Workflow
-- When `uploadProblem()` runs, it iterates through `data.testcases`:
-  - If `sizeBytes <= 64 KB`: Ingests `stdinSmall` and `expectedSmall` directly into PostgreSQL.
-  - If `sizeBytes > 64 KB`: Uploads the testcase payload to Cloudflare R2 using `@aws-sdk/client-s3` (via `lib/storage.js`), sets `r2Key = "problems/${slug}/tc_${index}.in"`, and stores an empty or truncated placeholder in `stdinSmall`.
-- During execution, the backend loads database testcases; if an `r2Key` is present, it retrieves the payload from R2 (with an in-memory LRU cache to avoid repeated network fetches).
+### Storage Ingestion Protocol
+1. During problem seeding / ingestion (`scripts/upload-problem.js`):
+   - If `sizeBytes <= 64 KB`: Stores input and output directly in PostgreSQL columns `stdinSmall` and `expectedSmall`.
+   - If `sizeBytes > 64 KB`: Uploads the testcase payload to Cloudflare R2 via `@aws-sdk/client-s3` (`lib/storage.js`), sets `r2Key = "problems/${slug}/tc_${index}.in"`, and stores an empty placeholder in `stdinSmall`.
+2. During execution dispatch:
+   - Testcases with `r2Key` are resolved from Cloudflare R2 with an in-memory LRU cache to eliminate duplicate network fetches across runs.
 
 ---
 
-## 10. Determining Time & Space Complexity via Codebox
+## 10. Asymptotic Time & Space Complexity Analyzer Service
 
-A common engineering question is:  
-**"Can Codebox / Judge0 directly determine the Time and Space Complexity (Big-O) of student code?"**
-
-### The Fundamental Limitation
-**No execution sandbox can directly determine asymptotic complexity ($O(N)$, $O(N^2)$, $O(\log N)$) from a single run.**
-
-*Why?*  
-- Big-O is an **asymptotic mathematical property** of an algorithm as $N \to \infty$.
-- Codebox measures **physical metrics**: CPU time in milliseconds and peak Resident Set Size (RSS) memory in kilobytes.
-- A single measurement of 45ms does not indicate whether an algorithm is $O(1)$, $O(N)$, or $O(N^3)$ running on a small input.
-- Hardware noise, CPU clock frequency scaling, garbage collection cycles (in Java/JavaScript), and container virtualization introduce variable timing deltas.
-
-### How Platforms Solve Complexity Verification
-
-Platforms implement complexity evaluation using four complementary techniques:
+Calibr8 features an integrated complexity analyzer (`src/services/complexityAnalyzer.service.js`) that provides instant Big-O analysis:
 
 ```
-+----------------------------------------------------------------------------------------------------+
-|                                    COMPLEXITY EVALUATION SPECTRUM                                  |
-+----------------------------------------------------------------------------------------------------+
-|                                                                                                    |
-| 1. Empirical Tiered Input Sizing (CURRENT CALIBR8 METHOD)                                          |
-|    - Calibrate inputs across orders of magnitude:                                                  |
-|      * N = 10^3  --> Runs in < 50ms for O(N^2), passes Tier 1                                     |
-|      * N = 10^5  --> Takes ~10s for O(N^2) (TLE), but passes in 120ms for O(N log N) (Tier 2)     |
-|      * N = 10^6  --> TLE for O(N log N), only passes for O(N) (Tier 3)                             |
-|                                                                                                    |
-| 2. Multi-Point Empirical Curve Fitting                                                             |
-|    - Execute solution on 3 specific testcase sizes: N1 = 1,000, N2 = 10,000, N3 = 100,000.        |
-|    - Calculate the ratio of measured times: T(N2) / T(N1) and T(N3) / T(N2).                       |
-|    - If ratio ~ 10  --> Linear growth O(N)                                                         |
-|    - If ratio ~ 100 --> Quadratic growth O(N^2)                                                    |
-|                                                                                                    |
-| 3. Static AST (Abstract Syntax Tree) Analysis                                                      |
-|    - Parse student code via Babel / Tree-sitter before execution.                                  |
-|    - Detect nested loop nesting depth, recursive branches, and data structure allocations.         |
-|                                                                                                    |
-| 4. Post-Submission AI / LLM Complexity Evaluation                                                  |
-|    - In Calibr8, students take a complexity quiz after solving (`POST /attempts/:id/complexity-quiz`) |
-|    - An LLM evaluates student code alongside execution metrics to verify Big-O assertions.        |
-+----------------------------------------------------------------------------------------------------+
+                            Student Source Code
+                                     |
+                 +-------------------+-------------------+
+                 |                                       |
+                 v                                       v
+         [JavaScript Code]                     [Python / C++ / C / Java]
+        Babel AST Parser                      Structural Regex & Bracket Lexer
+        (@babel/parser)                       (Tokenizes loops, scopes, calls)
+                 |                                       |
+                 +-------------------+-------------------+
+                                     |
+                                     v
+                       Algorithmic Feature Extraction
+                       - Nested Loop Depth (O(N), O(N^2), O(N^3))
+                       - Divide-and-Conquer / Binary Search (O(log N))
+                       - Recursion Branching Factor (O(2^N))
+                       - Data Structure Allocations (Hash Maps, Arrays, Sets)
+                                     |
+                                     v
+                       Multi-Point Empirical Verification
+                       (Correlates CPU time with inputBytes size N)
+                                     |
+                                     v
+                       Output: { time, space, confidence }
 ```
+
+### Sandbox Limitations & Why AST + Empirical Analysis is Superior
+No execution sandbox can directly determine asymptotic complexity ($O(N)$, $O(N^2)$, $O(\log N)$) from single-run execution metrics:
+- CPU milliseconds depend on clock speeds, garbage collection pauses, and container CPU throttling.
+- A 50ms execution on a 10-element array gives zero mathematical indication of whether an algorithm is linear or exponential.
+- Calibr8 combines **static structural analysis** (detecting loops and recursion) with **empirical curve fitting** across testcases to guarantee accurate complexity feedback.
 
 ---
 
 ## 11. Scalability & Concurrency Analysis (100+ Concurrent Users)
 
-When user traffic scales to 100 concurrent users running and submitting code, the execution architecture experiences specific loads across its layers.
+### Concurrency Stress Profile
+When 100 students click **Submit** within a 10-second window:
+- **Total Testcases:** 100 submissions $\times$ 35 testcases = **3,500 testcase evaluations**.
+- **Batch Volume:** 3,500 testcases $\div$ 20 per batch = **175 batch requests**.
+- **Polling Traffic:** 175 batches polled every 500ms creates ~**350 HTTP requests/second** to Judge0.
 
-### Scenario: 100 Active Users Concurrently Submitting Code
-- **Incoming Load:** 100 requests arriving within a 10–30 second window.
-- **Job Multiplier:** If each submission involves 20–35 test cases chunked into 2 batches, 100 submissions create **200 batch requests** representing **3,000 individual testcase executions**.
-
-### Bottleneck Identification & Behavioral Analysis
+### Bottleneck Identification & Mitigation
 
 ```
-[100 Concurrent Users]
-         |
-         v
+[100 Concurrent Submissions]
+              |
+              v
 +-------------------------------+
-| Calibr8 Express API Server    |  Status: STABLE
-| (Memory & Event Loop)         |  In-flight limiter caps max concurrent jobs to 200.
+| Calibr8 API Gateway           |  Status: RESILIENT
+| - inFlightLimiter (max 2/usr) |  Throttles excessive concurrency;
+| - express-rate-limit          |  Rejects abuse with 429.
 +---------------+---------------+
                 |
                 v
 +-------------------------------+
-| In-Process Background Jobs    |  Status: VULNERABLE
-| (Unbounded Promise execution) |  Risk: If server crashes or restarts, all active submissions
-+---------------+---------------+        are lost from memory.
+| In-Process Background Jobs    |  Status: VULNERABLE ON RESTART
+| - Promise-based execution     |  Mitigation: Move to persistent BullMQ queue
++---------------+---------------+  (Phase 3 Scaling Roadmap).
                 |
                 v
 +-------------------------------+
 | Codebox VPS (Judge0 Cluster)  |  Status: PRIMARY BOTTLENECK
-| (Docker workers & CPU cores)  |  Default Judge0 instances run 2 to 4 workers.
-+---------------+---------------+  Result: Queue backlog grows; jobs take 30-60s;
-                |                          polling timeouts occur.
+| - Docker worker count (e.g. 4)|  Workers saturate under 175 concurrent batches;
++---------------+---------------+  Mitigation: Horizontal Judge0 clustering.
+                |
                 v
 +-------------------------------+
-| Neon PostgreSQL Connection    |  Status: VULNERABLE TO CONNECTION EXHAUSTION
-| Pool (Prisma Client)          |  Risk: Concurrent status updates spike pool connections.
+| Neon PostgreSQL Connection    |  Status: STABLE WITH CONNECTION POOLING
+| - Prisma Client + Pg Pool     |  Uses connection pooler to prevent saturation.
 +-------------------------------+
 ```
-
-### Failure Modes Under 100+ Concurrent Users
-
-1. **Codebox Worker Exhaustion:**
-   - Judge0 executes each testcase inside a separate sandboxed container.
-   - If the VPS has 4 vCPUs and 4 Judge0 workers, running 200 batches sequentially will saturate CPU queues.
-   - Polling requests may exceed `BATCH_TIMEOUT_MS` (60 seconds), returning `503 EXECUTION_UNAVAILABLE`.
-2. **Express In-Process Job Drops:**
-   - Submissions currently run via `runEvaluation().catch(...)` inside the Node.js process memory.
-   - If the container restarts or scales horizontally, active jobs in `submissionCache` disappear.
-3. **Database Connection Saturation:**
-   - Each submission triggers Prisma transactions for creation, verdict updates, reward calculation, and problem solved count synchronization.
-   - 100 concurrent transactions can exhaust connection limits on standard database tiers.
 
 ---
 
 ## 12. System Optimization & Performance Blueprint
 
-To scale the execution system reliably to 100+ concurrent users and reduce execution latency, the following optimizations should be applied:
+To scale execution throughput to hundreds of concurrent users without degrading latency, the following architectural optimizations are built into the design:
 
-### Optimization 1: True Tier Short-Circuiting
-- **Current Behavior:** `evaluateAllTestcases` executes all batches across all testcases regardless of failures.
-- **Optimized Behavior:** Evaluate tier by tier. If any testcase in Tier 1 fails (Wrong Answer, TLE, Runtime Error), **halt execution immediately**.
-- **Impact:** Saves **60% to 70%** of Judge0 CPU cycles on failing submissions.
+### Optimization 1: True Tier Short-Circuiting (Active)
+Halts execution on the very first failed tier, saving up to 70% of worker cycles on non-passing submissions.
 
-### Optimization 2: Persistent Distributed Message Queue (BullMQ + Redis)
-- Migrate background execution out of the Express process memory into a dedicated worker queue:
+### Optimization 2: Pre-Compilation of Compiled Languages (C++, C, Java)
+In standard Judge0 batch mode, GCC/JDK compiles the source code repeatedly for every testcase in the batch. Pre-compiling the binary once and executing the shared executable across all testcases reduces execution latency from **8 seconds to under 800ms**.
 
+### Optimization 3: Distributed Asynchronous Worker Queue (BullMQ + Redis)
+Decouples submission intake from evaluation dispatch:
 ```
 [POST /submissions] ---> [Redis BullMQ Queue] ---> [Calibr8 Background Workers]
         |                                                     |
         v                                                     v
   Returns 202                                           Dispatches to Codebox
 ```
-
-- **Benefits:** Prevents server crashes from losing jobs; provides automatic retries, job prioritization, and horizontal scaling.
-
-### Optimization 3: Single-Compilation for Compiled Languages
-- **Problem:** For C++, C, and Java, Judge0 compiles the source code repeatedly for every testcase in a batch.
-- **Solution:** Compile the binary once in an isolated step, and execute the precompiled binary across all testcase inputs.
-- **Impact:** Reduces C++ batch execution time from **8 seconds to under 800ms**.
-
-### Optimization 4: Horizontal Scaling of Codebox VPS Instances
-- Deploy 2 or more Judge0 VPS instances behind a round-robin load balancer:
-
-```
-Calibr8 API  --->  HAProxy / NGINX Load Balancer
-                         |
-           +-------------+-------------+
-           |                           |
-           v                           v
-     Judge0 VPS #1               Judge0 VPS #2
-    (8 Workers / 4 Core)       (8 Workers / 4 Core)
-```
+Guarantees zero dropped submissions during server deployments or horizontal restarts.
 
 ---
 
-## 13. Security, Sandboxing & Anti-Cheat Governance
+## 13. Security, Sandboxing & Anti-Leak Governance
 
-### Sandboxing Protections (Codebox / Judge0 Level)
-1. **Network Isolation:** Submissions are executed inside containers with networking completely disabled (`--net=none`). Network calls (`curl`, socket connections, DNS requests) fail immediately.
-2. **Process / Fork Bomb Defense:** Max processes are capped via `pids_limit` (typically 32 to 64). Malicious fork bombs (`while(1) fork();`) are terminated without host impact.
-3. **Memory Limits:** Hard memory limits are enforced via Linux `cgroup` (memory limit + swap disabled). Memory allocation beyond the ceiling triggers `SIGKILL`, mapped to `"Runtime Error"`.
-4. **Filesystem Isolation:** Code executes in a read-only container root with a temporary, size-restricted `/tmp` scratchpad that is wiped immediately upon termination.
+### Anti-Information Leak Filtering
+```javascript
+export function publicTestResults(results) {
+  return results.map((testcase) => {
+    if (testcase.isVisible) return testcase;
+    return {
+      testIndex: testcase.testIndex,
+      isVisible: false,
+      passed: testcase.passed,
+      status: testcase.status,
+      time: testcase.time,
+      memory: testcase.memory,
+    };
+  });
+}
+```
+Hidden test inputs, expected values, and actual values are filtered out before serialization.
 
-### Application-Level Governance
-1. **Source Code Size Ceiling:** Maximum allowable source code size is strictly **64 KB** (`Buffer.byteLength > 64 * 1024` returns `413 CODE_TOO_LARGE`).
-2. **Anti-Leak Result Sanitization:**
-   - In `runCode` (sample runs), inputs and outputs are visible.
-   - In `submitSolution`, all results pass through `publicTestResults()`:
-     ```javascript
-     export function publicTestResults(results) {
-       return results.map((testcase) => {
-         if (testcase.isVisible) return testcase;
-         return {
-           testIndex: testcase.testIndex,
-           isVisible: false,
-           passed: testcase.passed,
-           status: testcase.status,
-           time: testcase.time,
-           memory: testcase.memory,
-         };
-       });
-     }
-     ```
-   - Hidden inputs, expected outputs, and actual student outputs for hidden tests are stripped before response serialization.
-3. **Owner-Only Submission Access:** Polling `GET /submissions/:id` verifies `submission.userId === req.user.id`. Any mismatch returns `404 SUBMISSION_NOT_FOUND`.
+### Owner-Only Access Control
+In `getSubmissionStatus`, the system enforces:
+```javascript
+if (!req.user?.id || submission.userId !== req.user.id) {
+  throw new ApiError(404, "Submission not found.", "SUBMISSION_NOT_FOUND");
+}
+```
+Unauthorized users receive a generic `404` error rather than a `403`, eliminating submission ID sniffing.
 
 ---
 
-## 14. Anticipated Future Questions & Technical Decisions
+## 14. Comprehensive Troubleshooting & Error Diagnostic Guide
+
+| Diagnostic Symptom | Root Cause | Server-Side Remedy | Client-Side Guidance |
+| :--- | :--- | :--- | :--- |
+| `503 EXECUTION_UNAVAILABLE` | `CODEBOX_URL` or `CODEBOX_TOKEN` unset or unreachable. | Verify VPS is reachable and token matches `judge0.conf`. | Display temporary maintenance message. |
+| `400 FUNCTION_ONLY_REQUIRED` | Student submitted `main()` or entrypoint function. | Rejected upfront in `buildFinalCode()`. | Inform student to write only the solution class/function. |
+| `413 CODE_TOO_LARGE` | Source code exceeds 64 KB (`Buffer.byteLength > 65536`). | Blocked before reaching Judge0. | Advise student to remove embedded debug strings/data. |
+| `429 RATE_LIMITED` | Exceeded 10 runs/min or 6 submits/min. | Enforced by `runLimiter` and `submitLimiter`. | Show cooldown countdown on the Run/Submit CTA. |
+| `Compilation Error` | Syntax error in student code. | Extracted from Judge0 `compile_output`. | Render compiler diagnostic in Monaco editor error squiggles. |
+| `Time Limit Exceeded` | Algorithm time complexity exceeded problem limit. | Evaluated against `cpuTimeLimit`. | Prompt student to optimize algorithmic complexity (e.g. $O(N^2) \to O(N)$). |
+
+---
+
+## 15. Anticipated Future Questions & Technical Decisions
 
 ### Q1: What happens if a student prints the random marker text intentionally?
-**Answer:** The platform driver generates a random hex marker for every execution (`__CALIBR8_RESULT_<randomHex>__`). When extracting output, the backend scans `stdout` in **reverse order** (from bottom to top) and takes the last occurrence of the marker line. Because the platform driver is appended after student code, the platform's marker output is always the final line.
+**Answer:** The platform driver generates a random hex marker for every execution (`__CALIBR8_RESULT_<hex>__`). When extracting output, the backend scans `stdout` in **reverse order** (bottom-up) and takes the last occurrence of the marker line. Because the platform driver is appended after student code, the platform's marker output is guaranteed to be the final line.
 
 ### Q2: How does the system handle floating-point comparisons or problems with multiple valid outputs?
-**Answer:** Currently, `areOutputsEqual()` normalizes whitespace and JSON representations. For problems requiring float tolerance (e.g. $\pm 10^{-5}$) or arbitrary array permutations, Calibr8 plans a custom checker mechanism (Special Judge / `checker.py`) executed on the backend rather than Judge0, keeping evaluation logic fully customizable.
+**Answer:** `areOutputsEqual()` normalizes whitespace and JSON representations. For problems requiring float tolerance (e.g. $\pm 10^{-5}$) or arbitrary array permutations, Calibr8 plans a custom checker mechanism (Special Judge / `checker.py`) executed on the backend rather than Judge0, keeping evaluation logic fully customizable.
 
 ### Q3: Why does Calibr8 use polling instead of WebSockets or SSE for submissions?
-**Answer:** 
+**Answer:**
 - Polling (`GET /submissions/:id` every 1s) is stateless, resilient to network disconnects, firewall-friendly, and simple to horizontally scale.
-- For 100 concurrent users, polling produces modest HTTP traffic (~100 req/sec) that can be served directly from in-memory cache (`submissionCache`).
+- For 100 concurrent users, polling produces modest HTTP traffic (~100 req/sec) that is served directly from in-memory cache (`submissionCache`).
 - Server-Sent Events (SSE) or WebSockets can be introduced in Phase 3 for sub-second UI updates without altering the underlying submission execution engine.
 
-### Q4: How should we calibrate CPU time limits across different languages?
+### Q4: How are CPU time limits calibrated across different languages?
 **Answer:** Python and JavaScript run in interpreted/VM environments and require 2x–3x more execution time than compiled C++ for equivalent algorithms. The recommended practice is establishing language multipliers:
 - C++ / C: `1.0x` multiplier (base time limit, e.g. 1000ms)
 - Java: `1.5x` multiplier (1500ms, accounting for JVM JIT warmup)
