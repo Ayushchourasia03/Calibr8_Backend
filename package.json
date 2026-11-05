@@ -10,6 +10,7 @@
     "build": "node -e \"console.log('Build complete')\"",
     "lint": "node -e \"console.log('Lint check passed')\"",
     "test": "node tests/problemSecurity.test.js",
+    "test:cors": "node tests/cors.test.js",
     "test:security": "node tests/problemSecurity.test.js",
     "test:activity": "node tests/userActivity.test.js",
     "test:profile": "node tests/profileApi.test.js",
