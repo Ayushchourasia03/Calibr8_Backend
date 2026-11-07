@@ -11,6 +11,9 @@ import studyRouter from "./study.router.js";
 import executionRouter from "./execution.router.js";
 import themeRouter from "./theme.router.js";
 import rankingRouter from "./ranking.router.js";
+import coinRouter from "./coin.router.js";
+import { getTodayDailyProblem } from "../controllers/coin.controller.js";
+import { optionalAuth } from "../middlewares/auth.middleware.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,6 +44,8 @@ router.use("/api/themes", themeRouter);
 router.use("/api/rankings", rankingRouter);
 router.use('/api/execution', executionRouter);
 router.use('/api/execute', executionRouter);
+router.use('/api/coins', coinRouter);
+router.get('/api/daily-problem', optionalAuth, getTodayDailyProblem);
 
 // Root endpoint: API documentation & interactive developer dashboard
 router.get("/", (req, res) => {

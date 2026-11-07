@@ -4,6 +4,8 @@ import { signToken, decodeToken } from "../utils/jwt.js";
 import { ApiError } from "../utils/ApiError.js";
 import { blacklistToken } from "../utils/tokenBlacklist.js";
 import { getUserHeaderStats } from "../utils/userHeaderStats.js";
+import { grantDailyLoginReward, getCoinsEarnedToday } from "../services/coinService.js";
+import { getISTDateString } from "../services/streakService.js";
 
 /**
  * Validate password strength:
@@ -131,6 +133,42 @@ export const login = async (req, res, next) => {
 
     const token = signToken({ id: user.id, email: user.email });
 
+    // Execute daily login reward grant (server-side, idempotent, audited)
+    let rewards = {
+      coinsEarnedToday: 0,
+      loginCoins: 0,
+      bonusCoins: 0,
+      bonusType: null,
+      streak: user.streak ?? 0,
+      longestStreak: user.longestStreak ?? 0,
+      isNewDay: false,
+    };
+
+    try {
+      const loginReward = await grantDailyLoginReward(user.id);
+      if (loginReward) {
+        rewards = {
+          coinsEarnedToday: loginReward.coinsEarnedToday,
+          loginCoins: loginReward.loginCoins,
+          bonusCoins: loginReward.bonusCoins,
+          bonusType: loginReward.bonusType,
+          streak: loginReward.streak,
+          longestStreak: loginReward.longestStreak,
+          isNewDay: loginReward.isNewDay,
+        };
+
+        if (loginReward.user) {
+          user.coins = loginReward.user.coins;
+          user.streak = loginReward.user.streak;
+          user.longestStreak = loginReward.user.longestStreak;
+          user.lastStreakDate = loginReward.user.lastStreakDate;
+          user.lastLoginISTDate = loginReward.user.lastLoginISTDate;
+        }
+      }
+    } catch (rewardErr) {
+      console.warn("[Auth Login Reward Warning]:", rewardErr.message);
+    }
+
     const { passwordHash: _, ...safeUser } = user;
 
     res.status(200).json({
@@ -139,6 +177,7 @@ export const login = async (req, res, next) => {
       stats: getUserHeaderStats(safeUser),
       token,
       isNewUser: false,
+      rewards,
     });
   } catch (err) {
     next(err);
@@ -217,8 +256,10 @@ export const verifyAuth = async (req, res, next) => {
         score: true,
         streak: true,
         longestStreak: true,
-        tier: true,
         coins: true,
+        lastStreakDate: true,
+        lastLoginISTDate: true,
+        tier: true,
         onboarded: true,
         preferredLanguage: true,
         createdAt: true,
@@ -236,10 +277,22 @@ export const verifyAuth = async (req, res, next) => {
       throw new ApiError(404, "User not found.", "NOT_FOUND");
     }
 
+    const todayISTDate = getISTDateString();
+    let coinsEarnedToday = 0;
+    try {
+      coinsEarnedToday = await getCoinsEarnedToday(user.id, todayISTDate);
+    } catch {}
+
+    const enrichedUser = {
+      ...user,
+      todayISTDate,
+      coinsEarnedToday,
+    };
+
     res.status(200).json({
       success: true,
-      user,
-      stats: getUserHeaderStats(user),
+      user: enrichedUser,
+      stats: getUserHeaderStats(enrichedUser),
     });
   } catch (err) {
     next(err);
