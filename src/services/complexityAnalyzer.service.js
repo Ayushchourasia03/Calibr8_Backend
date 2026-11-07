@@ -770,8 +770,8 @@ function enrichLoops(ir, ctx) {
     }
     // parallel pointer loops: while (a || b || carry) / while (a && b)
     if (L.kind === "while" && L.test) {
-      const orT = splitTop(L.test.replace(/\|\|/g, "\u0001"), "\u0001");
-      const andT = splitTop(L.test.replace(/&&/g, "\u0001"), "\u0001");
+      const orT = splitTop(L.test.replace(/\|\||\bor\b/g, "\u0001"), "\u0001");
+      const andT = splitTop(L.test.replace(/&&|\band\b/g, "\u0001"), "\u0001");
       for (const [terms, tag] of [[orT, "or"], [andT, "and"]]) {
         if (terms.length < 2) continue;
         const sets = terms.map((t) => words(t).filter((w) => !KEYWORDS.has(w) && advanceRe(w).test(body)));

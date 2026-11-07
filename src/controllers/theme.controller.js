@@ -2,7 +2,7 @@ import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
 import { getUserHeaderStats } from "../utils/userHeaderStats.js";
 import { ensureStoreThemes, getStoreTheme } from "../data/storeThemes.js";
-import { recordThemePurchase } from "../services/coinService.js";
+import { debitThemePurchase } from "../services/coinService.js";
 
 let themeCatalogSetup;
 
@@ -82,55 +82,25 @@ export const buyTheme = async (req, res, next) => {
         });
       }
 
-      const debit = await tx.user.updateMany({
-        where: { id: userId, coins: { gte: theme.price } },
-        data: {
-          coins: { decrement: theme.price },
-          activeThemeId: theme.id,
-        },
+      const debit = await debitThemePurchase(tx, {
+        userId,
+        themeId: theme.id,
+        price: theme.price,
       });
-
-      if (debit.count === 0) {
-        const user = await tx.user.findUnique({
-          where: { id: userId },
-          select: { coins: true },
-        });
-        if (!user) {
-          throw new ApiError(404, "User not found", "USER_NOT_FOUND");
-        }
+      if (!debit.user) {
+        throw new ApiError(404, "User not found", "USER_NOT_FOUND");
+      }
+      if (!debit.success) {
         throw new ApiError(
           400,
           "Not enough coins",
           "INSUFFICIENT_COINS",
-          { required: theme.price, have: user.coins }
+          { required: theme.price, have: debit.user.coins }
         );
       }
 
       await tx.userTheme.create({ data: { userId, themeId: theme.id } });
-
-      const user = await tx.user.findUnique({
-        where: { id: userId },
-        select: {
-          rating: true,
-          score: true,
-          coins: true,
-          streak: true,
-          longestStreak: true,
-        },
-      });
-
-      try {
-        await recordThemePurchase(tx, {
-          userId,
-          themeId: theme.id,
-          price: theme.price,
-          balanceAfter: user.coins,
-        });
-      } catch (txErr) {
-        console.warn("[Theme Purchase Audit Warning]:", txErr.message);
-      }
-
-      return user;
+      return debit.user;
     });
 
     res.json({

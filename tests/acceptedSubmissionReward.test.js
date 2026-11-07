@@ -55,9 +55,9 @@ const firstReward = await applyAcceptedSubmissionReward(tx, {
 assert.equal(firstReward.awarded, true);
 assert.equal(firstReward.points, 10);
 assert.equal(firstReward.scoreDelta, 100);
-assert.equal(firstReward.coinsEarned, 30);
+assert.equal(firstReward.coinsEarned, 0);
 assert.equal(firstReward.stats.streak, 1);
-assert.equal(firstReward.stats.coins, 130);
+assert.equal(firstReward.stats.coins, 100);
 assert.equal(firstReward.stats.scoreUnits, 100);
 
 const duplicateReward = await applyAcceptedSubmissionReward(tx, {
@@ -87,7 +87,7 @@ assert.equal(nextDayReward.points, 50);
 assert.equal(nextDayReward.stats.streak, 3);
 assert.equal(nextDayReward.stats.longestStreak, 3);
 assert.equal(nextDayReward.stats.scoreUnits, 600);
-assert.equal(nextDayReward.stats.coins, 240);
+assert.equal(nextDayReward.stats.coins, 100);
 assert.equal(progress.size, 2);
 
 process.env.DATABASE_URL =
@@ -133,6 +133,6 @@ assert.equal(fallbackFirstReward.stats.streak, 5);
 assert.equal(fallbackFirstReward.stats.longestStreak, 6);
 assert.equal(fallbackDuplicateReward.awarded, false);
 assert.equal(fallbackDuplicateReward.stats.scoreUnits, 275);
-assert.equal(fallbackDuplicateReward.stats.coins, 180);
+assert.equal(fallbackDuplicateReward.stats.coins, 120);
 
 console.log("Accepted submission reward tests passed.");

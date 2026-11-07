@@ -1,12 +1,7 @@
 /**
- * Streak Service - UNIFIED version
- * Supports BOTH APIs so old and new coinService code both work:
- *  - OLD: nextStreak(lastISTDate, todayISTDate, currentStreak) -> number
- *  - NEW: nextStreak({ lastStreakDate, currentStreak, todayISTDate }) -> { newStreak, isNewDay }
- *  - OLD: bonusForStreak(streak) -> { bonus, type }
- *  - NEW: bonusForStreak(streak) -> { bonus, bonusType }
- * This file returns BOTH keys: { bonus, type, bonusType }
- * getISTDateString NEVER throws - invalid input returns today's IST date.
+ * Streak Service - Calibr8
+ * IST Timezone (Asia/Kolkata) Day boundary calculations and streak rewards.
+ * Day starts at 00:00 IST.
  */
 
 export function getISTDateString(date = new Date()) {
@@ -73,54 +68,59 @@ function computeNextStreak(lastIST, todayIST, currentStreak) {
 
 /**
  * Supports both:
- *  nextStreak("2026-11-06", "2026-11-07", 3) -> 4 (number, old API)
- *  nextStreak({ lastStreakDate, currentStreak, todayISTDate }) -> { newStreak, isNewDay } (new API)
- *  nextStreak(Date, ...) also works - Date is converted via toISTDateString
+ *  nextStreak("2026-11-06", "2026-11-07", 3) -> 4 (number)
+ *  nextStreak({ lastStreakDate, currentStreak, todayISTDate }) -> { newStreak, isNewDay } (object)
  */
 export function nextStreak(a, b, c) {
-  // New API: single object arg
+  // Object form
   if (a !== null && typeof a === "object" && !(a instanceof Date) && !Array.isArray(a)) {
-    const lastIST = toISTDateString(a.lastStreakDate ?? a.lastISTDate ?? a.lastDate ?? null);
+    const lastIST = toISTDateString(a.lastStreakDate ?? a.lastLoginISTDate ?? a.lastISTDate ?? a.lastDate ?? null);
     const todayIST = a.todayISTDate || a.todayIST || getISTDateString(new Date());
     const cur = a.currentStreak ?? a.streak ?? 0;
     return computeNextStreak(lastIST, todayIST, cur);
   }
-  // Old API: positional
+  // Positional form: nextStreak(prevIST, currIST, prevStreak)
   const lastIST = toISTDateString(a);
   const todayIST = typeof b === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b) ? b : getISTDateString(b || new Date());
-  const cur = typeof b === "number" ? b : (c ?? 0);
-  // Handle old call: nextStreak(lastIST, todayIST, currentStreak) where b is today, c is streak
-  // Also handle nextStreak(lastIST, currentStreak) - not used, but be safe
-  const today = typeof b === "string" ? b : todayIST;
   const streakVal = typeof c === "number" ? c : (typeof b === "number" ? b : 0);
-  const res = computeNextStreak(lastIST, today, streakVal);
-  return res.newStreak; // OLD API returns number
+  const res = computeNextStreak(lastIST, todayIST, streakVal);
+  return res.newStreak;
 }
 
 export function bonusForStreak(streak) {
   const s = Number(streak) || 0;
   if (s <= 0) return { bonus: 0, type: null, bonusType: null };
+  // Milestone 30 (30,60,90...): +25, type STREAK_30_BONUS, NO extra +5 on day 30
   if (s % 30 === 0) return { bonus: 25, type: "STREAK_30_BONUS", bonusType: "STREAK_30_BONUS" };
+  // Milestone 7 (7,14,21,28,35... not divisible by 30): +5, type STREAK_7_BONUS
   if (s % 7 === 0) return { bonus: 5, type: "STREAK_7_BONUS", bonusType: "STREAK_7_BONUS" };
   return { bonus: 0, type: null, bonusType: null };
 }
 
-export function calcLoginReward(input) {
-  // Supports both: calcLoginReward({ lastStreakDate, currentStreak, todayISTDate })
-  // and calcLoginReward(lastISTDate, todayISTDate, currentStreak)
+export function calcLoginReward(input, maybeTodayIST, maybeCur) {
   let lastIST = null, todayIST = null, cur = 0;
   if (input !== null && typeof input === "object" && !(input instanceof Date)) {
-    lastIST = toISTDateString(input.lastStreakDate ?? input.lastISTDate ?? null);
-    todayIST = input.todayISTDate || input.todayIST || getISTDateString(new Date());
+    lastIST = toISTDateString(input.lastStreakDate ?? input.lastLoginISTDate ?? input.lastISTDate ?? null);
+    todayIST = maybeTodayIST || input.todayISTDate || input.todayIST || getISTDateString(new Date());
     cur = input.currentStreak ?? input.streak ?? 0;
   } else {
     lastIST = toISTDateString(input);
-    todayIST = getISTDateString(new Date());
-    cur = 0;
+    todayIST = typeof maybeTodayIST === "string" ? maybeTodayIST : getISTDateString(new Date());
+    cur = typeof maybeCur === "number" ? maybeCur : 0;
   }
+
   const { newStreak, isNewDay } = computeNextStreak(lastIST, todayIST, cur);
   if (!isNewDay) {
-    return { newStreak, isNewDay: false, loginCoins: 0, bonusCoins: 0, bonus: 0, bonusType: null, type: null, coinsEarnedToday: 0 };
+    return {
+      newStreak,
+      isNewDay: false,
+      loginCoins: 0,
+      bonusCoins: 0,
+      bonus: 0,
+      bonusType: null,
+      type: null,
+      coinsEarnedToday: 0,
+    };
   }
   const b = bonusForStreak(newStreak);
   return {

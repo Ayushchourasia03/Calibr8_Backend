@@ -32,7 +32,6 @@ export async function applyAcceptedSubmissionReward(
   const points =
     DIFFICULTY_POINTS[String(problem.difficulty || "").toLowerCase()] ?? 10;
   const scoreAwarded = points * 10;
-  const coinsAwarded = points * 2 + 10;
   const user = await tx.user.findUnique({
     where: { id: userId },
     select: {
@@ -65,7 +64,7 @@ export async function applyAcceptedSubmissionReward(
         problemId: problem.id,
         points,
         scoreAwarded,
-        coinsAwarded,
+        coinsAwarded: 0,
         solvedAt: now,
       },
     ],
@@ -111,7 +110,6 @@ export async function applyAcceptedSubmissionReward(
     where: { id: userId },
     data: {
       score: { increment: scoreAwarded },
-      coins: { increment: coinsAwarded },
       rating,
       tier: getTier(rating),
       streak,
@@ -124,7 +122,7 @@ export async function applyAcceptedSubmissionReward(
     awarded: true,
     points,
     scoreDelta: scoreAwarded,
-    coinsEarned: coinsAwarded,
+    coinsEarned: 0,
     stats: getUserHeaderStats(updatedUser),
   };
 }

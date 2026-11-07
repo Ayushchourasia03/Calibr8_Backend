@@ -110,7 +110,7 @@ The Calibr8 Code Execution System provides a secure, sandboxed, high-throughput 
 | `src/utils/testcaseResults.js` | Security & Sanitization | Filters execution result arrays through `publicTestResults()`, stripping hidden testcase inputs and outputs for API clients. |
 | `src/services/complexityAnalyzer.service.js` | Complexity Estimation | Uses Babel AST parsing (JS) and regex/bracket tokenization (Python, C++, C, Java) to estimate Big-O Time & Space complexity. |
 | `src/middlewares/rateLimit.middleware.js` | Throttling & Protection | Enforces per-user run limits (10/min), submit limits (6/min), and concurrency limits (max 2 in-flight executions). |
-| `src/utils/acceptedSubmissionReward.js` | Gamification & Ledger | Calculates points, score units, coin credits, streaks, and updates `user_problem_progress` atomically. |
+| `src/utils/acceptedSubmissionReward.js` | Gamification | Calculates points, score units, streaks, and updates `user_problem_progress` atomically. Coin changes are handled only by `coinService.js`. |
 | `src/utils/problemSolvedCount.js` | Aggregation & Metrics | Computes distinct user solve counts for problems and synchronizes `problems.solvedCount`. |
 | `lib/storage.js` | Object Storage Tier | Interacts with Cloudflare R2 bucket (`calibr8-testcases`) using `@aws-sdk/client-s3` for testcases exceeding 64 KB. |
 

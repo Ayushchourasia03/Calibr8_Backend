@@ -836,13 +836,24 @@ export const submitSolution = async (req, res, next) => {
             );
           }
 
+          let dpGranted = false;
+          let dpCoins = 0;
           try {
-            dailyProblemReward = await grantDailyProblemReward(userId, problem.id);
-            if (dailyProblemReward?.awarded && reward?.stats) {
-              reward.stats.coins = dailyProblemReward.balanceAfter;
+            const dpReward = await grantDailyProblemReward(userId, problem.id, submission.id);
+            if (dpReward) {
+              dpGranted = Boolean(dpReward.granted);
+              dpCoins = Number(dpReward.coins) || 0;
+              dailyProblemReward = { granted: dpGranted, coins: dpCoins };
+              if (dpGranted && reward?.stats) {
+                reward.stats.coins = dpReward.balance || dpReward.balanceAfter;
+                reward.coinsEarned = (Number(reward.coinsEarned) || 0) + dpCoins;
+              }
+            } else {
+              dailyProblemReward = { granted: false, coins: 0 };
             }
           } catch (dpErr) {
             console.error("[Daily Problem Reward Error]:", dpErr.message);
+            dailyProblemReward = { granted: false, coins: 0 };
           }
         }
 

@@ -1560,7 +1560,7 @@ Evaluates student code across all testcases (sample + hidden) using true tier sh
       "awarded": true,
       "points": 10,
       "scoreDelta": 100,
-      "coinsEarned": 30,
+      "coinsEarned": 0,
       "stats": {
         "rating": 810,
         "tier": "Prism I",
@@ -2049,16 +2049,16 @@ Returns competitive student rankings with multi-dimensional filtering.
 ## 16. Gamification, Scoring, Streaks & Tiers Mathematics
 
 ### 16.1 Problem Solved Reward Matrix
-Upon an accepted submission passing 100% of testcases, rewards are granted based on problem difficulty:
+Upon an accepted submission passing 100% of testcases, points and score units are granted based on problem difficulty. Normal problem solves award no coins; only today's assigned Daily Problem awards +2 coins through the coin service.
 
 | Problem Difficulty | Points Awarded | Score Units Delta ($\times 10$) | Coins Credited |
 | :--- | :--- | :--- | :--- |
-| **Easy** | **10 Points** | $+100$ Score Units | $+30$ Coins |
-| **Medium** | **25 Points** | $+250$ Score Units | $+60$ Coins |
-| **Hard** | **50 Points** | $+500$ Score Units | $+90$ Coins |
+| **Easy** | **10 Points** | $+100$ Score Units | $0$ Coins |
+| **Medium** | **25 Points** | $+250$ Score Units | $0$ Coins |
+| **Hard** | **50 Points** | $+500$ Score Units | $0$ Coins |
 
 *Idempotency & Re-Solve Rules*:
-- Points and coins are awarded **only once per problem per user** (verified via `user_problem_progress`).
+- Points and score are awarded **only once per problem per user** (verified via `user_problem_progress`). Daily Problem coins are awarded once per user per IST day by `coinService.js`.
 - If a user re-submits an already solved problem, `awarded: false`, `points: 0`, and `coinsEarned: 0` are returned. However, the user's daily streak is still refreshed if completed today!
 
 ### 16.2 Streak Mechanics

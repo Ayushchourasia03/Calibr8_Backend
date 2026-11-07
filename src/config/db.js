@@ -34,11 +34,40 @@ class InMemoryStore {
     this.submissions = new Map();
     this.userProblemProgress = new Map();
     this.coinTransactions = new Map();
+    this.problems = new Map();
     this.dailyProblems = new Map();
     this.studySubjects = [];
     this.studyChapters = [];
     this.studyTopics = [];
     this.studyMCQs = [];
+
+    // Load problems from problems directory
+    const PROBLEMS_DIR = path.resolve(__dirname, "../../problems");
+    if (fs.existsSync(PROBLEMS_DIR)) {
+      try {
+        const files = fs.readdirSync(PROBLEMS_DIR).filter((f) => f.endsWith(".json"));
+        files.forEach((f, idx) => {
+          try {
+            const raw = fs.readFileSync(path.join(PROBLEMS_DIR, f), "utf-8");
+            const data = JSON.parse(raw);
+            const slug = data.slug || f.replace(".json", "");
+            const id = data.id || `prob_${slug}`;
+            this.problems.set(id, {
+              id,
+              problemNumber: data.problemNumber || idx + 1,
+              slug,
+              title: data.title || slug,
+              description: data.description || "",
+              difficulty: data.difficulty || "Easy",
+              timeLimit: data.timeLimit || 1000,
+              memoryLimit: data.memoryLimit || 256,
+              testcases: data.testcases || [],
+              templates: data.templates || {},
+            });
+          } catch (_) {}
+        });
+      } catch (_) {}
+    }
 
     // Seed topics
     INITIAL_TOPICS.forEach((t) => this.topics.set(t.id, { ...t }));
@@ -234,11 +263,34 @@ function createModelProxy(modelName) {
         return null;
       }
       if (modelName === "dailyProblem") {
-        if (where.id) return store.dailyProblems.get(where.id) || null;
-        if (where.istDate) {
-          for (const dp of store.dailyProblems.values()) {
-            if (dp.istDate === where.istDate) return { ...dp };
+        let dp = null;
+        if (where.id) dp = store.dailyProblems.get(where.id) || null;
+        if (!dp && where.istDate) {
+          for (const item of store.dailyProblems.values()) {
+            if (item.istDate === where.istDate) {
+              dp = item;
+              break;
+            }
           }
+        }
+        if (dp) {
+          const res = { ...dp };
+          if (include?.problem) {
+            res.problem = store.problems.get(dp.problemId) || {
+              id: dp.problemId,
+              slug: dp.problemId,
+              title: dp.problemId,
+              difficulty: "Easy",
+            };
+          }
+          return res;
+        }
+        return null;
+      }
+      if (modelName === "problem") {
+        for (const p of store.problems.values()) {
+          if (where.id && p.id === where.id) return { ...p };
+          if (where.slug && p.slug === where.slug) return { ...p };
         }
         return null;
       }
@@ -303,7 +355,30 @@ function createModelProxy(modelName) {
         for (const dp of store.dailyProblems.values()) {
           if (where.istDate && dp.istDate !== where.istDate) continue;
           if (where.problemId && dp.problemId !== where.problemId) continue;
-          return { ...dp };
+          const res = { ...dp };
+          if (include?.problem) {
+            res.problem = store.problems.get(dp.problemId) || {
+              id: dp.problemId,
+              slug: dp.problemId,
+              title: dp.problemId,
+              difficulty: "Easy",
+            };
+          }
+          return res;
+        }
+        return null;
+      }
+      if (modelName === "problem") {
+        for (const p of store.problems.values()) {
+          if (where.NOT?.id && p.id === where.NOT.id) continue;
+          if (where.id && p.id !== where.id) continue;
+          if (where.slug && p.slug !== where.slug) continue;
+          if (select) {
+            const sel = {};
+            for (const k of Object.keys(select)) if (select[k]) sel[k] = p[k];
+            return sel;
+          }
+          return { ...p };
         }
         return null;
       }
@@ -654,16 +729,59 @@ function createModelProxy(modelName) {
         }
         return { count };
       }
+      if (modelName === "coinTransaction") {
+        let count = 0;
+        for (const [key, ct] of store.coinTransactions.entries()) {
+          if (where.userId && ct.userId !== where.userId) continue;
+          if (where.type && ct.type !== where.type) continue;
+          if (where.istDate && ct.istDate !== where.istDate) continue;
+          store.coinTransactions.delete(key);
+          count += 1;
+        }
+        return { count };
+      }
+      if (modelName === "dailyProblem") {
+        let count = 0;
+        for (const [key, dp] of store.dailyProblems.entries()) {
+          if (where.istDate && dp.istDate !== where.istDate) continue;
+          store.dailyProblems.delete(key);
+          count += 1;
+        }
+        return { count };
+      }
       return { count: 0 };
     },
 
-    async delete() {
+    async delete({ where = {} } = {}) {
+      if (modelName === "user") {
+        if (where.id) store.users.delete(where.id);
+        return {};
+      }
+      if (modelName === "coinTransaction") {
+        if (where.id) store.coinTransactions.delete(where.id);
+        return {};
+      }
+      if (modelName === "dailyProblem") {
+        if (where.id) store.dailyProblems.delete(where.id);
+        return {};
+      }
       return {};
     },
 
     async count({ where = {} } = {}) {
       if (modelName === "user") return store.users.size;
       if (modelName === "topic") return store.topics.size;
+      if (modelName === "problem") return store.problems.size;
+      if (modelName === "dailyProblem") return store.dailyProblems.size;
+      if (modelName === "coinTransaction") {
+        if (!where || Object.keys(where).length === 0) return store.coinTransactions.size;
+        return [...store.coinTransactions.values()].filter((ct) => {
+          if (where.userId && ct.userId !== where.userId) return false;
+          if (where.type && ct.type !== where.type) return false;
+          if (where.istDate && ct.istDate !== where.istDate) return false;
+          return true;
+        }).length;
+      }
       if (modelName === "userProblemProgress") {
         return [...store.userProblemProgress.values()].filter(
           (progress) => !where.userId || progress.userId === where.userId,

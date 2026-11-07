@@ -276,15 +276,15 @@ model CoinTransaction {
   id           String   @id @default(cuid())
   userId       String   @map("userId")
   amount       Int
-  type         String // DAILY_LOGIN, DAILY_PROBLEM, STREAK_7_BONUS, STREAK_30_BONUS, THEME_PURCHASE
+  type         String
   referenceId  String?  @map("referenceId")
   istDate      String   @map("istDate")
   balanceAfter Int      @map("balanceAfter")
   createdAt    DateTime @default(now())
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, type, istDate, referenceId])
   @@index([userId, createdAt])
+  @@index([userId, type, istDate])
   @@map("coin_transactions")
 }
 
@@ -296,5 +296,6 @@ model DailyProblem {
   createdAt DateTime @default(now())
 
   @@index([istDate])
+  @@index([problemId])
   @@map("daily_problems")
 }

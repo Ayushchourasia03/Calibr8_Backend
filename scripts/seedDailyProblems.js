@@ -1,34 +1,55 @@
+// scripts/seedDailyProblems.js
+// Seeds DailyProblem table for today + next 34 days = 35 rows.
+// Loop starts at i = 0 (today).
+
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import prisma from "../src/config/db.js";
-import { getISTDateString } from "../src/services/streakService.js";
+import { getISTDateString, addDaysToISTDate } from "../src/services/streakService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROBLEMS_DIR = path.resolve(__dirname, "../problems");
 
-export async function seedDailyProblems(customPrisma = prisma, daysCount = 35) {
-  let problemPool = [];
+export async function seedDailyProblems(customPrisma = prisma) {
+  const todayIST = getISTDateString(new Date());
+  console.log(`[Seed DailyProblems] Today IST: ${todayIST}`);
 
-  // 1. Try to load problems from /problems directory
-  if (fs.existsSync(PROBLEMS_DIR)) {
-    const files = fs.readdirSync(PROBLEMS_DIR).filter((f) => f.endsWith(".json"));
-    for (const f of files) {
-      try {
-        const raw = fs.readFileSync(path.join(PROBLEMS_DIR, f), "utf-8");
-        const json = JSON.parse(raw);
-        problemPool.push({
-          id: json.id || json.slug || f.replace(".json", ""),
-          slug: json.slug || f.replace(".json", ""),
-          title: json.title,
-          difficulty: json.difficulty || "Easy",
-        });
-      } catch {}
+  // 1. Get problems from database first, or fallback to json files
+  let problemPool = [];
+  try {
+    const dbProblems = await customPrisma.problem.findMany({
+      select: { id: true, slug: true, title: true, difficulty: true },
+      orderBy: { problemNumber: "asc" },
+    });
+    if (dbProblems && dbProblems.length > 0) {
+      problemPool = dbProblems;
     }
+  } catch (err) {
+    console.warn("[Seed DailyProblems] DB query notice:", err.message);
   }
 
-  // 2. Fallback list if directory was empty
+  // Fallback to local files if DB was empty
+  if (problemPool.length === 0 && fs.existsSync(PROBLEMS_DIR)) {
+    try {
+      const files = fs.readdirSync(PROBLEMS_DIR).filter((f) => f.endsWith(".json"));
+      for (const f of files) {
+        try {
+          const raw = fs.readFileSync(path.join(PROBLEMS_DIR, f), "utf-8");
+          const json = JSON.parse(raw);
+          problemPool.push({
+            id: json.id || json.slug || f.replace(".json", ""),
+            slug: json.slug || f.replace(".json", ""),
+            title: json.title,
+            difficulty: json.difficulty || "Easy",
+          });
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
+  // Hardcoded fallback if no problems could be found
   if (problemPool.length === 0) {
     problemPool = [
       { id: "two-sum", slug: "two-sum", title: "Two Sum", difficulty: "Easy" },
@@ -39,23 +60,16 @@ export async function seedDailyProblems(customPrisma = prisma, daysCount = 35) {
     ];
   }
 
-  // Sort easy problems first to give a smooth rotation
-  problemPool.sort((a, b) => {
-    const rank = { Easy: 1, Medium: 2, Hard: 3 };
-    return (rank[a.difficulty] || 2) - (rank[b.difficulty] || 2);
-  });
+  console.log(`[Seed DailyProblems] Rotating across ${problemPool.length} problems for 35 days`);
 
-  const now = new Date();
-  const createdRecords = [];
-
-  // Seed from 2 days ago up to daysCount days in advance
-  for (let offset = -2; offset <= daysCount; offset++) {
-    const targetDate = new Date(now.getTime() + offset * 86400000);
-    const istDate = getISTDateString(targetDate);
-    const problem = problemPool[Math.abs(offset + 2) % problemPool.length];
+  let seededCount = 0;
+  // Loop MUST start at i=0 (today) up to i < 35 (today + next 34 days = 35 rows)
+  for (let i = 0; i < 35; i++) {
+    const istDate = addDaysToISTDate(todayIST, i);
+    const problem = problemPool[i % problemPool.length];
 
     try {
-      const record = await customPrisma.dailyProblem.upsert({
+      await customPrisma.dailyProblem.upsert({
         where: { istDate },
         update: { problemId: problem.id },
         create: {
@@ -63,24 +77,35 @@ export async function seedDailyProblems(customPrisma = prisma, daysCount = 35) {
           problemId: problem.id,
         },
       });
-      createdRecords.push(record);
-    } catch (e) {
-      console.warn(`[Seed DailyProblem] Notice on date ${istDate}:`, e.message);
+      seededCount++;
+    } catch (err) {
+      console.warn(`[Seed DailyProblems] Upsert failed for ${istDate}:`, err.message);
     }
   }
 
-  return createdRecords;
+  // Verify today row exists
+  const todayRow = await customPrisma.dailyProblem.findUnique({
+    where: { istDate: todayIST },
+  });
+
+  if (todayRow) {
+    console.log(`✅ TODAY FOUND: istDate=${todayRow.istDate}, problemId=${todayRow.problemId}`);
+  } else {
+    console.error(`❌ TODAY MISSING: No record found for ${todayIST}`);
+  }
+
+  console.log(`✅ Seeded ${seededCount} daily problems starting from ${todayIST}`);
+  return seededCount;
 }
 
 if (process.argv[1] && process.argv[1].endsWith("seedDailyProblems.js")) {
-  console.log("🌱 Seeding Daily Problems for next 35 days...");
   seedDailyProblems()
-    .then((records) => {
-      console.log(`✅ Successfully seeded ${records.length} DailyProblem records!`);
-      process.exit(0);
-    })
+    .then(() => process.exit(0))
     .catch((err) => {
-      console.error("❌ Seeding failed:", err);
+      console.error("❌ Seed daily problems failed:", err);
       process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect().catch(() => {});
     });
 }

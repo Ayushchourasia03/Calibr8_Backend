@@ -1,29 +1,45 @@
-// scripts/seedDailyProblems.js
-// Run: node scripts/seedDailyProblems.js
-// Seeds DailyProblem for next 30 days. Run BEFORE you test daily problem reward.
+// scripts/checkDailyProblems.js
+// Diagnostic script: Prints TODAY IST, total rows, first/last rows, TODAY FOUND or MISSING.
 
 import prisma from "../src/config/db.js";
-import { getISTDateString, addDaysToISTDate } from "../src/services/streakService.js";
+import { getISTDateString } from "../src/services/streakService.js";
 
-async function main() {
-  const problems = await prisma.problem.findMany({ select: { id: true }, orderBy: { problemNumber: "asc" } });
-  if (!problems.length) {
-    console.log("No problems found. Seed problems first.");
-    return;
-  }
-  const today = getISTDateString(new Date());
-  let created = 0;
-  for (let i = 0; i < 30; i++) {
-    const istDate = addDaysToISTDate(today, i);
-    const problem = problems[i % problems.length];
-    const result = await prisma.dailyProblem.upsert({
-      where: { istDate },
-      update: {},
-      create: { istDate, problemId: problem.id },
+async function checkDailyProblems() {
+  const todayIST = getISTDateString(new Date());
+  console.log(`=== Daily Problems Diagnostic ===`);
+  console.log(`TODAY IST: ${todayIST}`);
+
+  try {
+    const allRecords = await prisma.dailyProblem.findMany({
+      orderBy: { istDate: "asc" },
+      include: {
+        problem: {
+          select: { id: true, slug: true, title: true },
+        },
+      },
     });
-    if (result) created++;
+
+    const totalRows = allRecords.length;
+    console.log(`Total rows in daily_problems: ${totalRows}`);
+
+    if (totalRows > 0) {
+      const first = allRecords[0];
+      const last = allRecords[totalRows - 1];
+      console.log(`First row: istDate=${first.istDate}, problemId=${first.problemId} (${first.problem?.title || first.problem?.slug || "N/A"})`);
+      console.log(`Last row:  istDate=${last.istDate}, problemId=${last.problemId} (${last.problem?.title || last.problem?.slug || "N/A"})`);
+    }
+
+    const todayRecord = allRecords.find((r) => r.istDate === todayIST);
+    if (todayRecord) {
+      console.log(`✅ TODAY FOUND: istDate=${todayRecord.istDate}, problemId=${todayRecord.problemId} (${todayRecord.problem?.title || todayRecord.problem?.slug || "N/A"})`);
+    } else {
+      console.log(`❌ TODAY MISSING: No record found for ${todayIST}`);
+    }
+  } catch (err) {
+    console.error("Diagnostic error:", err.message);
+  } finally {
+    await prisma.$disconnect().catch(() => {});
   }
-  console.log(`Seeded ${created} daily problems from ${today}`);
 }
 
-main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
+checkDailyProblems();

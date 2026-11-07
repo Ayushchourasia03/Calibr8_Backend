@@ -639,6 +639,15 @@
           </div>
         </div>
         <div class="header-actions">
+          <span class="status-badge" id="coinsPill" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid #d97706; font-weight: 700;">
+            🪙 <span id="coinsVal">100</span>
+          </span>
+          <span class="status-badge" id="streakPill" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid #dc2626; font-weight: 700;">
+            🔥 <span id="streakVal">0</span>d
+          </span>
+          <span class="status-badge" id="dailyPill" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid #2563eb; cursor: pointer;" onclick="switchTab('coinsTab')">
+            📅 Today: <span id="dailyTitle">Daily Problem</span>
+          </span>
           <span class="status-badge" id="apiStatusBadge">
             <span class="status-dot"></span>
             <span id="apiStatusText">Server Online (Port 3000)</span>
@@ -649,6 +658,9 @@
           <button class="btn btn-secondary" id="logoutBtn" style="display:none;" onclick="handleLogout()">Logout</button>
         </div>
       </div>
+
+      <!-- Toast Notification Element -->
+      <div id="toast" style="display:none; position:fixed; top:20px; right:20px; z-index:99999; background:#0f172a; color:#fbbf24; border:2px solid #f59e0b; padding:0.9rem 1.4rem; border-radius:10px; font-weight:700; box-shadow:0 10px 25px rgba(0,0,0,0.6); font-size:0.95rem;"></div>
 
       <!-- Quick Session & Token Bar -->
       <div class="token-bar">
@@ -668,7 +680,10 @@
       <!-- Main Navigation Tabs -->
       <div class="tabs">
         <button class="tab-btn active" id="btnTabExplorer" onclick="switchTab('explorerTab')">
-          🚀 All APIs Console (46 Endpoints)
+          🚀 All APIs Console (49 Endpoints)
+        </button>
+        <button class="tab-btn" id="btnTabCoins" onclick="switchTab('coinsTab')">
+          🪙 Coins & Daily Problem
         </button>
         <button class="tab-btn" id="btnTabCodeSandbox" onclick="switchTab('codeSandboxTab')">
           ⚡ Code Sandbox (Run & Submit)
@@ -697,6 +712,7 @@
           <button class="cat-pill" onclick="filterApis('execution', this)">⚡ Execution (5)</button>
           <button class="cat-pill" onclick="filterApis('social', this)">🌐 Social (3)</button>
           <button class="cat-pill" onclick="filterApis('study', this)">📚 Study (5)</button>
+          <button class="cat-pill" onclick="filterApis('coins', this)">🪙 Coins (3)</button>
           <button class="cat-pill" onclick="filterApis('themes', this)">🎨 Themes (4)</button>
           <button class="cat-pill" onclick="filterApis('rankings', this)">🏆 Rankings (1)</button>
           <button class="cat-pill" onclick="filterApis('system', this)">🩺 System (5)</button>
@@ -704,7 +720,7 @@
 
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.75rem;">
           <input type="text" id="apiSearchInput" placeholder="🔍 Search endpoint by path or description..." oninput="searchApis(this.value)" style="max-width: 380px; width:100%;" />
-          <span style="font-size: 0.8rem; color: var(--text-muted);" id="apiCountDisplay">Showing 46 endpoints</span>
+          <span style="font-size: 0.8rem; color: var(--text-muted);" id="apiCountDisplay">Showing 49 endpoints</span>
         </div>
 
         <!-- Endpoints Container -->
@@ -720,6 +736,54 @@
             </div>
           </div>
           <pre id="console" class="console-box">Click "Send Request" or "Run" on any API endpoint above to view live HTTP status, latency, and JSON output.</pre>
+        </div>
+      </div>
+
+      <!-- TAB: Coin Rewards & Daily Problem -->
+      <div id="coinsTab" class="tab-content">
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem;">
+          <!-- Daily Problem card (id dailyCard) -->
+          <div class="card" id="dailyCard" style="border-left: 4px solid var(--accent);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+              <span class="card-title" style="margin:0;">📅 Today's Daily Problem</span>
+              <span id="dailyDate" style="font-size:0.82rem; color:var(--text-muted);">IST Date: Loading...</span>
+            </div>
+            <h3 id="dailyProblemTitle" style="font-size:1.25rem; margin-bottom:0.5rem; color:#fff;">Loading daily challenge...</h3>
+            <p id="dailyProblemMeta" style="color:var(--text-muted); font-size:0.85rem; margin-bottom:0.75rem;">Difficulty: Easy</p>
+            <div style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:8px; padding:0.6rem 0.85rem; font-size:0.84rem; color:#34d399; margin-bottom:1rem;">
+              ⭐ <strong>Reward:</strong> Earn <strong>+2 coins</strong> on first ACCEPTED submission today!
+            </div>
+            <button class="btn btn-primary" id="solveBtn" style="width:100%; justify-content:center;">
+              ⚡ Solve Today's Problem
+            </button>
+          </div>
+
+          <!-- How coins work card -->
+          <div class="card" style="border-left: 4px solid #f59e0b;">
+            <div class="card-title">📖 How Coins Work</div>
+            <ul style="padding-left:1.2rem; font-size:0.86rem; color:var(--text); line-height:1.7;">
+              <li><strong>100 coins</strong> on signup default</li>
+              <li><strong>+1 coin</strong> on first daily login of a new IST day</li>
+              <li><strong>+2 coins</strong> for solving that day's assigned Daily Problem (ACCEPTED verdict)</li>
+              <li><strong>+5 bonus coins</strong> on 7-day streak milestones (Day 7, 14, 21, 28, 35...)</li>
+              <li><strong>+25 bonus coins</strong> on 30-day streak milestones (Day 30, 60, 90...) — no +5 on day 30</li>
+              <li><strong>Missed day</strong> resets streak to 1 on next login, coins kept, longestStreak preserved</li>
+              <li>Use coins in the <strong>Theme Store</strong> to unlock premium IDE themes!</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Coin History card -->
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+            <div class="card-title" style="margin:0;">🪙 Coin Transaction Audit History</div>
+            <button class="btn btn-secondary" id="refreshBtn" onclick="loadHistory(); loadBalance();" style="font-size:0.8rem; padding:0.35rem 0.75rem;">
+              🔄 Refresh History
+            </button>
+          </div>
+          <div id="historyList" style="border:1px solid var(--card-border); border-radius:8px; overflow:hidden; background:var(--code-bg); min-height: 120px;">
+            <p style="color:var(--text-muted); padding:1rem; text-align:center;">Loading coin history...</p>
+          </div>
         </div>
       </div>
 
@@ -1214,7 +1278,12 @@
         { id: "thm-4", category: "themes", method: "POST", path: "/api/themes/:slug/buy", auth: true, desc: "Purchase a theme with coins", pathParams: { slug: "orbit" } },
 
         // Rankings
-        { id: "rnk-1", category: "rankings", method: "GET", path: "/api/rankings", auth: false, desc: "Get public leaderboard rankings with optional filters", query: { scope: "", college: "", batch: "", state: "", country: "", limit: "10" } }
+        { id: "rnk-1", category: "rankings", method: "GET", path: "/api/rankings", auth: false, desc: "Get public leaderboard rankings with optional filters", query: { scope: "", college: "", batch: "", state: "", country: "", limit: "10" } },
+
+        // Coin Rewards & Daily Problem
+        { id: "coin-1", category: "coins", method: "GET", path: "/api/coins/balance", auth: true, desc: "Get user coin balance and streak metrics (Protected)" },
+        { id: "coin-2", category: "coins", method: "GET", path: "/api/coins/history", auth: true, desc: "Get user coin transaction audit history (Protected)", query: { limit: "10", offset: "0" } },
+        { id: "coin-3", category: "coins", method: "GET", path: "/api/daily-problem", auth: false, desc: "Get today's assigned Daily Problem metadata" }
       ];
 
       let currentCategory = "all";
@@ -1231,6 +1300,9 @@
         loadCurriculum();
         loadTopics();
         initSandbox();
+        loadBalance();
+        loadDaily();
+        loadHistory();
       });
 
       function switchTab(tabId) {
@@ -1238,6 +1310,7 @@
         document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
         const map = {
           explorerTab: "btnTabExplorer",
+          coinsTab: "btnTabCoins",
           codeSandboxTab: "btnTabCodeSandbox",
           authTab: "btnTabAuth",
           curriculumTab: "btnTabCurriculum",
@@ -1246,6 +1319,147 @@
         if (map[tabId]) document.getElementById(map[tabId]).classList.add("active");
         const target = document.getElementById(tabId);
         if (target) target.classList.add("active");
+      }
+
+      const API_BASE = localStorage.getItem("calibr8_api") || "/api";
+
+      function apiUrl(endpoint) {
+        const base = localStorage.getItem("calibr8_api") || "/api";
+        const cleanBase = base.endsWith("/") ? base.slice(0, -1) : base;
+        const cleanPath = endpoint.startsWith("/") ? endpoint : "/" + endpoint;
+        return cleanBase + cleanPath;
+      }
+
+      async function loadBalance() {
+        const token = localStorage.getItem("calibr8_token");
+        if (!token) {
+          const c = document.getElementById("coinsVal");
+          if (c) c.textContent = "100";
+          const s = document.getElementById("streakVal");
+          if (s) s.textContent = "0";
+          return;
+        }
+        try {
+          const res = await fetch(apiUrl("/coins/balance"), {
+            headers: { Authorization: "Bearer " + token },
+          });
+          if (res.status === 401) return;
+          const data = await res.json();
+          if (data && data.coins !== undefined) {
+            const coins = data.coins;
+            const streak = data.streak ?? 0;
+            const longest = data.longestStreak ?? 0;
+            if (document.getElementById("coinsVal")) document.getElementById("coinsVal").textContent = coins;
+            if (document.getElementById("streakVal")) document.getElementById("streakVal").textContent = streak;
+            if (currentUser) {
+              currentUser.coins = coins;
+              currentUser.streak = streak;
+              currentUser.longestStreak = longest;
+              updateAuthUI();
+            }
+          }
+        } catch (e) {
+          console.warn("loadBalance warning:", e.message);
+        }
+      }
+
+      async function loadDaily() {
+        try {
+          const token = localStorage.getItem("calibr8_token");
+          const headers = {};
+          if (token) headers["Authorization"] = "Bearer " + token;
+          const res = await fetch(apiUrl("/daily-problem"), { headers });
+          if (!res.ok) {
+            if (document.getElementById("dailyTitle")) document.getElementById("dailyTitle").textContent = "None";
+            if (document.getElementById("dailyProblemTitle")) document.getElementById("dailyProblemTitle").textContent = "No daily problem found for today";
+            return;
+          }
+          const data = await res.json();
+          const problem = data.problem || {};
+          const title = problem.title || problem.slug || "Daily Challenge";
+          const diff = problem.difficulty || "Easy";
+          const istDate = data.istDate || "";
+
+          if (document.getElementById("dailyTitle")) document.getElementById("dailyTitle").textContent = title;
+          if (document.getElementById("dailyProblemTitle")) document.getElementById("dailyProblemTitle").textContent = title;
+          if (document.getElementById("dailyDate")) document.getElementById("dailyDate").textContent = "IST Date: " + istDate;
+          if (document.getElementById("dailyProblemMeta")) {
+            document.getElementById("dailyProblemMeta").textContent = "Difficulty: " + diff + (data.solvedToday ? " • Solved ✅" : "") + (data.rewardClaimed ? " • Reward Claimed (+2) 🪙" : "");
+          }
+          const solveBtn = document.getElementById("solveBtn");
+          if (solveBtn) {
+            solveBtn.onclick = () => {
+              if (problem.slug) {
+                switchTab("codeSandboxTab");
+                const sel = document.getElementById("sandboxProblemSelect");
+                if (sel) {
+                  let found = false;
+                  for (let opt of sel.options) {
+                    if (opt.value === problem.slug || opt.value === problem.id) {
+                      sel.value = opt.value;
+                      found = true;
+                      break;
+                    }
+                  }
+                  if (!found) {
+                    const opt = document.createElement("option");
+                    opt.value = problem.slug;
+                    opt.textContent = problem.title + " (" + diff + ")";
+                    sel.appendChild(opt);
+                    sel.value = problem.slug;
+                  }
+                  if (typeof onSandboxProblemSelectChange === "function") {
+                    onSandboxProblemSelectChange(sel.value);
+                  }
+                }
+              }
+            };
+          }
+        } catch (e) {
+          console.warn("loadDaily warning:", e.message);
+        }
+      }
+
+      async function loadHistory() {
+        const token = localStorage.getItem("calibr8_token");
+        const listEl = document.getElementById("historyList");
+        if (!token) {
+          if (listEl) listEl.innerHTML = "<p style='color:var(--text-muted); padding:1rem;'>Please log in to view your coin transaction audit history.</p>";
+          return;
+        }
+        try {
+          const res = await fetch(apiUrl("/coins/history?limit=10"), {
+            headers: { Authorization: "Bearer " + token },
+          });
+          if (res.status === 401) {
+            if (listEl) listEl.innerHTML = "<p style='color:var(--danger); padding:1rem;'>Session expired or unauthorized (401).</p>";
+            return;
+          }
+          const data = await res.json();
+          const txs = data.transactions || [];
+          if (!listEl) return;
+          if (txs.length === 0) {
+            listEl.innerHTML = "<p style='color:var(--text-muted); padding:1rem;'>No coin transactions recorded yet. Log in daily or solve today's challenge to earn coins!</p>";
+            return;
+          }
+          listEl.innerHTML = txs.map(t => {
+            const isPositive = t.amount > 0;
+            const amtStr = isPositive ? `+${t.amount}` : `${t.amount}`;
+            const color = isPositive ? "var(--success)" : "var(--danger)";
+            return `<div style="display:flex; justify-content:space-between; align-items:center; padding:0.65rem 0.85rem; border-bottom:1px solid var(--card-border); font-size:0.86rem;">
+              <div>
+                <span style="font-weight:600; color:#fff;">${escapeHtml(t.type)}</span>
+                <span style="color:var(--text-muted); font-size:0.78rem; margin-left:0.5rem;">${escapeHtml(t.istDate || "")}</span>
+              </div>
+              <div style="text-align:right;">
+                <span style="font-weight:700; color:${color}; margin-right:0.75rem;">${amtStr}</span>
+                <span style="color:var(--text-muted); font-size:0.8rem;">Bal: <strong>${t.balanceAfter}</strong></span>
+              </div>
+            </div>`;
+          }).join("");
+        } catch (e) {
+          if (listEl) listEl.innerHTML = `<p style='color:var(--danger); padding:1rem;'>Failed to load history: ${escapeHtml(e.message)}</p>`;
+        }
       }
 
       function updateAuthUI() {
@@ -1505,6 +1719,16 @@
       }
 
       function showToast(message, type = "info") {
+        const toastEl = document.getElementById("toast");
+        if (toastEl) {
+          toastEl.textContent = message;
+          toastEl.style.display = "block";
+          clearTimeout(toastEl._timer);
+          toastEl._timer = setTimeout(() => {
+            toastEl.style.display = "none";
+          }, 4200);
+        }
+
         let container = document.getElementById("toastContainer");
         if (!container) {
           container = document.createElement("div");
@@ -1575,6 +1799,9 @@
             document.getElementById("globalTokenInput").value = authToken;
             currentUser = data.user;
             updateAuthUI();
+            loadBalance();
+            loadHistory();
+            loadDaily();
           }
         } catch (err) {
           logConsole("POST /api/auth/register ERROR", { error: err.message });
@@ -1601,6 +1828,19 @@
             document.getElementById("globalTokenInput").value = authToken;
             currentUser = data.user;
             updateAuthUI();
+
+            if (data.rewards && data.rewards.coinsEarnedToday > 0) {
+              const r = data.rewards;
+              if (r.bonusCoins > 0) {
+                showToast(`+${r.coinsEarnedToday} on Day ${r.streak}! (${r.bonusType || 'Milestone Bonus'})`, "success");
+              } else {
+                showToast(`+${r.coinsEarnedToday} coins! Streak ${r.streak}`, "success");
+              }
+            }
+
+            loadBalance();
+            loadHistory();
+            loadDaily();
           }
         } catch (err) {
           logConsole("POST /api/auth/login ERROR", { error: err.message });
