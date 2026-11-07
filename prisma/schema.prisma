@@ -1,6 +1,7 @@
 generator client {
   provider = "prisma-client-js"
 }
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -29,10 +30,10 @@ model User {
   coins             Int      @default(100)
   activeThemeId     String?  @map("activeThemeId")
   active_theme_id   String?
-  
-  lastStreakDate    DateTime?
-  longestStreak     Int      @default(0)
-  lastLoginISTDate  String?  @map("lastLoginISTDate")
+
+  lastStreakDate   DateTime?
+  longestStreak    Int       @default(0)
+  lastLoginISTDate String?   @map("lastLoginISTDate")
 
   socialAccounts                       SocialAccount[]
   problemProgress                      UserProblemProgress[]
@@ -40,8 +41,8 @@ model User {
   topics                               UserTopic[]
   submissions                          Submission[]
   coinTransactions                     CoinTransaction[]
-  activeTheme                          Theme? @relation("ActiveTheme", fields: [activeThemeId], references: [id])
-  themes_users_active_theme_idTothemes Theme? @relation("users_active_theme_idTothemes", fields: [active_theme_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  activeTheme                          Theme?                @relation("ActiveTheme", fields: [activeThemeId], references: [id])
+  themes_users_active_theme_idTothemes Theme?                @relation("users_active_theme_idTothemes", fields: [active_theme_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([college, score])
   @@index([branch, score])
@@ -124,38 +125,39 @@ model UserTheme {
 }
 
 model Problem {
-  id            String         @id @default(cuid())
-  problemNumber Int            @unique @default(autoincrement()) @map("problemNumber")
-  slug          String         @unique
+  id            String @id @default(cuid())
+  problemNumber Int    @unique @default(autoincrement()) @map("problemNumber")
+  slug          String @unique
   title         String
   description   String
-  difficulty    String         @default("Easy")
-  
-  solvedCount   Int            @default(0) @map("solvedCount")
-  timeLimit     Int            @default(1000) @map("timeLimit")
-  memoryLimit   Int            @default(256) @map("memoryLimit")
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  dsaTopicId    String?        @map("dsaTopicId")
-  tags          String[]       @default([])
+  difficulty    String @default("Easy")
+
+  solvedCount   Int                   @default(0) @map("solvedCount")
+  timeLimit     Int                   @default(1000) @map("timeLimit")
+  memoryLimit   Int                   @default(256) @map("memoryLimit")
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  dsaTopicId    String?               @map("dsaTopicId")
+  tags          String[]              @default([])
   templates     CodeTemplate[]
-  dsaTopic      DsaTopic?      @relation(fields: [dsaTopicId], references: [id])
+  dsaTopic      DsaTopic?             @relation(fields: [dsaTopicId], references: [id])
   testcases     Testcase[]
   submissions   Submission[] // ADD THIS
   userProgress  UserProblemProgress[]
   dailyProblems DailyProblem[]
+
   @@map("problems")
 }
 
 model UserProblemProgress {
-  userId        String   @map("userId")
-  problemId     String   @map("problemId")
-  points        Int
-  scoreAwarded  Int      @default(0) @map("scoreAwarded")
-  coinsAwarded  Int      @default(0) @map("coinsAwarded")
-  solvedAt      DateTime @default(now()) @map("solvedAt")
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  problem       Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  userId       String   @map("userId")
+  problemId    String   @map("problemId")
+  points       Int
+  scoreAwarded Int      @default(0) @map("scoreAwarded")
+  coinsAwarded Int      @default(0) @map("coinsAwarded")
+  solvedAt     DateTime @default(now()) @map("solvedAt")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem      Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
 
   @@id([userId, problemId])
   @@index([problemId])
@@ -213,6 +215,7 @@ model Submission {
   // ADD THESE RELATIONS
   user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   problem     Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
   @@index([problemId, status])
   @@index([userId, status])
   @@index([userId, status, createdAt])
@@ -273,7 +276,7 @@ model CoinTransaction {
   id           String   @id @default(cuid())
   userId       String   @map("userId")
   amount       Int
-  type         String   // DAILY_LOGIN, DAILY_PROBLEM, STREAK_7_BONUS, STREAK_30_BONUS, THEME_PURCHASE
+  type         String // DAILY_LOGIN, DAILY_PROBLEM, STREAK_7_BONUS, STREAK_30_BONUS, THEME_PURCHASE
   referenceId  String?  @map("referenceId")
   istDate      String   @map("istDate")
   balanceAfter Int      @map("balanceAfter")
@@ -295,34 +298,3 @@ model DailyProblem {
   @@index([istDate])
   @@map("daily_problems")
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
