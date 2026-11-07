@@ -13,6 +13,7 @@ import { syncProblemSolvedCount } from "../utils/problemSolvedCount.js";
 import { applyAcceptedSubmissionReward } from "../utils/acceptedSubmissionReward.js";
 import { publicTestResults } from "../utils/testcaseResults.js";
 import { analyzeComplexity } from "../services/complexityAnalyzer.service.js";
+import { grantDailyProblemReward } from "../services/coinService.js";
 
 const submissionCache = new Map();
 const MAX_CASES_PER_BATCH = 20;
@@ -820,6 +821,7 @@ export const submitSolution = async (req, res, next) => {
           evaluation.totalCount > 0 &&
           evaluation.passedCount === evaluation.totalCount;
 
+        let dailyProblemReward = null;
         if (userId && isAccepted) {
           try {
             reward = await prisma.$transaction((tx) =>
@@ -832,6 +834,15 @@ export const submitSolution = async (req, res, next) => {
               `[Submission Rewards] Failed to save rewards for submission ${submission.id}:`,
               rewardDbErr,
             );
+          }
+
+          try {
+            dailyProblemReward = await grantDailyProblemReward(userId, problem.id);
+            if (dailyProblemReward?.awarded && reward?.stats) {
+              reward.stats.coins = dailyProblemReward.balanceAfter;
+            }
+          } catch (dpErr) {
+            console.error("[Daily Problem Reward Error]:", dpErr.message);
           }
         }
 
@@ -851,6 +862,7 @@ export const submitSolution = async (req, res, next) => {
           ...updated,
           reward,
           rewardError,
+          dailyProblemReward,
         };
 
         if (
@@ -927,6 +939,7 @@ export const submitSolution = async (req, res, next) => {
         tierReached: completed.tierReached,
         reward: completed.reward || null,
         rewardError: completed.rewardError || false,
+        dailyProblemReward: completed.dailyProblemReward || null,
         passedCount: passed,
         totalCount: total,
         time: completed.time || `${completed.maxTimeMs}ms`,
@@ -1034,6 +1047,7 @@ export const getSubmissionStatus = async (req, res, next) => {
         tierReached,
         reward: submission.reward || null,
         rewardError: submission.rewardError || false,
+        dailyProblemReward: submission.dailyProblemReward || null,
         passedCount: submission.passedCount,
         totalCount: submission.totalCount,
         time: submission.time || "45ms",

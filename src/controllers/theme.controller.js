@@ -2,6 +2,7 @@ import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
 import { getUserHeaderStats } from "../utils/userHeaderStats.js";
 import { ensureStoreThemes, getStoreTheme } from "../data/storeThemes.js";
+import { recordThemePurchase } from "../services/coinService.js";
 
 let themeCatalogSetup;
 
@@ -117,6 +118,18 @@ export const buyTheme = async (req, res, next) => {
           longestStreak: true,
         },
       });
+
+      try {
+        await recordThemePurchase(tx, {
+          userId,
+          themeId: theme.id,
+          price: theme.price,
+          balanceAfter: user.coins,
+        });
+      } catch (txErr) {
+        console.warn("[Theme Purchase Audit Warning]:", txErr.message);
+      }
+
       return user;
     });
 

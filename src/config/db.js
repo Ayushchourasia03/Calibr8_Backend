@@ -33,6 +33,8 @@ class InMemoryStore {
     this.userThemes = new Map();
     this.submissions = new Map();
     this.userProblemProgress = new Map();
+    this.coinTransactions = new Map();
+    this.dailyProblems = new Map();
     this.studySubjects = [];
     this.studyChapters = [];
     this.studyTopics = [];
@@ -44,6 +46,32 @@ class InMemoryStore {
     STORE_THEMES.forEach((t) =>
       this.themes.set(`thm-${t.slug}`, { id: `thm-${t.slug}`, ...t }),
     );
+
+    // Seed initial daily problems rotation across consecutive days
+    const today = new Date();
+    const fallbackProblems = [
+      "two-sum",
+      "add-two-numbers",
+      "best-time-to-buy-and-sell-stock",
+      "backspace-string-compare",
+      "3sum",
+    ];
+    for (let offset = -2; offset <= 35; offset++) {
+      const d = new Date(today.getTime() + offset * 86400000);
+      const istDate = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(d);
+      const problemId = fallbackProblems[Math.abs(offset + 2) % fallbackProblems.length];
+      this.dailyProblems.set(`dp_${istDate}`, {
+        id: `dp_${istDate}`,
+        istDate,
+        problemId,
+        createdAt: new Date(),
+      });
+    }
 
     // Load study curriculum from local study-material folder
     this.initStudyMaterials();
@@ -193,6 +221,27 @@ function createModelProxy(modelName) {
       if (modelName === "submission") {
         return store.submissions.get(where.id) || null;
       }
+      if (modelName === "coinTransaction") {
+        if (where.id) return store.coinTransactions.get(where.id) || null;
+        for (const ct of store.coinTransactions.values()) {
+          if (where.userId_type_istDate_referenceId) {
+            const c = where.userId_type_istDate_referenceId;
+            if (ct.userId === c.userId && ct.type === c.type && ct.istDate === c.istDate && ct.referenceId === c.referenceId) {
+              return { ...ct };
+            }
+          }
+        }
+        return null;
+      }
+      if (modelName === "dailyProblem") {
+        if (where.id) return store.dailyProblems.get(where.id) || null;
+        if (where.istDate) {
+          for (const dp of store.dailyProblems.values()) {
+            if (dp.istDate === where.istDate) return { ...dp };
+          }
+        }
+        return null;
+      }
       if (modelName === "studySubject") {
         return store.studySubjects.find((s) => s.slug === where.slug || s.id === where.id) || null;
       }
@@ -237,6 +286,24 @@ function createModelProxy(modelName) {
             ...found,
             chapter: { ...ch, subject: sub },
           };
+        }
+        return null;
+      }
+      if (modelName === "coinTransaction") {
+        for (const ct of store.coinTransactions.values()) {
+          if (where.userId && ct.userId !== where.userId) continue;
+          if (where.type && ct.type !== where.type) continue;
+          if (where.istDate && ct.istDate !== where.istDate) continue;
+          if (where.referenceId !== undefined && ct.referenceId !== where.referenceId) continue;
+          return { ...ct };
+        }
+        return null;
+      }
+      if (modelName === "dailyProblem") {
+        for (const dp of store.dailyProblems.values()) {
+          if (where.istDate && dp.istDate !== where.istDate) continue;
+          if (where.problemId && dp.problemId !== where.problemId) continue;
+          return { ...dp };
         }
         return null;
       }
@@ -327,6 +394,27 @@ function createModelProxy(modelName) {
           (progress) => !where.userId || progress.userId === where.userId,
         );
       }
+      if (modelName === "coinTransaction") {
+        let list = [...store.coinTransactions.values()];
+        if (where.userId) list = list.filter((ct) => ct.userId === where.userId);
+        if (where.type) list = list.filter((ct) => ct.type === where.type);
+        if (where.istDate) list = list.filter((ct) => ct.istDate === where.istDate);
+        if (orderBy?.createdAt === "desc") {
+          list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        } else if (orderBy?.createdAt === "asc") {
+          list.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        }
+        if (skip) list = list.slice(skip);
+        if (take) list = list.slice(0, take);
+        return list;
+      }
+      if (modelName === "dailyProblem") {
+        let list = [...store.dailyProblems.values()];
+        if (where.istDate) list = list.filter((dp) => dp.istDate === where.istDate);
+        if (orderBy?.istDate === "asc") list.sort((a, b) => a.istDate.localeCompare(b.istDate));
+        if (take) list = list.slice(0, take);
+        return list;
+      }
       return [];
     },
 
@@ -347,6 +435,7 @@ function createModelProxy(modelName) {
           tier: "Prism I",
           longestStreak: data.longestStreak ?? 0,
           lastStreakDate: data.lastStreakDate ?? null,
+          lastLoginISTDate: data.lastLoginISTDate ?? null,
           onboarded: false,
           preferredLanguage: data.preferredLanguage || "cpp",
           createdAt: new Date(),
@@ -379,6 +468,32 @@ function createModelProxy(modelName) {
         const ut = { id, ...data, purchasedAt: new Date() };
         store.userThemes.set(id, ut);
         return ut;
+      }
+      if (modelName === "coinTransaction") {
+        const id = data.id || `ctx_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const ct = {
+          id,
+          userId: data.userId,
+          amount: data.amount,
+          type: data.type,
+          referenceId: data.referenceId ?? null,
+          istDate: data.istDate,
+          balanceAfter: data.balanceAfter,
+          createdAt: data.createdAt || new Date(),
+        };
+        store.coinTransactions.set(id, ct);
+        return { ...ct };
+      }
+      if (modelName === "dailyProblem") {
+        const id = data.id || `dp_${data.istDate}`;
+        const dp = {
+          id,
+          istDate: data.istDate,
+          problemId: data.problemId,
+          createdAt: data.createdAt || new Date(),
+        };
+        store.dailyProblems.set(id, dp);
+        return { ...dp };
       }
       return { id: `item-${Date.now()}`, ...data };
     },
@@ -505,6 +620,24 @@ function createModelProxy(modelName) {
           const rec = { id: `top-${Date.now()}`, ...createData };
           store.topics.set(rec.id, rec);
           return rec;
+        }
+      }
+      if (modelName === "dailyProblem") {
+        let existing = null;
+        for (const dp of store.dailyProblems.values()) {
+          if (where.istDate && dp.istDate === where.istDate) {
+            existing = dp;
+            break;
+          }
+        }
+        if (existing) {
+          Object.assign(existing, update);
+          return { ...existing };
+        } else {
+          const id = createData.id || `dp_${createData.istDate}`;
+          const dp = { id, ...createData, createdAt: new Date() };
+          store.dailyProblems.set(id, dp);
+          return { ...dp };
         }
       }
       return { ...createData };
