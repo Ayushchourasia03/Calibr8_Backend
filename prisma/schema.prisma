@@ -32,12 +32,14 @@ model User {
   
   lastStreakDate    DateTime?
   longestStreak     Int      @default(0)
+  lastLoginISTDate  String?  @map("lastLoginISTDate")
 
   socialAccounts                       SocialAccount[]
   problemProgress                      UserProblemProgress[]
   ownedThemes                          UserTheme[]
   topics                               UserTopic[]
   submissions                          Submission[]
+  coinTransactions                     CoinTransaction[]
   activeTheme                          Theme? @relation("ActiveTheme", fields: [activeThemeId], references: [id])
   themes_users_active_theme_idTothemes Theme? @relation("users_active_theme_idTothemes", fields: [active_theme_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -141,6 +143,7 @@ model Problem {
   testcases     Testcase[]
   submissions   Submission[] // ADD THIS
   userProgress  UserProblemProgress[]
+  dailyProblems DailyProblem[]
   @@map("problems")
 }
 
@@ -264,6 +267,33 @@ model StudyMCQ {
   difficulty   String     @default("Easy")
   order        Int
   topic        StudyTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+}
+
+model CoinTransaction {
+  id           String   @id @default(cuid())
+  userId       String   @map("userId")
+  amount       Int
+  type         String   // DAILY_LOGIN, DAILY_PROBLEM, STREAK_7_BONUS, STREAK_30_BONUS, THEME_PURCHASE
+  referenceId  String?  @map("referenceId")
+  istDate      String   @map("istDate")
+  balanceAfter Int      @map("balanceAfter")
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type, istDate, referenceId])
+  @@index([userId, createdAt])
+  @@map("coin_transactions")
+}
+
+model DailyProblem {
+  id        String   @id @default(cuid())
+  istDate   String   @unique @map("istDate")
+  problemId String   @map("problemId")
+  problem   Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([istDate])
+  @@map("daily_problems")
 }
 
 

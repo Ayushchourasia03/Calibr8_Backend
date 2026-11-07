@@ -28,6 +28,7 @@
     "db:push": "npx prisma db push",
     "db:seed": "node prisma/seed.js",
     "seed": "node prisma/seed.js",
+    "seed:daily": "node scripts/seedDailyProblems.js",
     "problems:seed": "node scripts/seedProblems.js",
     "prisma:generate": "npx prisma generate",
     "postinstall": "prisma generate"
