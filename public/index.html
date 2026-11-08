@@ -750,8 +750,12 @@
             </div>
             <h3 id="dailyProblemTitle" style="font-size:1.25rem; margin-bottom:0.5rem; color:#fff;">Loading daily challenge...</h3>
             <p id="dailyProblemMeta" style="color:var(--text-muted); font-size:0.85rem; margin-bottom:0.75rem;">Difficulty: Easy</p>
-            <div style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:8px; padding:0.6rem 0.85rem; font-size:0.84rem; color:#34d399; margin-bottom:1rem;">
+            <div id="dailyRewardBanner" style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:8px; padding:0.6rem 0.85rem; font-size:0.84rem; color:#34d399; margin-bottom:0.75rem;">
               ⭐ <strong>Reward:</strong> Earn <strong>+2 coins</strong> on first ACCEPTED submission today!
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; color:var(--text-muted); margin-bottom:1rem; background:rgba(255,255,255,0.03); border-radius:6px; padding:0.4rem 0.75rem;">
+              <span>⏳ Next Challenge:</span>
+              <span id="dailyCountdown" style="font-family:monospace; font-weight:600; color:#60a5fa;">--:--:--</span>
             </div>
             <button class="btn btn-primary" id="solveBtn" style="width:100%; justify-content:center;">
               ⚡ Solve Today's Problem
@@ -1363,6 +1367,33 @@
         }
       }
 
+      let dailyCountdownTimer = null;
+      let lastLoadedISTDate = null;
+
+      function startDailyCountdown() {
+        if (dailyCountdownTimer) clearInterval(dailyCountdownTimer);
+        const updateCountdown = () => {
+          const el = document.getElementById("dailyCountdown");
+          if (!el) return;
+          const now = new Date();
+          const istOffsetMs = 5.5 * 60 * 60 * 1000;
+          const istTime = now.getTime() + istOffsetMs;
+          const msLeft = (24 * 60 * 60 * 1000) - (istTime % (24 * 60 * 60 * 1000));
+          if (msLeft <= 1000) {
+            el.textContent = "00:00:00 (Refreshing...)";
+            setTimeout(loadDaily, 2000);
+            return;
+          }
+          const totalSecs = Math.floor(msLeft / 1000);
+          const hours = String(Math.floor(totalSecs / 3600)).padStart(2, "0");
+          const mins = String(Math.floor((totalSecs % 3600) / 60)).padStart(2, "0");
+          const secs = String(totalSecs % 60).padStart(2, "0");
+          el.textContent = `${hours}:${mins}:${secs} (12:00 AM IST)`;
+        };
+        updateCountdown();
+        dailyCountdownTimer = setInterval(updateCountdown, 1000);
+      }
+
       async function loadDaily() {
         try {
           const token = localStorage.getItem("calibr8_token");
@@ -1379,13 +1410,34 @@
           const title = problem.title || problem.slug || "Daily Challenge";
           const diff = problem.difficulty || "Easy";
           const istDate = data.istDate || "";
+          lastLoadedISTDate = istDate;
+          const tags = (problem.tags && problem.tags.length > 0) ? ` • Topics: ${problem.tags.slice(0, 3).join(", ")}` : "";
+          const isDone = Boolean(data.completed || data.solvedToday || data.rewardClaimed);
 
           if (document.getElementById("dailyTitle")) document.getElementById("dailyTitle").textContent = title;
           if (document.getElementById("dailyProblemTitle")) document.getElementById("dailyProblemTitle").textContent = title;
-          if (document.getElementById("dailyDate")) document.getElementById("dailyDate").textContent = "IST Date: " + istDate;
+          if (document.getElementById("dailyDate")) document.getElementById("dailyDate").textContent = "IST Date: " + istDate + (data.cycle ? ` (Cycle ${data.cycle})` : "");
           if (document.getElementById("dailyProblemMeta")) {
-            document.getElementById("dailyProblemMeta").textContent = "Difficulty: " + diff + (data.solvedToday ? " • Solved ✅" : "") + (data.rewardClaimed ? " • Reward Claimed (+2) 🪙" : "");
+            document.getElementById("dailyProblemMeta").textContent = "Difficulty: " + diff + tags + (isDone ? " • Solved ✅" : " • Active ⏳");
           }
+
+          const banner = document.getElementById("dailyRewardBanner");
+          if (banner) {
+            if (isDone) {
+              banner.style.background = "rgba(16,185,129,0.15)";
+              banner.style.border = "1px solid rgba(16,185,129,0.4)";
+              banner.style.color = "#34d399";
+              banner.innerHTML = "✅ <strong>Challenge Completed!</strong> You earned <strong>+2 coins</strong> on today's challenge. Next problem unlocks at midnight!";
+            } else {
+              banner.style.background = "rgba(59,130,246,0.12)";
+              banner.style.border = "1px solid rgba(59,130,246,0.3)";
+              banner.style.color = "#60a5fa";
+              banner.innerHTML = "⭐ <strong>Reward:</strong> Earn <strong>+2 coins</strong> on your first ACCEPTED submission today!";
+            }
+          }
+
+          startDailyCountdown();
+
           const solveBtn = document.getElementById("solveBtn");
           if (solveBtn) {
             solveBtn.onclick = () => {
@@ -1419,6 +1471,13 @@
           console.warn("loadDaily warning:", e.message);
         }
       }
+
+      // Auto-refresh daily problem when tab regains focus
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          loadDaily();
+        }
+      });
 
       async function loadHistory() {
         const token = localStorage.getItem("calibr8_token");

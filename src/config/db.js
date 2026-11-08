@@ -36,6 +36,7 @@ class InMemoryStore {
     this.coinTransactions = new Map();
     this.problems = new Map();
     this.dailyProblems = new Map();
+    this.dailyProblemCompletions = new Map();
     this.studySubjects = [];
     this.studyChapters = [];
     this.studyTopics = [];
@@ -248,7 +249,20 @@ function createModelProxy(modelName) {
         return null;
       }
       if (modelName === "submission") {
-        return store.submissions.get(where.id) || null;
+        const sub = store.submissions.get(where.id);
+        if (!sub) return null;
+        const res = { ...sub };
+        if (include?.problem || select?.problem) {
+          const prob = store.problems.get(sub.problemId) || [...store.problems.values()].find((p) => p.id === sub.problemId || p.slug === sub.problemId);
+          if (prob) {
+            res.problem = {
+              id: prob.id,
+              slug: prob.slug,
+              title: prob.title,
+            };
+          }
+        }
+        return res;
       }
       if (modelName === "coinTransaction") {
         if (where.id) return store.coinTransactions.get(where.id) || null;
@@ -275,7 +289,7 @@ function createModelProxy(modelName) {
         }
         if (dp) {
           const res = { ...dp };
-          if (include?.problem) {
+          if (include?.problem || select?.problem) {
             res.problem = store.problems.get(dp.problemId) || {
               id: dp.problemId,
               slug: dp.problemId,
@@ -283,7 +297,20 @@ function createModelProxy(modelName) {
               difficulty: "Easy",
             };
           }
+          if (include?.completions) {
+            res.completions = [...store.dailyProblemCompletions.values()].filter(
+              (c) => c.dailyProblemId === dp.id,
+            );
+          }
           return res;
+        }
+        return null;
+      }
+      if (modelName === "dailyProblemCompletion") {
+        if (where.id) return store.dailyProblemCompletions.get(where.id) || null;
+        if (where.userId_dailyProblemId) {
+          const key = `${where.userId_dailyProblemId.userId}_${where.userId_dailyProblemId.dailyProblemId}`;
+          return store.dailyProblemCompletions.get(key) || null;
         }
         return null;
       }
@@ -352,19 +379,34 @@ function createModelProxy(modelName) {
         return null;
       }
       if (modelName === "dailyProblem") {
-        for (const dp of store.dailyProblems.values()) {
-          if (where.istDate && dp.istDate !== where.istDate) continue;
-          if (where.problemId && dp.problemId !== where.problemId) continue;
-          const res = { ...dp };
-          if (include?.problem) {
-            res.problem = store.problems.get(dp.problemId) || {
-              id: dp.problemId,
-              slug: dp.problemId,
-              title: dp.problemId,
-              difficulty: "Easy",
-            };
-          }
-          return res;
+        let list = [...store.dailyProblems.values()];
+        if (where.istDate) list = list.filter((dp) => dp.istDate === where.istDate);
+        if (where.problemId) list = list.filter((dp) => dp.problemId === where.problemId);
+        if (where.cycle) list = list.filter((dp) => dp.cycle === where.cycle);
+        if (orderBy?.istDate === "desc") {
+          list.sort((a, b) => b.istDate.localeCompare(a.istDate));
+        } else if (orderBy?.istDate === "asc") {
+          list.sort((a, b) => a.istDate.localeCompare(b.istDate));
+        }
+        const dp = list[0] || null;
+        if (!dp) return null;
+        const res = { ...dp };
+        if (include?.problem || select?.problem) {
+          res.problem = store.problems.get(dp.problemId) || {
+            id: dp.problemId,
+            slug: dp.problemId,
+            title: dp.problemId,
+            difficulty: "Easy",
+          };
+        }
+        return res;
+      }
+      if (modelName === "dailyProblemCompletion") {
+        for (const dpc of store.dailyProblemCompletions.values()) {
+          if (where.userId && dpc.userId !== where.userId) continue;
+          if (where.dailyProblemId && dpc.dailyProblemId !== where.dailyProblemId) continue;
+          if (where.id && dpc.id !== where.id) continue;
+          return { ...dpc };
         }
         return null;
       }
@@ -486,14 +528,58 @@ function createModelProxy(modelName) {
       if (modelName === "dailyProblem") {
         let list = [...store.dailyProblems.values()];
         if (where.istDate) list = list.filter((dp) => dp.istDate === where.istDate);
+        if (where.cycle) list = list.filter((dp) => dp.cycle === where.cycle);
+        if (where.problemId) list = list.filter((dp) => dp.problemId === where.problemId);
         if (orderBy?.istDate === "asc") list.sort((a, b) => a.istDate.localeCompare(b.istDate));
+        else if (orderBy?.istDate === "desc") list.sort((a, b) => b.istDate.localeCompare(a.istDate));
+        if (skip) list = list.slice(skip);
         if (take) list = list.slice(0, take);
+        if (include?.problem || select?.problem) {
+          list = list.map((dp) => ({
+            ...dp,
+            problem: store.problems.get(dp.problemId) || {
+              id: dp.problemId,
+              slug: dp.problemId,
+              title: dp.problemId,
+              difficulty: "Easy",
+            },
+          }));
+        }
+        return list;
+      }
+      if (modelName === "dailyProblemCompletion") {
+        let list = [...store.dailyProblemCompletions.values()];
+        if (where.userId) list = list.filter((c) => c.userId === where.userId);
+        if (where.dailyProblemId) list = list.filter((c) => c.dailyProblemId === where.dailyProblemId);
+        return list;
+      }
+      if (modelName === "problem") {
+        let list = [...store.problems.values()];
+        if (where.difficulty) list = list.filter((p) => p.difficulty?.toLowerCase() === where.difficulty.toLowerCase());
+        if (where.dsaTopicId) list = list.filter((p) => p.dsaTopicId === where.dsaTopicId);
+        if (where.NOT?.id) list = list.filter((p) => p.id !== where.NOT.id);
+        if (where.id && typeof where.id === "object" && Array.isArray(where.id.in)) {
+          const s = new Set(where.id.in);
+          list = list.filter((p) => s.has(p.id));
+        } else if (where.id && typeof where.id === "string") {
+          list = list.filter((p) => p.id === where.id);
+        }
+        if (orderBy?.problemNumber === "asc") list.sort((a, b) => (a.problemNumber || 0) - (b.problemNumber || 0));
+        if (skip) list = list.slice(skip);
+        if (take) list = list.slice(0, take);
+        if (select) {
+          list = list.map((p) => {
+            const sel = {};
+            for (const k of Object.keys(select)) if (select[k]) sel[k] = p[k];
+            return sel;
+          });
+        }
         return list;
       }
       return [];
     },
 
-    async create({ data, include } = {}) {
+    async create({ data, include, select } = {}) {
       if (modelName === "user") {
         const id = data.id || `usr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
         const user = {
@@ -560,15 +646,52 @@ function createModelProxy(modelName) {
         return { ...ct };
       }
       if (modelName === "dailyProblem") {
+        // Enforce unique istDate constraint
+        for (const existing of store.dailyProblems.values()) {
+          if (existing.istDate === data.istDate) {
+            const err = new Error("Unique constraint failed on the fields: (`istDate`)");
+            err.code = "P2002";
+            throw err;
+          }
+        }
         const id = data.id || `dp_${data.istDate}`;
         const dp = {
           id,
           istDate: data.istDate,
           problemId: data.problemId,
+          cycle: data.cycle ?? 1,
           createdAt: data.createdAt || new Date(),
         };
         store.dailyProblems.set(id, dp);
-        return { ...dp };
+        const res = { ...dp };
+        if (include?.problem || select?.problem) {
+          res.problem = store.problems.get(dp.problemId) || {
+            id: dp.problemId,
+            slug: dp.problemId,
+            title: dp.problemId,
+            difficulty: "Easy",
+          };
+        }
+        return res;
+      }
+      if (modelName === "dailyProblemCompletion") {
+        const key = `${data.userId}_${data.dailyProblemId}`;
+        if (store.dailyProblemCompletions.has(key)) {
+          const err = new Error("Unique constraint failed on user daily completion");
+          err.code = "P2002";
+          throw err;
+        }
+        const id = data.id || `dpc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const record = {
+          id,
+          userId: data.userId,
+          dailyProblemId: data.dailyProblemId,
+          submissionId: data.submissionId || null,
+          completedAt: data.completedAt || new Date(),
+        };
+        store.dailyProblemCompletions.set(id, record);
+        store.dailyProblemCompletions.set(key, record);
+        return { ...record };
       }
       return { id: `item-${Date.now()}`, ...data };
     },
@@ -710,9 +833,23 @@ function createModelProxy(modelName) {
           return { ...existing };
         } else {
           const id = createData.id || `dp_${createData.istDate}`;
-          const dp = { id, ...createData, createdAt: new Date() };
+          const dp = { id, cycle: createData.cycle ?? 1, ...createData, createdAt: new Date() };
           store.dailyProblems.set(id, dp);
           return { ...dp };
+        }
+      }
+      if (modelName === "dailyProblemCompletion") {
+        const key = `${where.userId_dailyProblemId?.userId || createData.userId}_${where.userId_dailyProblemId?.dailyProblemId || createData.dailyProblemId}`;
+        const existing = store.dailyProblemCompletions.get(key);
+        if (existing) {
+          Object.assign(existing, update);
+          return { ...existing };
+        } else {
+          const id = createData.id || `dpc_${Date.now()}`;
+          const rec = { id, ...createData, completedAt: new Date() };
+          store.dailyProblemCompletions.set(id, rec);
+          store.dailyProblemCompletions.set(key, rec);
+          return { ...rec };
         }
       }
       return { ...createData };
@@ -745,6 +882,16 @@ function createModelProxy(modelName) {
         for (const [key, dp] of store.dailyProblems.entries()) {
           if (where.istDate && dp.istDate !== where.istDate) continue;
           store.dailyProblems.delete(key);
+          count += 1;
+        }
+        return { count };
+      }
+      if (modelName === "dailyProblemCompletion") {
+        let count = 0;
+        for (const [key, c] of store.dailyProblemCompletions.entries()) {
+          if (where.userId && c.userId !== where.userId) continue;
+          if (where.dailyProblemId && c.dailyProblemId !== where.dailyProblemId) continue;
+          store.dailyProblemCompletions.delete(key);
           count += 1;
         }
         return { count };

@@ -1,10 +1,35 @@
+import crypto from "crypto";
 import * as babelParser from "@babel/parser";
 
 export const ANALYZER_VERSION = "3.0.1";
 
 const MAX_CACHE_ENTRIES = 500;
+const MAX_STATIC_CACHE_ENTRIES = 1000;
 const MAX_CODE_LENGTH = 200_000;
 const cache = new Map(); // LRU: key -> { ir, ctx, time?, space? }
+const staticAnalysisCache = new Map(); // hashKey -> cached static analysis result
+
+/**
+ * Computes deterministic SHA-256 hash for complexity cache key.
+ * hash(normalizedCode + language + analyzerVersion)
+ */
+export function computeComplexityHash(code, language, version = ANALYZER_VERSION) {
+  const normalizedCode = (code || "").replace(/\r\n?/g, "\n").trim();
+  const normalizedLang = String(language || "").toLowerCase().trim();
+  return crypto
+    .createHash("sha256")
+    .update(`${normalizedCode}::${normalizedLang}::${version}`)
+    .digest("hex");
+}
+
+export function clearComplexityCache() {
+  cache.clear();
+  staticAnalysisCache.clear();
+}
+
+export function getComplexityCacheSize() {
+  return staticAnalysisCache.size;
+}
 
 const PY = "py";
 const JS = "js";
@@ -882,7 +907,14 @@ function analyzeRecursion(fn, ctx) {
   if (copy && work === 0) work = 1;
 
   const memo = MEMO_RE.test(body) || MEMO_RE.test(fn.deco);
-  const halving = HALVE_RE.test(argText);
+  const halvingVars = [];
+  const hRe = /\b([A-Za-z_$][\w$]*)\s*=[^;\n]*?(?:\/\/?\s*2\b|>>>?\s*1\b|\*\s*0\.5\b|\bmid\b|\bmiddle\b|\bhalf\b)/g;
+  let hm;
+  while ((hm = hRe.exec(body))) halvingVars.push(hm[1]);
+  const halving =
+    HALVE_RE.test(argText) ||
+    (halvingVars.length > 0 &&
+      halvingVars.some((v) => new RegExp(`\\b${esc(v)}\\b`).test(argText)));
   const step = STEP_RE.test(argText);
   const out = { cx: ZERO_CX, aux: ZERO_CX, pat: "", ev: [], conf: HIGH };
 
@@ -906,8 +938,8 @@ function analyzeRecursion(fn, ctx) {
     out.ev.push(`Divide-and-conquer recurrence: ${ce} subproblem(s) of half size, ${work ? `work per level O(n${work > 1 ? `^${work}` : ""})` : "O(1) work per level"}`);
     out.conf = HIGH;
   } else if (GRAPH_RE.test(body)) {
-    out.cx = { ...mk(1), label: "O(V + E)", rank: 10 };
-    out.aux = { ...mk(1), label: "O(V)", rank: 10 };
+    out.cx = { ...mk(1), label: "O(V + E)", rank: 10.5 };
+    out.aux = { ...mk(1), label: "O(V)", rank: 10.5 };
     out.pat = "depth_first_search";
     out.ev.push("DFS with visited tracking: each vertex and edge handled once");
   } else if (TREE_RE.test(argText) && !PERM_RE.test(body)) {
@@ -980,7 +1012,7 @@ function analyzeFn(fn, ctx) {
       let cx;
       if (!visited) cx = mk(1);
       else if (grid) cx = heap ? mk(2, 1, { dims: [1, 1] }) : mk(2, 0, { dims: [1, 1] });
-      else cx = heap ? { ...mk(1, 1), label: "O((V + E) log V)", rank: 11 } : { ...mk(1), label: "O(V + E)", rank: 10 };
+      else cx = heap ? { ...mk(1, 1), label: "O((V + E) log V)", rank: 11 } : { ...mk(1), label: "O(V + E)", rank: 10.5 };
       cands.push({ cx, pat: /stack|stk/i.test(L.test) ? "depth_first_search" : "breadth_first_search", ev: `Queue/stack driven traversal${visited ? " with visited tracking" : ""}`, conf: visited ? HIGH : MED });
     }
   }
@@ -1277,7 +1309,9 @@ function correlateDynamicEvidence(testcases, evidenceScope, timeRank, includePoi
         const slope = sxy / sxx;
         const r2 = syy > 0 ? (sxy * sxy) / (sxx * syy) : 0;
         const model = slope < 0.35 ? "constant_or_logarithmic" : slope < 1.4 ? "linear_or_linearithmic" : slope < 2.4 ? "quadratic" : "super_quadratic";
-        fit = { model, slope: +slope.toFixed(2), r2: +r2.toFixed(2), confidence: r2 > 0.9 && xs.length >= 4 ? "high" : "medium" };
+        const isFewCases = pts.length < 6 || xs.length < 5 || Math.max(...sizes) < 200;
+        const dynConfidence = !isFewCases && r2 > 0.9 ? "high" : "medium";
+        fit = { model, slope: +slope.toFixed(2), r2: +r2.toFixed(2), confidence: dynConfidence };
         const expected = timeRank < 1e4 ? Math.floor(timeRank / 10) + (timeRank % 10 ? 0.1 : 0) : null;
         if (expected !== null) base.agreement = Math.abs(slope - expected) <= 0.6 ? "consistent" : "divergent";
       }
@@ -1361,44 +1395,97 @@ export async function analyzeComplexity({
 
   const want = new Set(include);
   const full = verbose || compat;
-  let entry;
-  try {
-    entry = getEntry(code, language);
-    if (!entry.time) entry.time = computeTime(entry);
-  } catch (err) {
-    return unknownResult(`Parsing error encountered: ${err.message}`, compat);
-  }
-  const t = entry.time;
-  let s = null;
-  if (want.has("space") || compat) {
+
+  // Check deterministic hash cache first for fast static retrieval
+  const hashKey = computeComplexityHash(code, language, ANALYZER_VERSION);
+  let staticData = staticAnalysisCache.get(hashKey);
+
+  if (!staticData) {
+    let entry;
+    try {
+      entry = getEntry(code, language);
+      if (!entry.time) entry.time = computeTime(entry);
+    } catch (err) {
+      return unknownResult(`Parsing error encountered: ${err.message}`, compat);
+    }
+    const t = entry.time;
     if (!entry.space) entry.space = computeSpace(entry, t);
-    s = entry.space;
+    const s = entry.space;
+
+    const summaryParts = [];
+    if (t?.bestEstimate) summaryParts.push(`Time: ${t.bestEstimate}`);
+    if (s) summaryParts.push(`Space: ${s.auxiliary} auxiliary, ${s.output} output (${s.total} total)`);
+
+    const timeOut = { bestEstimate: t.bestEstimate, confidence: t.confidence, asymptoticClass: t.asymptoticClass };
+    const spaceOut = { bestEstimate: s.auxiliary, auxiliary: s.auxiliary, output: s.output, total: s.total, confidence: s.confidence };
+
+    const baseResult = {
+      version: ANALYZER_VERSION,
+      status: "completed",
+      summary: summaryParts.join(", "),
+      time: { ...timeOut },
+      detectedPatterns: t.patterns,
+      space: { ...spaceOut },
+    };
+
+    staticData = {
+      t,
+      s,
+      summary: summaryParts.join(", "),
+      timeOut,
+      spaceOut,
+      patterns: t.patterns,
+      timeEvidence: t.evidence,
+      spaceEvidence: s.evidence,
+      rank: t.rank,
+      baseResult,
+    };
+
+    if (staticAnalysisCache.size >= MAX_STATIC_CACHE_ENTRIES) {
+      const oldestKey = staticAnalysisCache.keys().next().value;
+      staticAnalysisCache.delete(oldestKey);
+    }
+    staticAnalysisCache.set(hashKey, staticData);
   }
+
+  const isDefaultQuery =
+    (!testcases || testcases.length === 0) &&
+    !verbose &&
+    !compat &&
+    executionResult === null &&
+    include.length === 3 &&
+    include.includes("time") &&
+    include.includes("space") &&
+    include.includes("dynamic");
+
+  if (isDefaultQuery && staticData.baseResult) {
+    return staticData.baseResult;
+  }
+
+  const { t, s, summary, timeOut, spaceOut, patterns, timeEvidence, spaceEvidence, rank: tRank } = staticData;
+
+  // Separate dynamic evidence computation from static analysis
   const dyn =
     (want.has("dynamic") || compat) && Array.isArray(testcases) && testcases.length
-      ? correlateDynamicEvidence(testcases, evidenceScope, t.rank, full)
+      ? correlateDynamicEvidence(testcases, evidenceScope, tRank, full)
       : null;
 
-  const timeOut = { bestEstimate: t.bestEstimate, confidence: t.confidence, asymptoticClass: t.asymptoticClass };
-  const summaryParts = [];
-  if (want.has("time") || compat) summaryParts.push(`Time: ${t.bestEstimate}`);
-  if (s) summaryParts.push(`Space: ${s.auxiliary} auxiliary, ${s.output} output (${s.total} total)`);
-
-  const res = { version: ANALYZER_VERSION, status: "completed", summary: summaryParts.join(", ") };
+  const res = { version: ANALYZER_VERSION, status: "completed", summary };
   if (want.has("time") || compat) {
-    res.time = timeOut;
+    res.time = { ...timeOut };
     if (full) {
-      const ev = [...t.evidence];
+      const ev = [...timeEvidence];
       if (executionResult?.timeMs !== undefined) ev.push(`Empirical runtime: ${executionResult.timeMs}ms (benchmark only)`);
       res.time.evidence = ev;
     }
-    res.detectedPatterns = t.patterns;
+    res.detectedPatterns = patterns;
   }
-  if (s) {
-    res.space = { bestEstimate: s.auxiliary, auxiliary: s.auxiliary, output: s.output, total: s.total, confidence: s.confidence };
+  if (want.has("space") || compat) {
+    res.space = { ...spaceOut };
     if (full) {
-      res.space.evidence = [...s.evidence];
+      const ev = [...spaceEvidence];
       if (executionResult?.memoryKb !== undefined) res.space.evidence.push(`Empirical peak memory: ${executionResult.memoryKb} KB (benchmark only)`);
+      res.space.evidence = ev;
     }
   }
   if (dyn) res.dynamicEvidence = dyn;

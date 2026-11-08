@@ -2,6 +2,10 @@ import "dotenv/config";
 import app from "./app.js";
 import prisma from "./config/db.js";
 import { TOPIC_CATALOG } from "./data/topicCatalog.js";
+import {
+  startDailyProblemScheduler,
+  stopDailyProblemScheduler,
+} from "./services/dailyProblemService.js";
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -59,6 +63,7 @@ async function startServer() {
 
   server = app.listen(PORT, "0.0.0.0", async () => {
     console.log(`🚀 Server running at http://0.0.0.0:${PORT}`);
+    startDailyProblemScheduler();
     await checkCodeboxEngine();
   });
 
@@ -77,6 +82,8 @@ async function shutdown(signal) {
   shuttingDown = true;
 
   console.log(`\n⚠ ${signal} received. Shutting down gracefully...`);
+
+  stopDailyProblemScheduler();
 
   if (server?.listening) {
     server.close();

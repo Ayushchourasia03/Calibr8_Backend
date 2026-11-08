@@ -1473,28 +1473,33 @@ Executes student code against **visible/sample test cases only** (`isVisible: tr
 ```json
 {
   "success": true,
+  "verdict": "Accepted",
   "status": "Accepted",
   "passedCount": 2,
   "totalCount": 2,
-  "cases": [
+  "results": [
     {
-      "index": 0,
       "testIndex": 0,
       "isVisible": true,
+      "passed": true,
+      "status": "Accepted",
       "input": "4 9\n2 7 11 15",
       "expected": "0 1",
       "actual": "0 1",
-      "studentStdout": "",
-      "status": "Accepted",
-      "passed": true,
-      "timeMs": 42,
-      "cpuTimeMs": 42,
-      "wallTimeMs": 55,
-      "memoryKb": 12840,
-      "inputBytes": 16,
-      "errorText": null
+      "time": 42,
+      "memory": 12840
     }
-  ]
+  ],
+  "complexity": {
+    "time": {
+      "bestEstimate": "O(n)",
+      "confidence": "high"
+    },
+    "space": {
+      "bestEstimate": "O(n)",
+      "confidence": "high"
+    }
+  }
 }
 ```
 
@@ -1517,11 +1522,12 @@ Evaluates student code across all testcases (sample + hidden) using true tier sh
 ```
 
 #### Execution Modes:
-1. **Asynchronous Mode (`wait: false` or omitted)**: Returns `202 Accepted` immediately with `submissionId` and polling URL.
+1. **Asynchronous Mode (`wait: false` or omitted on `/submissions`)**: Returns `202 Accepted` immediately with `submissionId` and polling URL.
 ```json
 {
   "success": true,
   "submissionId": "sub_1740001234_abc89f",
+  "verdict": "QUEUED",
   "status": "QUEUED",
   "pollUrl": "/api/execution/submissions/sub_1740001234_abc89f",
   "message": "Submission received and queued for execution.",
@@ -1532,7 +1538,71 @@ Evaluates student code across all testcases (sample + hidden) using true tier sh
 }
 ```
 
-2. **Synchronous Mode (`wait: true` or route `/api/execute/submit`)**: Holds connection until evaluation completes, returning `200 OK` with full verdict, rewards, and sanitized testcase results.
+2. **Synchronous Mode (`wait: true` or route `/api/execution/submit`, `/api/execute/submit`)**: Holds connection until evaluation completes, returning `200 OK` with canonical verdict, rewards, compact complexity, and sanitized testcase results.
+```json
+{
+  "success": true,
+  "submissionId": "sub_1740001234_abc89f",
+  "verdict": "ACCEPTED",
+  "status": "ACCEPTED",
+  "tierReached": "Tier 3 (Optimal)",
+  "passedCount": 5,
+  "totalCount": 5,
+  "time": "52ms",
+  "memory": 13400,
+  "createdAt": "2026-11-02T22:00:00.000Z",
+  "firstFailure": null,
+  "reward": {
+    "awarded": true,
+    "points": 10,
+    "scoreDelta": 100,
+    "coinsEarned": 0,
+    "stats": {
+      "rating": 810,
+      "tier": "Prism I",
+      "score": 10,
+      "scoreUnits": 100,
+      "coins": 130,
+      "streak": 1,
+      "longestStreak": 1
+    }
+  },
+  "rewardError": false,
+  "results": [
+    {
+      "testIndex": 0,
+      "isVisible": true,
+      "passed": true,
+      "status": "Accepted",
+      "input": "4 9\n2 7 11 15",
+      "expected": "0 1",
+      "actual": "0 1"
+    },
+    {
+      "testIndex": 2,
+      "isVisible": false,
+      "passed": true,
+      "status": "Accepted",
+      "time": 48,
+      "memory": 13400
+    }
+  ],
+  "complexity": {
+    "time": {
+      "bestEstimate": "O(n)",
+      "confidence": "high"
+    },
+    "space": {
+      "bestEstimate": "O(n)",
+      "confidence": "high"
+    }
+  },
+  "problem": {
+    "slug": "two-sum",
+    "title": "Two Sum"
+  }
+}
+```
 
 ---
 
@@ -2149,3 +2219,99 @@ Calibr8 includes an intelligent, zero-configuration database layer designed to w
 - **Initial Balance**: `100` Coins (sufficient to purchase themes)
 - **Rating**: `800` (Prism I Tier)
 - **1-Click Authentication**: Available directly on the interactive dashboard (`/`) via the `⚡ 1-Click Demo Login` button.
+
+---
+
+## 19. Automated Daily Problem of the Day System (`/api/daily-problem`)
+
+### 19.1 Architecture & Selection Mechanism
+- **Midnight Scheduling**: Automatically selects a random problem at exactly **12:00 AM IST (`Asia/Kolkata`)** every calendar day.
+- **Authoritative Timezone**: `Asia/Kolkata` (UTC+05:30) is the sole day boundary reference regardless of user client timezones.
+- **Problem Repetition Policy (No-Repeat-Until-Exhaustion)**:
+  1. Prefers eligible (published/active) problems that have never appeared in the current selection cycle.
+  2. Tracks the active `cycle` index across daily problem records.
+  3. When all eligible problems have appeared, resets the selection cycle (`cycle + 1`).
+  4. In a new cycle, excludes the immediately previous day's problem to avoid back-to-back repetitions (unless only one problem exists).
+  5. If only 1 eligible problem exists, gracefully re-selects it without error.
+- **Failure Recovery & Concurrency Safety**:
+  - Automatically runs an assignment check on server startup to recover from missed executions or restarts.
+  - Implements **lazy generation fallback**: if `GET /api/daily-problem` is requested and today's record does not exist, it is generated atomically on demand.
+  - Thread-safe in-flight Promise locking combined with database-level uniqueness (`@@unique([istDate])`) ensures that multiple concurrent requests or clustered instances never produce conflicting records.
+- **Dedicated Completion Tracking**:
+  - `DailyProblemCompletion` model with `@@unique([userId, dailyProblemId])` tracks each user's successful daily completion.
+  - Grants +2 coins via `CoinTransaction` (`type: "DAILY_PROBLEM"`).
+  - Fully idempotent: multiple submissions, concurrent submissions, or non-accepted verdicts never duplicate rewards.
+
+---
+
+### 19.2 Get Today's Daily Problem
+Returns today's assigned Daily Problem metadata and the authenticated user's completion status. Ensures today's assignment exists before responding.
+
+- **Method & Route**: `GET /api/daily-problem` (Alias: `GET /api/coins/daily-problem`)
+- **Protected**: Optional (`Authorization: Bearer <token>`)
+- **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "istDate": "2026-11-08",
+  "cycle": 1,
+  "problem": {
+    "id": "two-sum",
+    "slug": "two-sum",
+    "title": "Two Sum",
+    "difficulty": "Easy",
+    "description": "Given an array of integers nums and an integer target...",
+    "tags": ["Array", "Hash Table"],
+    "solvedCount": 42
+  },
+  "reward": {
+    "coins": 2,
+    "description": "+2 coins for your first ACCEPTED submission on today's challenge"
+  },
+  "completed": false,
+  "solvedToday": false,
+  "rewardClaimed": false,
+  "completedAt": null,
+  "nextRefreshMs": 67123000,
+  "nextRefreshTime": "12:00 AM IST"
+}
+```
+
+---
+
+### 19.3 Get Daily Problem History
+Returns historical daily problem records ordered by `istDate` descending with pagination.
+
+- **Method & Route**: `GET /api/daily-problem/history` (Alias: `GET /api/coins/daily-problem/history`)
+- **Protected**: Optional (`Authorization: Bearer <token>`)
+- **Query Parameters**:
+  - `page` (integer, default: 1)
+  - `limit` (integer, default: 30, max: 100)
+- **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "count": 10,
+  "total": 35,
+  "page": 1,
+  "totalPages": 4,
+  "history": [
+    {
+      "id": "dp_2026-11-08",
+      "istDate": "2026-11-08",
+      "cycle": 1,
+      "createdAt": "2026-11-08T00:00:00.000Z",
+      "completed": true,
+      "problem": {
+        "id": "two-sum",
+        "slug": "two-sum",
+        "title": "Two Sum",
+        "difficulty": "Easy",
+        "tags": ["Array", "Hash Table"],
+        "solvedCount": 42
+      }
+    }
+  ]
+}
+```
+

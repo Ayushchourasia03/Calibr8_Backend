@@ -3,6 +3,7 @@
 
 import prisma from "../config/db.js";
 import { getISTDateString, calcLoginReward, toISTDateString } from "./streakService.js";
+import { ensureDailyProblem } from "./dailyProblemService.js";
 
 function safeNumber(v, fallback = 0) {
   const n = Number(v);
@@ -211,6 +212,20 @@ export async function grantDailyProblemReward(userId, problemId, submissionIdOrD
         return { granted: false, awarded: false, coins: 0, coinsEarned: 0, reason: "ALREADY_CLAIMED" };
       }
 
+      if (daily.id) {
+        const existingCompletion = await tx.dailyProblemCompletion.findUnique({
+          where: {
+            userId_dailyProblemId: {
+              userId,
+              dailyProblemId: daily.id,
+            },
+          },
+        });
+        if (existingCompletion) {
+          return { granted: false, awarded: false, coins: 0, coinsEarned: 0, reason: "ALREADY_CLAIMED" };
+        }
+      }
+
       const user = await tx.user.findUnique({ where: { id: userId } });
       if (!user) {
         return { granted: false, awarded: false, coins: 0, coinsEarned: 0, reason: "USER_NOT_FOUND" };
@@ -234,6 +249,18 @@ export async function grantDailyProblemReward(userId, problemId, submissionIdOrD
           balanceAfter: newBalance,
         },
       });
+
+      if (daily.id) {
+        try {
+          await tx.dailyProblemCompletion.create({
+            data: {
+              userId,
+              dailyProblemId: daily.id,
+              submissionId: submissionId || null,
+            },
+          });
+        } catch (_) {}
+      }
 
       return {
         granted: true,
@@ -307,7 +334,7 @@ export async function getCoinHistory(userId, { limit = 20, offset = 0 } = {}) {
  * Returns today's active DailyProblem, problem metadata, and user's claim status.
  */
 export async function getDailyProblem(istDate = getISTDateString(), userId = null) {
-  const daily = await prisma.dailyProblem.findUnique({
+  let daily = await prisma.dailyProblem.findUnique({
     where: { istDate },
     include: {
       problem: {
@@ -317,10 +344,19 @@ export async function getDailyProblem(istDate = getISTDateString(), userId = nul
           title: true,
           difficulty: true,
           description: true,
+          tags: true,
         },
       },
     },
   });
+
+  if (!daily || !daily.problem) {
+    try {
+      daily = await ensureDailyProblem(istDate);
+    } catch (_) {
+      return null;
+    }
+  }
 
   if (!daily || !daily.problem) {
     return null;
@@ -335,6 +371,15 @@ export async function getDailyProblem(istDate = getISTDateString(), userId = nul
     });
     rewardClaimed = Boolean(claim);
 
+    const completion = await prisma.dailyProblemCompletion.findUnique({
+      where: {
+        userId_dailyProblemId: {
+          userId,
+          dailyProblemId: daily.id,
+        },
+      },
+    });
+
     const submission = await prisma.submission.findFirst({
       where: {
         userId,
@@ -342,7 +387,8 @@ export async function getDailyProblem(istDate = getISTDateString(), userId = nul
         status: "ACCEPTED",
       },
     });
-    solvedToday = Boolean(submission);
+    solvedToday = Boolean(submission || completion || claim);
+    if (completion) rewardClaimed = true;
   }
 
   return {

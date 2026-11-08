@@ -10,6 +10,7 @@ datasource db {
 model User {
   id                String   @id @default(uuid())
   email             String   @unique
+  phone             String?  @unique
   passwordHash      String
   name              String
   difficulty        String?
@@ -41,8 +42,9 @@ model User {
   topics                               UserTopic[]
   submissions                          Submission[]
   coinTransactions                     CoinTransaction[]
-  activeTheme                          Theme?                @relation("ActiveTheme", fields: [activeThemeId], references: [id])
-  themes_users_active_theme_idTothemes Theme?                @relation("users_active_theme_idTothemes", fields: [active_theme_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  dailyCompletions                     DailyProblemCompletion[]
+  activeTheme                          Theme?                   @relation("ActiveTheme", fields: [activeThemeId], references: [id])
+  themes_users_active_theme_idTothemes Theme?                   @relation("users_active_theme_idTothemes", fields: [active_theme_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([college, score])
   @@index([branch, score])
@@ -289,13 +291,31 @@ model CoinTransaction {
 }
 
 model DailyProblem {
-  id        String   @id @default(cuid())
-  istDate   String   @unique @map("istDate")
-  problemId String   @map("problemId")
-  problem   Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  id          String                   @id @default(cuid())
+  istDate     String                   @unique @map("istDate")
+  problemId   String                   @map("problemId")
+  cycle       Int                      @default(1) @map("cycle")
+  problem     Problem                  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  createdAt   DateTime                 @default(now())
+  completions DailyProblemCompletion[]
 
   @@index([istDate])
   @@index([problemId])
+  @@index([cycle])
   @@map("daily_problems")
+}
+
+model DailyProblemCompletion {
+  id             String       @id @default(cuid())
+  userId         String       @map("userId")
+  dailyProblemId String       @map("dailyProblemId")
+  submissionId   String?      @map("submissionId")
+  completedAt    DateTime     @default(now()) @map("completedAt")
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyProblem   DailyProblem @relation(fields: [dailyProblemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dailyProblemId])
+  @@index([userId])
+  @@index([dailyProblemId])
+  @@map("daily_problem_completions")
 }

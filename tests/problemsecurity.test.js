@@ -194,8 +194,9 @@ async function runTests() {
       })
     });
     const syntaxErrData = await syntaxErrRes.json();
-    assert.strictEqual(syntaxErrData.cases[0].status, "Compilation Error");
-    assert.ok(syntaxErrData.cases[0].errorText.includes("undeclared_variable"));
+    const firstCase = (syntaxErrData.results || syntaxErrData.cases)[0];
+    assert.strictEqual(firstCase.status, "Compilation Error");
+    assert.ok(firstCase.errorText.includes("undeclared_variable"));
     console.log("✔ Compiler diagnostics captured and returned correctly for C++ syntax error");
 
     // 6. Objective A Verification: When CodeBox is unavailable (unset URL), fails with 503 EXECUTION_UNAVAILABLE

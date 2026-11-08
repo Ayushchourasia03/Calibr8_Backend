@@ -22,6 +22,26 @@ const BATCH_POLL_MAX_INTERVAL_MS = 800;
 const BATCH_TIMEOUT_MS = 60 * 1000;
 const MAX_CONCURRENT_BATCHES = Number(process.env.CODEBOX_MAX_CONCURRENT_BATCHES) || 2;
 
+/** Compact complexity summary avoiding unnecessary metadata */
+export function compactComplexitySummary(complexity) {
+  if (!complexity) return null;
+  return {
+    time: complexity.time
+      ? {
+          bestEstimate: complexity.time.bestEstimate,
+          confidence: complexity.time.confidence,
+        }
+      : null,
+    space: complexity.space
+      ? {
+          bestEstimate: complexity.space.bestEstimate,
+          confidence: complexity.space.confidence,
+        }
+      : null,
+    summary: complexity.summary || null,
+  };
+}
+
 /**
  * List enabled execution languages, versions and Judge0 IDs.
  * GET /api/execution/languages
@@ -424,10 +444,11 @@ export const runCode = async (req, res, next) => {
 
       return res.status(200).json({
         success: true,
+        verdict: result.status === "OK" ? "Accepted" : result.status,
         status: result.status === "OK" ? "Accepted" : result.status,
         passedCount: result.status === "OK" ? 1 : 0,
         totalCount: 1,
-        cases: [
+        results: [
           {
             index: 0,
             testIndex: 0,
@@ -539,18 +560,18 @@ export const runCode = async (req, res, next) => {
           timeMs: Math.max(...results.map((r) => r.timeMs || 0), 0),
           memoryKb: Math.max(...results.map((r) => r.memoryKb || 0), 0),
         },
-        testcases: results,
-        evidenceScope: "visible_tests",
+        include: ["time", "space"], // Compact static analysis without dynamic evidence overhead
       });
     } catch {}
 
     res.status(200).json({
       success: true,
+      verdict: overallStatus,
       status: overallStatus,
       passedCount,
       totalCount: results.length,
-      cases: results,
-      complexity,
+      results,
+      complexity: compactComplexitySummary(complexity),
     });
   } catch (err) {
     next(err);
@@ -668,7 +689,7 @@ async function evaluateAllTestcases(problem, language, code, providedFullCode) {
           firstFailure = {
             testIndex: tc.testIndex ?? (results.length - 1),
             status: failureType,
-            errorText: execResult.errorText,
+            errorText: isVisible ? execResult.errorText : null,
             input: isVisible ? testInput : undefined,
             expected: isVisible ? expectedOutput : undefined,
             actual: isVisible ? execResult.actual : undefined,
@@ -779,7 +800,17 @@ export const submitSolution = async (req, res, next) => {
           passedCount: 0,
           totalCount: totalTcs,
         },
-        include: { problem: true },
+        select: {
+          id: true,
+          problemId: true,
+          userId: true,
+          language: true,
+          code: true,
+          status: true,
+          passedCount: true,
+          totalCount: true,
+          createdAt: true,
+        },
       });
     } catch (dbErr) {
       if (userId) {
@@ -791,7 +822,13 @@ export const submitSolution = async (req, res, next) => {
       }
     }
 
-    submissionCache.set(submission.id, { ...submission });
+    submissionCache.set(submission.id, {
+      ...submission,
+      problem: {
+        slug: problem.slug,
+        title: problem.title,
+      },
+    });
 
     const runEvaluation = async () => {
       const evaluation = await evaluateAllTestcases(
@@ -866,7 +903,14 @@ export const submitSolution = async (req, res, next) => {
             time: `${evaluation.maxTimeMs}ms`,
             memory: evaluation.maxMemoryKb,
           },
-          include: { problem: true },
+          select: {
+            id: true,
+            status: true,
+            passedCount: true,
+            totalCount: true,
+            time: true,
+            memory: true,
+          },
         });
         updated = {
           ...dbUpdated,
@@ -911,8 +955,7 @@ export const submitSolution = async (req, res, next) => {
             timeMs: evaluation.maxTimeMs,
             memoryKb: evaluation.maxMemoryKb,
           },
-          testcases: evaluation.results || [],
-          evidenceScope: "submission_tests",
+          include: ["time", "space"],
         });
       } catch (err) {
         console.warn("[Complexity Analyzer Warning]:", err.message);
@@ -936,28 +979,23 @@ export const submitSolution = async (req, res, next) => {
 
     if (isDirectExecuteRoute) {
       const completed = await runEvaluation();
-      const passed = completed.passedCount;
-      const total = completed.totalCount;
 
       return res.status(200).json({
         success: true,
-        passed,
-        total,
-        results: publicTestResults(completed.results || []),
         submissionId: submission.id,
         verdict: completed.status,
         status: completed.status,
         tierReached: completed.tierReached,
+        passedCount: completed.passedCount,
+        totalCount: completed.totalCount,
+        time: completed.time || `${completed.maxTimeMs}ms`,
+        memory: completed.memory || completed.maxMemoryKb,
+        results: publicTestResults(completed.results || []),
+        firstFailure: completed.firstFailure || null,
+        complexity: compactComplexitySummary(completed.complexity),
         reward: completed.reward || null,
         rewardError: completed.rewardError || false,
         dailyProblemReward: completed.dailyProblemReward || null,
-        passedCount: passed,
-        totalCount: total,
-        time: completed.time || `${completed.maxTimeMs}ms`,
-        memory: completed.memory || completed.maxMemoryKb,
-        firstFailure: completed.firstFailure,
-        cases: publicTestResults(completed.results || []),
-        complexity: completed.complexity || null,
         problem: {
           slug: problem.slug,
           title: problem.title,
@@ -987,6 +1025,7 @@ export const submitSolution = async (req, res, next) => {
     res.status(202).json({
       success: true,
       submissionId: submission.id,
+      verdict: "QUEUED",
       status: "QUEUED",
       pollUrl: `/api/execution/submissions/${submission.id}`,
       message: "Submission received and queued for execution.",
@@ -1012,16 +1051,43 @@ export const getSubmissionStatus = async (req, res, next) => {
     try {
       submission = await prisma.submission.findUnique({
         where: { id },
-        include: { problem: true },
+        select: {
+          id: true,
+          problemId: true,
+          userId: true,
+          language: true,
+          code: true,
+          status: true,
+          passedCount: true,
+          totalCount: true,
+          time: true,
+          memory: true,
+          createdAt: true,
+          problem: {
+            select: {
+              slug: true,
+              title: true,
+            },
+          },
+        },
       });
     } catch (dbErr) {
-      // In-memory poll
+      // In-memory poll fallback
     }
 
     const cachedSubmission = submissionCache.get(id);
     if (cachedSubmission) {
       submission = submission
-        ? { ...cachedSubmission, ...submission }
+        ? {
+            ...submission,
+            results: cachedSubmission.results,
+            complexity: cachedSubmission.complexity,
+            firstFailure: cachedSubmission.firstFailure,
+            tierReached: cachedSubmission.tierReached,
+            reward: cachedSubmission.reward,
+            dailyProblemReward: cachedSubmission.dailyProblemReward,
+            problem: submission.problem || cachedSubmission.problem,
+          }
         : cachedSubmission;
     }
 
@@ -1053,21 +1119,24 @@ export const getSubmissionStatus = async (req, res, next) => {
         id: submission.id,
         problemId: submission.problemId,
         language: submission.language,
-        status: submission.status,
         verdict: submission.status,
+        status: submission.status,
         tierReached,
-        reward: submission.reward || null,
-        rewardError: submission.rewardError || false,
-        dailyProblemReward: submission.dailyProblemReward || null,
         passedCount: submission.passedCount,
         totalCount: submission.totalCount,
-        time: submission.time || "45ms",
-        memory: submission.memory || 14000,
+        time: submission.time || "0ms",
+        memory: submission.memory || 0,
         createdAt: submission.createdAt,
         firstFailure: submission.firstFailure || null,
         results: publicTestResults(submission.results || []),
-        complexity: cachedSubmission?.complexity || submission.complexity || null,
-        problem: submission.problem || { slug: "problem", title: "Problem" },
+        complexity: compactComplexitySummary(cachedSubmission?.complexity || submission.complexity || null),
+        reward: submission.reward || null,
+        rewardError: submission.rewardError || false,
+        dailyProblemReward: submission.dailyProblemReward || null,
+        problem: {
+          slug: submission.problem?.slug || "problem",
+          title: submission.problem?.title || "Problem",
+        },
       },
     });
   } catch (err) {
