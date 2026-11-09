@@ -30,7 +30,6 @@ model User {
   preferredLanguage String   @default("cpp") @map("preferred_language")
   coins             Int      @default(100)
   activeThemeId     String?  @map("activeThemeId")
-  active_theme_id   String?
 
   lastStreakDate   DateTime?
   longestStreak    Int       @default(0)
@@ -44,7 +43,6 @@ model User {
   coinTransactions                     CoinTransaction[]
   dailyCompletions                     DailyProblemCompletion[]
   activeTheme                          Theme?                   @relation("ActiveTheme", fields: [activeThemeId], references: [id])
-  themes_users_active_theme_idTothemes Theme?                   @relation("users_active_theme_idTothemes", fields: [active_theme_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([college, score])
   @@index([branch, score])
@@ -108,7 +106,6 @@ model Theme {
   createdAt                           DateTime    @default(now())
   purchases                           UserTheme[]
   activeForUsers                      User[]      @relation("ActiveTheme")
-  users_users_active_theme_idTothemes User[]      @relation("users_active_theme_idTothemes")
 
   @@map("themes")
 }
@@ -294,19 +291,15 @@ model DailyProblem {
   id          String                   @id @default(cuid())
   istDate     String                   @unique @map("istDate")
   problemId   String                   @map("problemId")
-  cycle       Int                      @default(1) @map("cycle")
-  problem     Problem                  @relation(fields: [problemId], references: [id], onDelete: Cascade)
   createdAt   DateTime                 @default(now())
+  problem     Problem                  @relation(fields: [problemId], references: [id], onDelete: Cascade)
   completions DailyProblemCompletion[]
 
-  @@index([istDate])
   @@index([problemId])
-  @@index([cycle])
   @@map("daily_problems")
 }
 
 model DailyProblemCompletion {
-  id             String       @id @default(cuid())
   userId         String       @map("userId")
   dailyProblemId String       @map("dailyProblemId")
   submissionId   String?      @map("submissionId")
@@ -314,8 +307,7 @@ model DailyProblemCompletion {
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   dailyProblem   DailyProblem @relation(fields: [dailyProblemId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, dailyProblemId])
-  @@index([userId])
+  @@id([userId, dailyProblemId])
   @@index([dailyProblemId])
   @@map("daily_problem_completions")
 }

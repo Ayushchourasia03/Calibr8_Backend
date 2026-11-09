@@ -56,7 +56,7 @@ assert.equal(firstReward.awarded, true);
 assert.equal(firstReward.points, 10);
 assert.equal(firstReward.scoreDelta, 100);
 assert.equal(firstReward.coinsEarned, 0);
-assert.equal(firstReward.stats.streak, 1);
+assert.equal(firstReward.stats.streak, 0);
 assert.equal(firstReward.stats.coins, 100);
 assert.equal(firstReward.stats.scoreUnits, 100);
 
@@ -72,8 +72,8 @@ assert.deepEqual(duplicateReward, {
   coinsEarned: 0,
   stats: {
     ...firstReward.stats,
-    streak: 2,
-    longestStreak: 2,
+    streak: 0,
+    longestStreak: 0,
   },
 });
 
@@ -84,8 +84,8 @@ const nextDayReward = await applyAcceptedSubmissionReward(tx, {
 });
 assert.equal(nextDayReward.awarded, true);
 assert.equal(nextDayReward.points, 50);
-assert.equal(nextDayReward.stats.streak, 3);
-assert.equal(nextDayReward.stats.longestStreak, 3);
+assert.equal(nextDayReward.stats.streak, 0);
+assert.equal(nextDayReward.stats.longestStreak, 0);
 assert.equal(nextDayReward.stats.scoreUnits, 600);
 assert.equal(nextDayReward.stats.coins, 100);
 assert.equal(progress.size, 2);
@@ -129,7 +129,7 @@ const fallbackDuplicateReward = await fallbackPrisma.$transaction((fallbackTx) =
   }),
 );
 assert.equal(fallbackFirstReward.awarded, true);
-assert.equal(fallbackFirstReward.stats.streak, 5);
+assert.equal(fallbackFirstReward.stats.streak, 4);
 assert.equal(fallbackFirstReward.stats.longestStreak, 6);
 assert.equal(fallbackDuplicateReward.awarded, false);
 assert.equal(fallbackDuplicateReward.stats.scoreUnits, 275);

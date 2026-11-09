@@ -6,16 +6,18 @@ Complete guide for Calibr8's persistent, audited coin rewards, streak tracking, 
 
 ## 1. Locked Business Rules
 
-1. **Default Balance**: New accounts begin with `100 coins`, `streak: 0`.
-2. **IST Date Boundary**: All daily checks use Indian Standard Time (`Asia/Kolkata`, UTC+5:30). Day changes at `00:00 IST`. Never uses client system dates.
-3. **Daily Login (+1)**: First `POST /api/auth/login` on a new IST day awards `+1 coin`. Repeated logins, token refresh, or `/auth/me` on the same day award 0 extra coins.
-4. **Milestone Bonuses**:
-   - **7-day streak milestone** (Day 7, 14, 21, 28, 35...): `+5 coins` (`STREAK_7_BONUS`), granting `+6 total` on Day 7.
-   - **30-day streak milestone** (Day 30, 60, 90...): `+25 coins` (`STREAK_30_BONUS`), granting `+26 total` on Day 30. No +5 stacking on day 30.
-5. **Missed Day Reset**: Skipping a day resets `streak` to 1 on next login. `coins` are kept, and `longestStreak` is preserved.
-6. **Daily Problem (+2)**: First `ACCEPTED` submission for that day's designated `DailyProblem` awards `+2 coins`. Duplicate claims or wrong problems award 0 coins.
-7. **Single Writing Authority**: Only `src/services/coinService.js` is permitted to update `User.coins`. All updates write an audit row to `CoinTransaction` with `balanceAfter`.
-8. **Never-Block Rule**: Coin logic errors never fail or crash user login or code submissions.
+1. **Default Balance**: New accounts begin with `100 coins`, `streak: 0`, and `longestStreak: 0`.
+2. **IST Date Boundary**: All daily checks use Indian Standard Time (`Asia/Kolkata`, UTC+5:30). Day changes at `00:00 IST` (`YYYY-MM-DD`). Never uses client system dates.
+3. **Daily Login (+1)**: First `POST /api/auth/login` on a new IST day awards `+1 coin`. Repeated logins, token refresh, or `/auth/me` on the same day award 0 extra coins. Login rewards are independent of Daily Problem completion and do **not** alter the Daily Problem streak.
+4. **Daily Problem (+2 coins, +1 streak)**: First `ACCEPTED` submission for that day's designated `DailyProblem` awards `+2 coins` and advances the user's `streak` by 1.
+5. **Streak Rules**:
+   - First-ever Daily Problem completion: `streak = 1`.
+   - Consecutive calendar day solves: `streak = previous streak + 1`.
+   - Missing a calendar day: `streak` resets to `1` on the next Daily Problem completion.
+   - `longestStreak = max(longestStreak, streak)` is preserved.
+   - Only Daily Problem completion counts towards this streak; solving other problems does not alter the Daily Problem streak.
+6. **Single Writing Authority**: Only `src/services/coinService.js` and `src/services/dailyProblemService.js` update `User.coins` and `streak`. All coin updates write an audit row to `CoinTransaction` with `balanceAfter`.
+7. **Never-Block Rule**: Coin logic errors never fail or crash user login or code submissions.
 
 ---
 
@@ -66,10 +68,10 @@ node tests/dailyLoginReward.test.js
 
 ## 4. API Endpoints Quick Reference
 
-- `POST /api/auth/login` → Returns `user`, `stats`, `token`, and `rewards: { coinsEarnedToday, loginCoins, bonusCoins, bonusType, streak, longestStreak, isNewDay }`.
+- `POST /api/auth/login` → Returns `user`, `stats`, `token`, and `rewards: { coinsEarnedToday, loginCoins, streak, longestStreak, isNewDay }`.
 - `GET /api/coins/balance` (Bearer) → `{ coins, streak, longestStreak, lastLoginISTDate }`.
 - `GET /api/coins/history?limit=20&offset=0` (Bearer) → `{ transactions: [...] }`.
-- `GET /api/daily-problem` → `{ istDate, problem: { id, slug, title, difficulty } }`.
-- `POST /api/execution/submissions` → Response includes `dailyProblemReward: { granted, coins }`.
+- `GET /api/daily-problem` → `{ istDate, problem: { id, slug, title, difficulty }, reward: { coins: 2, streak: 1 }, streak, longestStreak, completed }`.
+- `POST /api/execution/submissions` → Response includes `dailyReward: { granted, coinsEarned, streak, longestStreak }`.
 
 Full documentation: see `API_DOC.md`.

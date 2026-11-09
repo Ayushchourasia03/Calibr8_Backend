@@ -64,13 +64,14 @@ export const getTodayDailyProblem = async (req, res, next) => {
     res.status(200).json({
       success: true,
       istDate: data.istDate,
-      cycle: data.cycle,
       problem: data.problem,
       reward: data.reward,
       completed: data.completed,
       solvedToday: data.solvedToday,
       rewardClaimed: data.rewardClaimed,
       completedAt: data.completedAt,
+      streak: data.streak ?? 0,
+      longestStreak: data.longestStreak ?? 0,
       nextRefreshMs: data.nextRefreshMs,
       nextRefreshTime: data.nextRefreshTime,
     });

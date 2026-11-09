@@ -131,7 +131,9 @@ export const getAllDsaTopics = async (req, res, next) => {
         { slug: "graphs", name: "Graphs", order: 10 },
         { slug: "dynamic-programming", name: "Dynamic Programming", order: 11 },
       ];
-      defaultCategories.forEach((d) => categoryMap.set(d.slug, { id: `dsa-${d.slug}`, ...d }));
+      defaultCategories.forEach((d) =>
+        categoryMap.set(d.slug, { id: `dsa-${d.slug}`, ...d }),
+      );
 
       problems.forEach((p) => {
         if (!p.topicSlug) return;
@@ -156,7 +158,8 @@ export const getAllDsaTopics = async (req, res, next) => {
         (problem) =>
           problem.topicSlug === t.slug ||
           String(problem.topic).toLowerCase() === t.name.toLowerCase() ||
-          (t.slug === "arrays" && String(problem.topic).toLowerCase().includes("array")),
+          (t.slug === "arrays" &&
+            String(problem.topic).toLowerCase().includes("array")),
       ).length,
     }));
 
@@ -182,7 +185,9 @@ export const getProblemsByDsaTopic = async (req, res, next) => {
 
     if (!topic) {
       const cleanSlug = String(slug).toLowerCase().trim();
-      const prettyName = cleanSlug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      const prettyName = cleanSlug
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
       topic = {
         id: `dsa-${cleanSlug}`,
         slug: cleanSlug,
@@ -190,54 +195,29 @@ export const getProblemsByDsaTopic = async (req, res, next) => {
       };
     }
 
-    const where = { dsaTopicId: topic.id };
-    if (difficulty) {
-      where.difficulty = { equals: difficulty, mode: "insensitive" };
-    }
-    if (search && search.trim()) {
-      where.OR = [
-        { title: { contains: search.trim(), mode: "insensitive" } },
-        { slug: { contains: search.trim(), mode: "insensitive" } },
-      ];
-    }
-
-    let problems = [];
-    try {
-      problems = await prisma.problem.findMany({
-        where,
-        orderBy: { problemNumber: "asc" },
-        select: {
-          id: true,
-          problemNumber: true,
-          slug: true,
-          title: true,
-          difficulty: true,
-          tags: true,
-        },
-      });
-    } catch {}
-
-    if (problems.length === 0) {
-      const catalog = await listAllProblems({
-        difficulty,
-        search,
-      });
-      problems = catalog
-        .filter((p) => {
-          if (p.topicSlug === topic.slug) return true;
-          if (String(p.topic).toLowerCase() === String(topic.name).toLowerCase()) return true;
-          if (topic.slug === "arrays" && String(p.topic).toLowerCase().includes("array")) return true;
-          return false;
-        })
-        .map((problem) => ({
-          id: problem.id,
-          problemNumber: problem.problemNumber,
-          slug: problem.slug,
-          title: problem.title,
-          difficulty: problem.difficulty,
-          tags: problem.tags,
-        }));
-    }
+    const catalog = await listAllProblems({ difficulty, search });
+    const problems = catalog
+      .filter((problem) => {
+        if (problem.topicSlug === topic.slug) return true;
+        if (
+          String(problem.topic).toLowerCase() ===
+          String(topic.name).toLowerCase()
+        ) {
+          return true;
+        }
+        return (
+          topic.slug === "arrays" &&
+          String(problem.topic).toLowerCase().includes("array")
+        );
+      })
+      .map((problem) => ({
+        id: problem.id,
+        problemNumber: problem.problemNumber,
+        slug: problem.slug,
+        title: problem.title,
+        difficulty: problem.difficulty,
+        tags: problem.tags,
+      }));
 
     res.status(200).json({
       topic: { id: topic.id, slug: topic.slug, name: topic.name },

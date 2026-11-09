@@ -20,17 +20,18 @@ Audit the Calibr8 coin-rewards implementation, check it, test it, implement what
 
 ---
 
-## 3. Locked Business Rules
-- New user starts with **100 coins** by default.
+## 3. Locked Business Rules (FR-01 through FR-07)
+- New user starts with **100 coins**, `streak: 0`, and `longestStreak: 0` by default.
 - Day = **Asia/Kolkata IST date (YYYY-MM-DD)**, day starts 00:00 IST. Never use UTC or client device date.
-- **Daily login**: +1 only on first `POST /api/auth/login` on a new IST day. Refresh, /me, or re-login same day = 0.
-- **Daily problem**: +2 only for solving that day's assigned DailyProblem with an ACCEPTED submission, once per user per day.
-- **Bonus stacking**: Day 7 = +1 +5 = +6 total. Day 30 = +1 +25 = +26 total, NO extra +5 on day 30. Bonus repeats every 7 / 30 days.
-  - Milestone 30 (30, 60, 90...): +25, type `STREAK_30_BONUS`
-  - Milestone 7 (7, 14, 21, 28, 35... not divisible by 30): +5, type `STREAK_7_BONUS`
-- **Missed day**: streak resets to 1 on next login, coins kept, longestStreak preserved.
-- Only `coinService.js` may write `User.coins`.
-- Every coin change must write an audit row to `CoinTransaction` with `balanceAfter`.
+- **Daily login (FR-05)**: +1 coin only on first `POST /api/auth/login` on a new IST day (`lastLoginISTDate`). Re-login same day = 0 coins. Login rewards do **not** increment or alter the Daily Problem streak.
+- **Daily problem selection (FR-01, FR-02)**: Selected randomly from the existing `problems` table, avoiding yesterday's problem when at least 2 problems exist. No cycle field or duplicate problem bank.
+- **Daily problem completion (FR-03, FR-04, FR-06)**:
+  - User receives **+2 coins** and **+1 streak** only for an ACCEPTED submission for today's assigned Daily Problem.
+  - Consecutive day solve: `streak = previous streak + 1`.
+  - Missed day: `streak` resets to `1` on the next solve.
+  - `longestStreak = max(longestStreak, streak)` is preserved.
+  - Multiple solves on the same day grant no additional coins or streak (`DailyProblemCompletion` composite key `@@id([userId, dailyProblemId])`).
+- Every coin change writes an audit row to `CoinTransaction` with `balanceAfter`.
 - Coin failures must NEVER block login or submission. Catch, log, return rewards 0 / granted false, still return 200.
 
 ---
@@ -38,12 +39,13 @@ Audit the Calibr8 coin-rewards implementation, check it, test it, implement what
 ## 4. Data Model Specifications
 In model `User`:
 ```prisma
-  coins            Int               @default(100)
-  streak           Int               @default(0)
-  lastStreakDate   DateTime?
-  longestStreak    Int               @default(0)
-  lastLoginISTDate String?           @map("lastLoginISTDate")
-  coinTransactions CoinTransaction[]
+  coins                  Int                      @default(100)
+  streak                 Int                      @default(0)
+  lastStreakDate         DateTime?
+  longestStreak          Int                      @default(0)
+  lastLoginISTDate       String?                  @map("lastLoginISTDate")
+  coinTransactions       CoinTransaction[]
+  dailyProblemCompletions DailyProblemCompletion[]
 ```
 
 In model `Problem`:
@@ -70,14 +72,26 @@ model CoinTransaction {
 }
 
 model DailyProblem {
-  id        String   @id @default(cuid())
-  istDate   String   @unique @map("istDate")
-  problemId String   @map("problemId")
-  problem   Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  id          String                   @id @default(cuid())
+  istDate     String                   @unique @map("istDate")
+  problemId   String                   @map("problemId")
+  problem     Problem                  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  createdAt   DateTime                 @default(now())
+  completions DailyProblemCompletion[]
 
-  @@index([istDate])
   @@map("daily_problems")
+}
+
+model DailyProblemCompletion {
+  userId         String       @map("userId")
+  dailyProblemId String       @map("dailyProblemId")
+  completedAt    DateTime     @default(now()) @map("completedAt")
+  dailyProblem   DailyProblem @relation(fields: [dailyProblemId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, dailyProblemId])
+  @@index([dailyProblemId])
+  @@map("daily_problem_completions")
 }
 ```
 

@@ -2225,27 +2225,29 @@ Calibr8 includes an intelligent, zero-configuration database layer designed to w
 ## 19. Automated Daily Problem of the Day System (`/api/daily-problem`)
 
 ### 19.1 Architecture & Selection Mechanism
-- **Midnight Scheduling**: Automatically selects a random problem at exactly **12:00 AM IST (`Asia/Kolkata`)** every calendar day.
-- **Authoritative Timezone**: `Asia/Kolkata` (UTC+05:30) is the sole day boundary reference regardless of user client timezones.
-- **Problem Repetition Policy (No-Repeat-Until-Exhaustion)**:
-  1. Prefers eligible (published/active) problems that have never appeared in the current selection cycle.
-  2. Tracks the active `cycle` index across daily problem records.
-  3. When all eligible problems have appeared, resets the selection cycle (`cycle + 1`).
-  4. In a new cycle, excludes the immediately previous day's problem to avoid back-to-back repetitions (unless only one problem exists).
-  5. If only 1 eligible problem exists, gracefully re-selects it without error.
-- **Failure Recovery & Concurrency Safety**:
-  - Automatically runs an assignment check on server startup to recover from missed executions or restarts.
+- **Midnight Scheduling**: Automatically rotates the daily problem at exactly **12:00 AM IST (`Asia/Kolkata`)** every calendar day.
+- **Authoritative Timezone**: `Asia/Kolkata` (UTC+05:30) is the sole day boundary reference (`YYYY-MM-DD` format).
+- **Random Selection Policy (FR-01)**:
+  1. Selects a random problem from the existing `problems` table.
+  2. Avoids selecting yesterday's problem again when at least two problems exist.
+  3. Does not use separate problem banks or cycles.
+- **Failure Recovery & Concurrency Safety (FR-02)**:
+  - Startup assignment check recovers from server restarts.
   - Implements **lazy generation fallback**: if `GET /api/daily-problem` is requested and today's record does not exist, it is generated atomically on demand.
-  - Thread-safe in-flight Promise locking combined with database-level uniqueness (`@@unique([istDate])`) ensures that multiple concurrent requests or clustered instances never produce conflicting records.
-- **Dedicated Completion Tracking**:
-  - `DailyProblemCompletion` model with `@@unique([userId, dailyProblemId])` tracks each user's successful daily completion.
-  - Grants +2 coins via `CoinTransaction` (`type: "DAILY_PROBLEM"`).
-  - Fully idempotent: multiple submissions, concurrent submissions, or non-accepted verdicts never duplicate rewards.
+  - Thread-safe in-flight Promise locking combined with database-level uniqueness (`@@unique([istDate])`) prevents duplicate daily problem records.
+- **Dedicated Completion & Atomic Rewards (FR-03, FR-04, FR-06)**:
+  - `DailyProblemCompletion` model with composite primary key `@@id([userId, dailyProblemId])` records completion.
+  - Grants **+2 coins** via `CoinTransaction` (`type: "DAILY_PROBLEM"`).
+  - Increments Daily Problem streak by **+1**; consecutive daily solves increment streak, missing a day resets streak to 1 on the next daily problem solve. Updates `longestStreak = max(longestStreak, streak)`.
+  - Fully idempotent: multiple submissions or non-ACCEPTED verdicts never duplicate rewards.
+- **Daily Login Reward (FR-05)**:
+  - First login of a new IST calendar day grants **+1 coin** via `CoinTransaction` (`type: "DAILY_LOGIN"`).
+  - Login rewards are independent of daily problem solving and **do not** increment or alter the Daily Problem streak.
 
 ---
 
 ### 19.2 Get Today's Daily Problem
-Returns today's assigned Daily Problem metadata and the authenticated user's completion status. Ensures today's assignment exists before responding.
+Returns today's assigned Daily Problem metadata, completion status, and user streak metrics. Ensures today's assignment exists before responding.
 
 - **Method & Route**: `GET /api/daily-problem` (Alias: `GET /api/coins/daily-problem`)
 - **Protected**: Optional (`Authorization: Bearer <token>`)
@@ -2253,8 +2255,7 @@ Returns today's assigned Daily Problem metadata and the authenticated user's com
 ```json
 {
   "success": true,
-  "istDate": "2026-11-08",
-  "cycle": 1,
+  "istDate": "2026-11-09",
   "problem": {
     "id": "two-sum",
     "slug": "two-sum",
@@ -2266,12 +2267,15 @@ Returns today's assigned Daily Problem metadata and the authenticated user's com
   },
   "reward": {
     "coins": 2,
-    "description": "+2 coins for your first ACCEPTED submission on today's challenge"
+    "streak": 1,
+    "description": "+2 coins and +1 streak for your first ACCEPTED submission on today's challenge"
   },
   "completed": false,
   "solvedToday": false,
   "rewardClaimed": false,
   "completedAt": null,
+  "streak": 3,
+  "longestStreak": 5,
   "nextRefreshMs": 67123000,
   "nextRefreshTime": "12:00 AM IST"
 }
@@ -2297,10 +2301,9 @@ Returns historical daily problem records ordered by `istDate` descending with pa
   "totalPages": 4,
   "history": [
     {
-      "id": "dp_2026-11-08",
-      "istDate": "2026-11-08",
-      "cycle": 1,
-      "createdAt": "2026-11-08T00:00:00.000Z",
+      "id": "dp_2026-11-09",
+      "istDate": "2026-11-09",
+      "createdAt": "2026-11-09T00:00:00.000Z",
       "completed": true,
       "problem": {
         "id": "two-sum",

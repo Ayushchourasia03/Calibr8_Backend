@@ -1,7 +1,11 @@
 import cron from "node-cron";
 import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
-import { getISTDateString } from "./streakService.js";
+import {
+  getISTDateString,
+  getYesterdayIST,
+  computeDailyProblemStreak,
+} from "./streakService.js";
 
 // In-flight generation promise map to prevent race conditions during concurrent requests
 const pendingGenerations = new Map();
@@ -26,14 +30,10 @@ export function getMillisecondsUntilNextMidnightIST(date = new Date()) {
 }
 
 /**
- * Selects an eligible problem following the no-repeat-until-exhaustion policy:
- * 1. Prefer problems that have never appeared in the current selection cycle.
- * 2. If all eligible problems have already appeared, reset the selection cycle.
- * 3. Start a new cycle without selecting the immediately previous day's problem (if > 1 problem exists).
- * 4. Handle edge cases (1 eligible problem, or 0 eligible problems).
+ * Selects a random eligible problem from the existing problems table (FR-01).
+ * Avoids selecting yesterday's problem again when at least 2 problems exist.
  */
 export async function selectDailyProblemForDate(targetISTDate = getAuthoritativeISTDate()) {
-  // Fetch all active/published problems from database
   let eligibleProblems = [];
   try {
     eligibleProblems = await prisma.problem.findMany({
@@ -42,6 +42,7 @@ export async function selectDailyProblemForDate(targetISTDate = getAuthoritative
         slug: true,
         title: true,
         difficulty: true,
+        description: true,
         tags: true,
         dsaTopicId: true,
       },
@@ -56,62 +57,28 @@ export async function selectDailyProblemForDate(targetISTDate = getAuthoritative
 
   // If only 1 problem exists, it is the only possible pick
   if (eligibleProblems.length === 1) {
-    return {
-      problem: eligibleProblems[0],
-      cycle: 1,
-    };
+    return { problem: eligibleProblems[0] };
   }
 
-  // Find the most recent daily problem record strictly before targetISTDate
-  const allPastDailies = await prisma.dailyProblem.findMany({
-    where: {
-      istDate: { lt: targetISTDate },
-    },
-    orderBy: { istDate: "desc" },
-    take: 1000,
+  // Look up yesterday's daily problem to avoid immediate back-to-back repeats (FR-01 rule 6)
+  const yesterdayIST = getYesterdayIST(targetISTDate);
+  const yesterdayDaily = await prisma.dailyProblem.findUnique({
+    where: { istDate: yesterdayIST },
   });
 
-  const lastDaily = allPastDailies[0] || null;
-  const currentCycle = lastDaily?.cycle || 1;
+  const lastProblemId = yesterdayDaily?.problemId || null;
 
-  // Find problems already used in the current cycle
-  const usedInCurrentCycle = allPastDailies
-    .filter((d) => d.cycle === currentCycle)
-    .map((d) => d.problemId);
-  const usedIdsSet = new Set(usedInCurrentCycle);
+  // Filter out yesterday's problem if >= 2 problems exist
+  const candidates = eligibleProblems.filter((p) => p.id !== lastProblemId);
+  const candidatePool = candidates.length > 0 ? candidates : eligibleProblems;
 
-  // Eligible problems not yet picked in current cycle
-  let unpickedInCycle = eligibleProblems.filter((p) => !usedIdsSet.has(p.id));
-
-  if (unpickedInCycle.length > 0) {
-    // Pick randomly from unpicked problems in current cycle
-    const randomIndex = Math.floor(Math.random() * unpickedInCycle.length);
-    return {
-      problem: unpickedInCycle[randomIndex],
-      cycle: currentCycle,
-    };
-  }
-
-  // All eligible problems have been used in currentCycle: reset selection cycle!
-  const newCycle = currentCycle + 1;
-  const lastProblemId = lastDaily?.problemId;
-
-  // New cycle: exclude immediately previous day's problem to prevent back-to-back repeats
-  let candidatesForNewCycle = eligibleProblems.filter((p) => p.id !== lastProblemId);
-  if (candidatesForNewCycle.length === 0) {
-    candidatesForNewCycle = eligibleProblems;
-  }
-
-  const randomIndex = Math.floor(Math.random() * candidatesForNewCycle.length);
-  return {
-    problem: candidatesForNewCycle[randomIndex],
-    cycle: newCycle,
-  };
+  const randomIndex = Math.floor(Math.random() * candidatePool.length);
+  return { problem: candidatePool[randomIndex] };
 }
 
 /**
  * Ensures a DailyProblem record exists for targetISTDate.
- * Thread-safe with in-flight promise deduping and DB unique-key conflict handling.
+ * Concurrency-safe via in-flight promise deduping and DB unique-key conflict handling.
  */
 export async function ensureDailyProblem(targetISTDate = getAuthoritativeISTDate()) {
   // 1. Fast read check
@@ -145,14 +112,13 @@ export async function ensureDailyProblem(targetISTDate = getAuthoritativeISTDate
 
   const generationPromise = (async () => {
     try {
-      const { problem, cycle } = await selectDailyProblemForDate(targetISTDate);
+      const { problem } = await selectDailyProblemForDate(targetISTDate);
 
       try {
         const created = await prisma.dailyProblem.create({
           data: {
             istDate: targetISTDate,
             problemId: problem.id,
-            cycle,
           },
           include: {
             problem: {
@@ -175,7 +141,7 @@ export async function ensureDailyProblem(targetISTDate = getAuthoritativeISTDate
         }
         return created;
       } catch (createErr) {
-        // Race condition: another thread created it concurrently (P2002)
+        // Race condition: another concurrent request created it first (P2002)
         const recheck = await prisma.dailyProblem.findUnique({
           where: { istDate: targetISTDate },
           include: {
@@ -207,7 +173,7 @@ export async function ensureDailyProblem(targetISTDate = getAuthoritativeISTDate
 }
 
 /**
- * Returns today's active DailyProblem metadata with authenticated user's completion status.
+ * Returns today's active DailyProblem metadata with authenticated user's completion status & streaks.
  */
 export async function getDailyProblemWithUserStatus(
   targetISTDate = getAuthoritativeISTDate(),
@@ -221,9 +187,20 @@ export async function getDailyProblemWithUserStatus(
   let completed = false;
   let rewardClaimed = false;
   let completedAt = null;
+  let currentStreak = 0;
+  let longestStreak = 0;
 
   if (userId) {
-    // 1. Check dedicated DailyProblemCompletion table
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { streak: true, longestStreak: true },
+    });
+    if (user) {
+      currentStreak = user.streak || 0;
+      longestStreak = user.longestStreak || 0;
+    }
+
+    // Single source of truth: check DailyProblemCompletion table
     const completion = await prisma.dailyProblemCompletion.findUnique({
       where: {
         userId_dailyProblemId: {
@@ -235,36 +212,21 @@ export async function getDailyProblemWithUserStatus(
 
     if (completion) {
       completed = true;
-      completedAt = completion.completedAt;
-    }
-
-    // 2. Check coin transaction for DAILY_PROBLEM
-    const claim = await prisma.coinTransaction.findFirst({
-      where: {
-        userId,
-        type: "DAILY_PROBLEM",
-        istDate: targetISTDate,
-      },
-    });
-
-    if (claim) {
       rewardClaimed = true;
-      completed = true;
-      if (!completedAt) completedAt = claim.createdAt;
-    }
-
-    // 3. Check accepted submission for today's problem
-    if (!completed) {
-      const submission = await prisma.submission.findFirst({
+      completedAt = completion.completedAt;
+    } else {
+      // Check coin transaction audit
+      const claim = await prisma.coinTransaction.findFirst({
         where: {
           userId,
-          problemId: daily.problemId,
-          status: "ACCEPTED",
+          type: "DAILY_PROBLEM",
+          istDate: targetISTDate,
         },
       });
-      if (submission) {
+      if (claim) {
+        rewardClaimed = true;
         completed = true;
-        if (!completedAt) completedAt = submission.createdAt;
+        completedAt = claim.createdAt;
       }
     }
   }
@@ -274,7 +236,6 @@ export async function getDailyProblemWithUserStatus(
   return {
     success: true,
     istDate: daily.istDate,
-    cycle: daily.cycle || 1,
     problem: {
       id: daily.problem.id,
       slug: daily.problem.slug,
@@ -286,12 +247,14 @@ export async function getDailyProblemWithUserStatus(
     },
     reward: {
       coins: 2,
-      description: "+2 coins for your first ACCEPTED submission on today's challenge",
+      description: "+2 coins and +1 streak for your first ACCEPTED submission on today's challenge",
     },
     completed,
     solvedToday: completed,
     rewardClaimed,
     completedAt,
+    streak: currentStreak,
+    longestStreak,
     nextRefreshMs: msUntilMidnight,
     nextRefreshTime: "12:00 AM IST",
   };
@@ -344,7 +307,6 @@ export async function getDailyProblemHistory({
   const data = records.map((r) => ({
     id: r.id,
     istDate: r.istDate,
-    cycle: r.cycle || 1,
     createdAt: r.createdAt,
     completed: userCompletionsSet.has(r.id),
     problem: r.problem ? {
@@ -368,10 +330,10 @@ export async function getDailyProblemHistory({
 }
 
 /**
- * Completes today's daily problem submission:
+ * Completes today's daily problem submission (FR-03, FR-04, FR-06):
  * 1. Validates verdict is ACCEPTED.
  * 2. Validates problem matches today's daily problem.
- * 3. Enforces idempotency via atomic transaction: creates completion & awards +2 coins once.
+ * 3. Enforces idempotency via atomic transaction: creates completion, updates streak, & awards +2 coins.
  */
 export async function completeDailyProblemSubmission({
   userId,
@@ -381,15 +343,31 @@ export async function completeDailyProblemSubmission({
   targetISTDate = getAuthoritativeISTDate(),
 }) {
   if (!userId || !problemId) {
-    return { granted: false, awarded: false, coins: 0, reason: "MISSING_ARGS" };
+    return { granted: false, awarded: false, coins: 0, coinsEarned: 0, reason: "MISSING_ARGS" };
   }
   if (!isAccepted) {
-    return { granted: false, awarded: false, coins: 0, reason: "NOT_ACCEPTED" };
+    return { granted: false, awarded: false, coins: 0, coinsEarned: 0, reason: "NOT_ACCEPTED" };
   }
 
-  const todayDaily = await ensureDailyProblem(targetISTDate);
-  if (!todayDaily || todayDaily.problemId !== problemId) {
-    return { granted: false, awarded: false, coins: 0, reason: "NOT_DAILY_PROBLEM" };
+  let todayDaily = await prisma.dailyProblem.findUnique({
+    where: { istDate: targetISTDate },
+    include: { problem: true },
+  });
+  if (!todayDaily && targetISTDate === getAuthoritativeISTDate()) {
+    todayDaily = await ensureDailyProblem(targetISTDate);
+  }
+  if (!todayDaily) {
+    return { granted: false, awarded: false, coins: 0, coinsEarned: 0, reason: "NO_DAILY_PROBLEM_TODAY" };
+  }
+  const cleanId = String(problemId).replace(/^prob[-_]/, "");
+  const isMatch =
+    todayDaily.problemId === problemId ||
+    todayDaily.problem?.id === problemId ||
+    todayDaily.problem?.slug === problemId ||
+    todayDaily.problem?.slug === cleanId ||
+    todayDaily.problemId === cleanId;
+  if (!isMatch) {
+    return { granted: false, awarded: false, coins: 0, coinsEarned: 0, reason: "NOT_DAILY_PROBLEM" };
   }
 
   try {
@@ -409,11 +387,12 @@ export async function completeDailyProblemSubmission({
           granted: false,
           awarded: false,
           coins: 0,
+          coinsEarned: 0,
           reason: "ALREADY_COMPLETED",
         };
       }
 
-      // 2. Check existing coin transaction for DAILY_PROBLEM on this IST date
+      // 2. Double check coin transaction for DAILY_PROBLEM on this IST date
       const existingCoinTx = await tx.coinTransaction.findFirst({
         where: {
           userId,
@@ -427,11 +406,28 @@ export async function completeDailyProblemSubmission({
           granted: false,
           awarded: false,
           coins: 0,
+          coinsEarned: 0,
           reason: "ALREADY_COMPLETED",
         };
       }
 
-      // 3. Create DailyProblemCompletion record
+      // 3. Fetch user and calculate streak advancement (FR-04)
+      const user = await tx.user.findUnique({ where: { id: userId } });
+      if (!user) {
+        return { granted: false, awarded: false, coins: 0, coinsEarned: 0, reason: "USER_NOT_FOUND" };
+      }
+
+      const streakCalc = computeDailyProblemStreak(
+        user.lastStreakDate,
+        targetISTDate,
+        user.streak,
+      );
+      const newStreak = streakCalc.newStreak;
+      const newLongestStreak = Math.max(user.longestStreak || 0, newStreak);
+      const currentCoins = Number(user.coins) || 100;
+      const newBalance = currentCoins + 2;
+
+      // 4. Create DailyProblemCompletion record (composite PK [userId, dailyProblemId])
       await tx.dailyProblemCompletion.create({
         data: {
           userId,
@@ -440,22 +436,24 @@ export async function completeDailyProblemSubmission({
         },
       });
 
-      // 4. Update user balance and record coin transaction
-      const user = await tx.user.findUnique({ where: { id: userId } });
-      const currentCoins = Number(user?.coins) || 100;
-      const newBalance = currentCoins + 2;
-
+      // 5. Update user streak, longestStreak, lastStreakDate, and coins atomically (FR-04, FR-06)
       await tx.user.update({
         where: { id: userId },
-        data: { coins: newBalance },
+        data: {
+          coins: newBalance,
+          streak: newStreak,
+          longestStreak: newLongestStreak,
+          lastStreakDate: new Date(),
+        },
       });
 
+      // 6. Record coin transaction audit (+2 coins)
       await tx.coinTransaction.create({
         data: {
           userId,
           amount: 2,
           type: "DAILY_PROBLEM",
-          referenceId: submissionId || todayDaily.id,
+          referenceId: submissionId || problemId || todayDaily.problemId || todayDaily.id,
           istDate: targetISTDate,
           balanceAfter: newBalance,
         },
@@ -466,17 +464,19 @@ export async function completeDailyProblemSubmission({
         awarded: true,
         coins: 2,
         coinsEarned: 2,
+        streak: newStreak,
+        longestStreak: newLongestStreak,
         balance: newBalance,
         balanceAfter: newBalance,
       };
     });
   } catch (err) {
-    // If unique constraint failed concurrently (P2002)
     if (err.code === "P2002") {
       return {
         granted: false,
         awarded: false,
         coins: 0,
+        coinsEarned: 0,
         reason: "ALREADY_COMPLETED",
       };
     }
@@ -485,6 +485,7 @@ export async function completeDailyProblemSubmission({
       granted: false,
       awarded: false,
       coins: 0,
+      coinsEarned: 0,
       reason: "ERROR",
       error: err.message,
     };
@@ -492,12 +493,12 @@ export async function completeDailyProblemSubmission({
 }
 
 /**
- * Starts the automated 12:00 AM Asia/Kolkata daily scheduler.
+ * Starts the automated 12:00 AM Asia/Kolkata daily scheduler (FR-02).
  */
 export function startDailyProblemScheduler() {
   if (schedulerTask) return;
 
-  // 1. Immediate initialization check on boot to recover missed assignments
+  // 1. Immediate lazy check on boot
   ensureDailyProblem().catch((err) => {
     console.warn("[DailyProblemScheduler] Initial startup check notice:", err.message);
   });
@@ -528,7 +529,7 @@ export function startDailyProblemScheduler() {
 }
 
 /**
- * Stops scheduler (useful for test isolation).
+ * Stops scheduler (useful for tests and graceful shutdown).
  */
 export function stopDailyProblemScheduler() {
   if (schedulerTask) {

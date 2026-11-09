@@ -17,10 +17,8 @@ Comprehensive API contract for Calibr8 Backend, with full specifications for Coi
 
 | Type | Amount | Trigger Condition |
 | :--- | :--- | :--- |
-| `DAILY_LOGIN` | `+1` | Granted on the first successful `POST /api/auth/login` of a new IST day. Subsequent logins or `/auth/refresh` on the same day grant 0. |
-| `STREAK_7_BONUS` | `+5` | Granted on reaching 7-day streak milestones (Day 7, 14, 21, 28, 35...) that are not divisible by 30. |
-| `STREAK_30_BONUS` | `+25` | Granted on reaching 30-day streak milestones (Day 30, 60, 90...). Stacks with login (+1 + 25 = +26 total; no +5 bonus on day 30). |
-| `DAILY_PROBLEM` | `+2` | Granted upon first `ACCEPTED` submission for that day's assigned `DailyProblem`. Once per user per IST day. |
+| `DAILY_LOGIN` | `+1` | Granted on the first successful `POST /api/auth/login` of a new IST day. Does not alter Daily Problem streak. |
+| `DAILY_PROBLEM` | `+2` | Granted upon first `ACCEPTED` submission for that day's assigned `DailyProblem`. Advances streak by +1 atomically. Once per user per IST day. |
 | `THEME_PURCHASE` | `-price` | Deducted when buying a theme from the Calibr8 Theme Store. |
 
 ---
@@ -47,14 +45,14 @@ Authenticates user and grants daily login reward if first login of the IST day.
     "email": "student@calibr8.test",
     "name": "Student",
     "coins": 101,
-    "streak": 1,
-    "longestStreak": 1,
-    "lastLoginISTDate": "2026-11-07"
+    "streak": 0,
+    "longestStreak": 0,
+    "lastLoginISTDate": "2026-11-09"
   },
   "stats": {
     "coins": 101,
-    "streak": 1,
-    "longestStreak": 1,
+    "streak": 0,
+    "longestStreak": 0,
     "rating": 800,
     "tier": "Prism I"
   },
@@ -62,10 +60,8 @@ Authenticates user and grants daily login reward if first login of the IST day.
   "rewards": {
     "coinsEarnedToday": 1,
     "loginCoins": 1,
-    "bonusCoins": 0,
-    "bonusType": null,
-    "streak": 1,
-    "longestStreak": 1,
+    "streak": 0,
+    "longestStreak": 0,
     "isNewDay": true
   }
 }
@@ -188,10 +184,12 @@ Submits code for evaluation. When an authenticated user's submission receives an
 1. `grantDailyProblemReward(userId, problemId, submissionId)` is called.
 2. If `problemId` matches today's `DailyProblem` and has not yet been claimed today:
    - User `coins` is incremented by `+2`.
+   - Daily Problem streak is incremented by `+1` (resets to 1 if yesterday was missed). `longestStreak` is updated if streak exceeds it.
+   - A `DailyProblemCompletion` row is created (`userId`, `dailyProblemId`).
    - A `CoinTransaction` row is created (`type: DAILY_PROBLEM`, `amount: 2`, `referenceId: submissionId`, `istDate: todayIST`, `balanceAfter`).
-   - Response contains `dailyProblemReward: { granted: true, coins: 2 }`.
+   - Response contains `dailyReward` and `dailyProblemReward: { granted: true, coinsEarned: 2, streak: 1, longestStreak: 1 }`.
 3. If not today's problem, already claimed, or submission not accepted:
-   - Response contains `dailyProblemReward: { granted: false, coins: 0 }`.
+   - Response contains `dailyReward: { granted: false, reason: ... }`.
 
 - **Response (200 OK)**:
 ```json
@@ -200,9 +198,17 @@ Submits code for evaluation. When an authenticated user's submission receives an
   "verdict": "ACCEPTED",
   "passed": 15,
   "total": 15,
+  "dailyReward": {
+    "granted": true,
+    "coinsEarned": 2,
+    "streak": 1,
+    "longestStreak": 1
+  },
   "dailyProblemReward": {
     "granted": true,
-    "coins": 2
+    "coins": 2,
+    "streak": 1,
+    "longestStreak": 1
   }
 }
 ```
