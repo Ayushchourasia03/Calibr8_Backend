@@ -51,9 +51,8 @@ router.use('/api/coins', coinRouter);
 router.get('/api/daily-problem', optionalAuth, getTodayDailyProblem);
 router.get('/api/daily-problem/history', optionalAuth, getDailyProblemHistoryController);
 
-// Root endpoint: API documentation & interactive developer dashboard
 router.get("/", (req, res) => {
-  if (req.accepts("html")) {
+  if (req.accepts(["html", "json"]) === "html") {
     res.sendFile(path.join(__dirname, "../../public/index.html"));
   } else {
     res.status(200).json({

@@ -850,4 +850,33 @@ Unauthorized users receive a generic `404` error rather than a `403`, eliminatin
 
 ---
 
+## 16. Automated Test Verification & Quality Assurance
+
+The execution engine is verified through 6 dedicated test suites in `tests/`:
+
+1. **`tests/executionBatch.test.js`**:
+   - Validates that testcase sets exceeding 20 cases are strictly partitioned into batches of $\le 20$ cases before transmission to CodeBox.
+   - Ensures authorization token `X-Auth-Token` is forwarded with every batch request.
+
+2. **`tests/executionLanguage.test.js`**:
+   - Validates the 5 supported languages and maps them to Judge0 IDs (71 for Python 3.10, 63 for Node.js 22, 54 for C++20, 50 for C GCC 13, 62 for OpenJDK 17).
+   - Verifies canonical language normalization (`py` $\to$ `python`, `c++` $\to$ `cpp`, `js` $\to$ `javascript`).
+
+3. **`tests/executionOptimization.test.js`**:
+   - Validates submission caching, in-memory status retrieval, and non-owner access rejection (`404 SUBMISSION_NOT_FOUND`).
+
+4. **`tests/executionVerdicts.test.js`**:
+   - End-to-end execution testing for all verdict states: `Accepted`, `Wrong Answer`, `Time Limit Exceeded`, and `Compilation Error`.
+   - Validates true multi-tier short-circuiting: Tier 1 failure halts evaluation immediately without dispatching Tier 2 or Tier 3 batches.
+   - Validates testcase privacy protection: hidden testcase inputs and outputs are never exposed in user-facing submission responses.
+
+5. **`tests/complexityAnalyzer.test.js`**:
+   - 19 regression tests for static AST and empirical complexity classification across loop nests, recursive branching, and standard algorithms.
+
+6. **`tests/problemSecurity.test.js`**:
+   - Verifies that hidden evaluation test cases are completely stripped from problem definition endpoints.
+   - Verifies controlled `503 EXECUTION_UNAVAILABLE` fallback when the runner is unreachable.
+
+---
+
 *Documentation maintained by Calibr8 Core Engineering Team.*

@@ -418,6 +418,14 @@ function createModelProxy(modelName) {
           if (where.NOT?.id && p.id === where.NOT.id) continue;
           if (where.id && p.id !== where.id) continue;
           if (where.slug && p.slug !== where.slug) continue;
+          if (where.OR && Array.isArray(where.OR)) {
+            const matchesOr = where.OR.some((cond) => {
+              if (cond.slug && p.slug === cond.slug) return true;
+              if (cond.id && p.id === cond.id) return true;
+              return false;
+            });
+            if (!matchesOr) continue;
+          }
           if (select) {
             const sel = {};
             for (const k of Object.keys(select)) if (select[k]) sel[k] = p[k];
@@ -432,7 +440,30 @@ function createModelProxy(modelName) {
 
     async findMany({ where = {}, include, select, orderBy, take, skip } = {}) {
       if (modelName === "user") {
-        return [...store.users.values()].map((u) => formatUser(u, include, select));
+        let list = [...store.users.values()];
+        if (where) {
+          if (where.college) list = list.filter((u) => u.college === where.college);
+          if (where.batch) list = list.filter((u) => u.batch === where.batch);
+          if (where.state) list = list.filter((u) => u.state === where.state);
+          if (where.country) list = list.filter((u) => u.country === where.country);
+          if (where.id) {
+            if (typeof where.id === "object" && Array.isArray(where.id.in)) {
+              const idSet = new Set(where.id.in);
+              list = list.filter((u) => idSet.has(u.id));
+            } else if (typeof where.id === "string") {
+              list = list.filter((u) => u.id === where.id);
+            }
+          }
+          if (where.email) list = list.filter((u) => u.email === where.email);
+        }
+        if (orderBy?.score === "desc") {
+          list.sort((a, b) => (b.score || 0) - (a.score || 0));
+        } else if (orderBy?.score === "asc") {
+          list.sort((a, b) => (a.score || 0) - (b.score || 0));
+        }
+        if (skip) list = list.slice(skip);
+        if (take) list = list.slice(0, take);
+        return list.map((u) => formatUser(u, include, select));
       }
       if (modelName === "topic") {
         let list = [...store.topics.values()];
@@ -609,6 +640,11 @@ function createModelProxy(modelName) {
           streak: data.streak ?? 0,
           strictPercent: 0,
           tier: "Prism I",
+          college: data.college ?? null,
+          branch: data.branch ?? null,
+          batch: data.batch ?? null,
+          state: data.state ?? null,
+          country: data.country ?? "India",
           longestStreak: data.longestStreak ?? 0,
           lastStreakDate: data.lastStreakDate ?? null,
           lastLoginISTDate: data.lastLoginISTDate ?? null,

@@ -41,11 +41,20 @@ node scripts/checkDailyProblems.js
 # 5. Verify Coin Rewards Setup (Imports, checks DB, verifies exports)
 node scripts/verifyCoinSetup.js
 
-# 6. Run Coin Rewards Database Integration Tests (45 passed, 0 failed)
+# 6. Run Coin Rewards Database Integration Tests
 node tests/coinReward.integration.test.js
 
-# 7. Run Daily Login Reward & Streak Integration Tests (I1 - I10 passed)
+# 7. Run Daily Login Reward & Streak Integration Tests
 node tests/dailyLoginReward.test.js
+
+# 8. Run Coin Balance & Transaction History API Tests
+node tests/coinServiceAndHistory.test.js
+
+# 9. Run Theme Store & Coin Deductions Lifecycle Tests
+node tests/themeStoreLifecycle.test.js
+
+# 10. Run Full Automated Test Suite (All 38 Suites Passing)
+npm test
 ```
 
 ---
@@ -72,6 +81,10 @@ node tests/dailyLoginReward.test.js
 - `GET /api/coins/balance` (Bearer) → `{ coins, streak, longestStreak, lastLoginISTDate }`.
 - `GET /api/coins/history?limit=20&offset=0` (Bearer) → `{ transactions: [...] }`.
 - `GET /api/daily-problem` → `{ istDate, problem: { id, slug, title, difficulty }, reward: { coins: 2, streak: 1 }, streak, longestStreak, completed }`.
+- `GET /api/daily-problem/history?page=1&limit=20` → Returns historical daily problem records and user solve status.
+- `GET /api/themes` → Returns all themes, user ownership, and coin prices.
+- `POST /api/themes/:slug/buy` (Bearer) → Deducts coins and unlocks theme.
+- `PUT /api/themes/apply` (Bearer) → Activates an owned theme.
 - `POST /api/execution/submissions` → Response includes `dailyReward: { granted, coinsEarned, streak, longestStreak }`.
 
-Full documentation: see `API_DOC.md`.
+Full documentation: see `API_DOC.md` and `APIdetails.md`.

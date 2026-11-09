@@ -2318,3 +2318,61 @@ Returns historical daily problem records ordered by `istDate` descending with pa
 }
 ```
 
+---
+
+## 20. Automated Test Suite, Quality Assurance & Verification
+
+The Calibr8 backend enforces 100% test pass verification across **38 test suites** executing with Node.js native test runner (`node --test`).
+
+### 20.1 Test Execution Commands
+
+```bash
+# Run the complete test suite across all 38 test suites
+npm test
+
+# Run isolated unit tests (utilities, algorithms, and calculators)
+npm run test:unit
+
+# Run full HTTP and business logic integration tests
+npm run test:integration
+
+# Run tests with experimental coverage reporter
+npm run test:coverage
+```
+
+### 20.2 Test Suite Architecture
+
+| Test Suite File | Type | Key Behaviors Verified |
+|---|---|---|
+| `tests/authLifecycle.test.js` | Integration | Registration, password byte-limits (8-72), duplicate rejection (409), login, token refresh, logout revocation |
+| `tests/userManagement.test.js` | Integration | User profile, academic profile, overview, solve activity, problem list with status |
+| `tests/topicsCatalog.test.js` | Integration | Topic catalog, categories, problem counts, beginner 1-click calibration preset |
+| `tests/problemEndpoints.test.js` | Integration | Problem listing, difficulty/status filters, starter templates, problem-scoped runs and submits |
+| `tests/executionVerdicts.test.js` | Integration | Multi-tier judging, true tier short-circuiting, all verdict states (Accepted, WA, TLE, CE), testcase privacy |
+| `tests/executionBatch.test.js` | Integration | 20-case batch chunking, runner headers, large testcase set handling |
+| `tests/executionLanguage.test.js` | Unit | Supported languages, Judge0 IDs, canonical normalization |
+| `tests/executionOptimization.test.js` | Integration | Submission cache, polling status, non-owner isolation (404) |
+| `tests/complexityAnalyzer.test.js` | Unit | 19 AST regression tests for time and space complexity classification |
+| `tests/automatedDailyProblem.test.js` | Integration | IST midnight daily problem rotation, streak and history tracking |
+| `tests/dailyLoginReward.test.js` | Integration | IST day boundary login coin (+1) and duplicate login suppression |
+| `tests/dailyProblemReward.test.js` | Integration | Daily problem completion (+2 coins, +1 streak) on first ACCEPTED solve |
+| `tests/coinServiceAndHistory.test.js` | Integration | Balance query, audit history pagination (`limit`, `offset`), fallback defaults |
+| `tests/coinReward.integration.test.js` | Integration | Atomic coin transaction ledger integrity |
+| `tests/themeStoreLifecycle.test.js` | Integration | Theme store catalog, coin deduction, double purchase rejection, theme activation |
+| `tests/rankingsLeaderboard.test.js` | Integration | Leaderboard sort order (score desc), scope filters (college, batch, state), limit boundary clamping |
+| `tests/studyModule.test.js` | Integration | Subjects, chapters, topics, reading material, MCQ grading, scoring, and explanations |
+| `tests/socialAuth.test.js` | Integration | HMAC-SHA256 OAuth link state signing, error callback redirection, open-redirect defense, unlinking |
+| `tests/securityAndMiddleware.test.js` | Integration | Health/ping routes, security headers (CSP, nosniff, Referrer), rate limiting, in-flight concurrency limiter (max 2), error formatting |
+| `tests/unitUtilities.test.js` | Unit | `ApiError`, `outputComparator`, `codeBuilder`, `userHeaderStats`, `jwt`, `bcrypt`, `successfulSubmissionActivity` |
+| `tests/cors.test.js` | Integration | CORS origin white-listing, pre-flight options, rejecting unauthorized origins |
+| `tests/problemSecurity.test.js` | Integration | Hidden testcase redaction, controlled 503 fallback when runner is unreachable |
+| `tests/streakService.test.js` | Unit | IST date boundary calculations, streak increment, missed-day reset |
+
+### 20.3 Zero-Database-Leak Guarantee
+All automated tests configure `DATABASE_URL = ""` before initialization. The internal `InMemoryStore` proxy in `src/config/db.js` handles all Prisma model operations in memory, ensuring **zero network calls, modifications, or data leaks to production databases**.
+
+---
+
+*Documentation maintained by Calibr8 Core Engineering Team.*
+
+
