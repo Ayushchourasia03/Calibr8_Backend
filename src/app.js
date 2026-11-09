@@ -61,7 +61,7 @@ app.use(
   }),
 );
 
-app.use(express.static(path.join(__dirname, "../public")));
+app.use(express.static(path.join(__dirname, "../public"), { index: false }));
 app.use("/", indexRouter);
 
 app.use(errorHandler);

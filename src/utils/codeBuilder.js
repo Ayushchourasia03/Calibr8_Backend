@@ -41,7 +41,8 @@ export function normalizeLanguage(lang) {
  * @returns {string} Clean starter template for user editor
  */
 export function getUserTemplate(problem, language) {
-  const lang = normalizeLanguage(language) || "cpp";
+  const lang = normalizeLanguage(language);
+  if (!lang) return null;
   let tmpl = problem?.templatesMap?.[lang] ?? problem?.templates?.[lang];
 
   if (!tmpl && Array.isArray(problem?.templates)) {

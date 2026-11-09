@@ -15,7 +15,10 @@ export const getRankings = async (req, res, next) => {
     if (scope === "state" && state) where.state = state;
     if (scope === "country" && country) where.country = country;
 
-    const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
+    const rawLimit = parseInt(limit, 10);
+    const parsedLimit = Number.isNaN(rawLimit)
+      ? 50
+      : Math.min(Math.max(rawLimit, 1), 100);
 
     const users = await prisma.user.findMany({
       where,
