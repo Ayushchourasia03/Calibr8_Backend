@@ -767,11 +767,9 @@
             <div class="card-title">📖 How Coins Work</div>
             <ul style="padding-left:1.2rem; font-size:0.86rem; color:var(--text); line-height:1.7;">
               <li><strong>100 coins</strong> on signup default</li>
-              <li><strong>+1 coin</strong> on first daily login of a new IST day</li>
-              <li><strong>+2 coins</strong> for solving that day's assigned Daily Problem (ACCEPTED verdict)</li>
-              <li><strong>+5 bonus coins</strong> on 7-day streak milestones (Day 7, 14, 21, 28, 35...)</li>
-              <li><strong>+25 bonus coins</strong> on 30-day streak milestones (Day 30, 60, 90...) — no +5 on day 30</li>
-              <li><strong>Missed day</strong> resets streak to 1 on next login, coins kept, longestStreak preserved</li>
+              <li><strong>+1 coin</strong> on first daily login of a new IST day (does not increment streak)</li>
+              <li><strong>+2 coins</strong> & <strong>+1 streak</strong> for solving today's assigned Daily Problem (ACCEPTED verdict)</li>
+              <li><strong>Consecutive daily solves</strong> increase streak; missing a day resets streak to 1 on next solve</li>
               <li>Use coins in the <strong>Theme Store</strong> to unlock premium IDE themes!</li>
             </ul>
           </div>
@@ -1416,7 +1414,7 @@
 
           if (document.getElementById("dailyTitle")) document.getElementById("dailyTitle").textContent = title;
           if (document.getElementById("dailyProblemTitle")) document.getElementById("dailyProblemTitle").textContent = title;
-          if (document.getElementById("dailyDate")) document.getElementById("dailyDate").textContent = "IST Date: " + istDate + (data.cycle ? ` (Cycle ${data.cycle})` : "");
+          if (document.getElementById("dailyDate")) document.getElementById("dailyDate").textContent = "IST Date: " + istDate;
           if (document.getElementById("dailyProblemMeta")) {
             document.getElementById("dailyProblemMeta").textContent = "Difficulty: " + diff + tags + (isDone ? " • Solved ✅" : " • Active ⏳");
           }
@@ -1890,11 +1888,7 @@
 
             if (data.rewards && data.rewards.coinsEarnedToday > 0) {
               const r = data.rewards;
-              if (r.bonusCoins > 0) {
-                showToast(`+${r.coinsEarnedToday} on Day ${r.streak}! (${r.bonusType || 'Milestone Bonus'})`, "success");
-              } else {
-                showToast(`+${r.coinsEarnedToday} coins! Streak ${r.streak}`, "success");
-              }
+              showToast(`+${r.coinsEarnedToday} login coin earned today!`, "success");
             }
 
             loadBalance();
@@ -2937,6 +2931,15 @@
                 '<div>💾 <strong>Memory Footprint:</strong> ' + (data.memory || 14000) + ' KB</div>' +
                 '<div>🧩 <strong>Submission ID:</strong> <code>' + escapeHtml(data.submissionId || "sub-completed") + '</code></div>' +
               '</div>';
+
+            if (data.dailyReward && data.dailyReward.granted) {
+              showToast("🎉 Daily Problem solved! +2 coins, Streak: " + data.dailyReward.streak, "success");
+            }
+            if (authToken) {
+              loadBalance();
+              loadHistory();
+              loadDaily();
+            }
           } else {
             const fail = data.firstFailure || {};
             if (fail.errorText && (fail.errorText.includes("error:") || data.verdict === "COMPILATION ERROR")) {

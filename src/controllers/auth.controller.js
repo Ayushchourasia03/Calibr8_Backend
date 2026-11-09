@@ -133,12 +133,10 @@ export const login = async (req, res, next) => {
 
     const token = signToken({ id: user.id, email: user.email });
 
-    // Execute daily login reward grant (server-side, idempotent, audited)
+    // Execute daily login reward grant (server-side, idempotent, audited per FR-05)
     let rewards = {
       coinsEarnedToday: 0,
       loginCoins: 0,
-      bonusCoins: 0,
-      bonusType: null,
       streak: user.streak ?? 0,
       longestStreak: user.longestStreak ?? 0,
       isNewDay: false,
@@ -150,18 +148,13 @@ export const login = async (req, res, next) => {
         rewards = {
           coinsEarnedToday: loginReward.coinsEarnedToday,
           loginCoins: loginReward.loginCoins,
-          bonusCoins: loginReward.bonusCoins,
-          bonusType: loginReward.bonusType,
-          streak: loginReward.streak,
-          longestStreak: loginReward.longestStreak,
+          streak: loginReward.streak ?? user.streak ?? 0,
+          longestStreak: loginReward.longestStreak ?? user.longestStreak ?? 0,
           isNewDay: loginReward.isNewDay,
         };
 
         if (loginReward.user) {
           user.coins = loginReward.user.coins;
-          user.streak = loginReward.user.streak;
-          user.longestStreak = loginReward.user.longestStreak;
-          user.lastStreakDate = loginReward.user.lastStreakDate;
           user.lastLoginISTDate = loginReward.user.lastLoginISTDate;
         }
       }

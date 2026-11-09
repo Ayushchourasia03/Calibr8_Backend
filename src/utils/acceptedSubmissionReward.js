@@ -19,10 +19,6 @@ function getTier(rating) {
   return `${DIVISION_NAMES[tierIndex]} ${DIVISIONS[divisionIndex]}`;
 }
 
-function utcDay(date) {
-  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-}
-
 export async function applyAcceptedSubmissionReward(
   tx,
   { userId, problem, now = new Date() },
@@ -47,16 +43,6 @@ export async function applyAcceptedSubmissionReward(
 
   if (!user) return null;
 
-  const lastSolvedDay = user.lastStreakDate
-    ? utcDay(new Date(user.lastStreakDate))
-    : null;
-  const currentDay = utcDay(now);
-  const streak = lastSolvedDay === currentDay
-    ? user.streak
-    : lastSolvedDay === currentDay - 86400000
-      ? user.streak + 1
-      : 1;
-  const longestStreak = Math.max(user.longestStreak || 0, streak);
   const inserted = await tx.userProblemProgress.createMany({
     data: [
       {
@@ -72,23 +58,12 @@ export async function applyAcceptedSubmissionReward(
   });
 
   if (inserted.count === 0) {
-    const updatedUser =
-      lastSolvedDay === currentDay
-        ? user
-        : await tx.user.update({
-            where: { id: userId },
-            data: {
-              streak,
-              longestStreak,
-              lastStreakDate: now,
-            },
-          });
     return {
       awarded: false,
       points: 0,
       scoreDelta: 0,
       coinsEarned: 0,
-      stats: getUserHeaderStats(updatedUser),
+      stats: getUserHeaderStats(user),
     };
   }
 
@@ -112,9 +87,6 @@ export async function applyAcceptedSubmissionReward(
       score: { increment: scoreAwarded },
       rating,
       tier: getTier(rating),
-      streak,
-      longestStreak,
-      lastStreakDate: now,
     },
   });
 

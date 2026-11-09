@@ -307,9 +307,12 @@ function createModelProxy(modelName) {
         return null;
       }
       if (modelName === "dailyProblemCompletion") {
-        if (where.id) return store.dailyProblemCompletions.get(where.id) || null;
         if (where.userId_dailyProblemId) {
           const key = `${where.userId_dailyProblemId.userId}_${where.userId_dailyProblemId.dailyProblemId}`;
+          return store.dailyProblemCompletions.get(key) || null;
+        }
+        if (where.userId && where.dailyProblemId) {
+          const key = `${where.userId}_${where.dailyProblemId}`;
           return store.dailyProblemCompletions.get(key) || null;
         }
         return null;
@@ -527,8 +530,17 @@ function createModelProxy(modelName) {
       }
       if (modelName === "dailyProblem") {
         let list = [...store.dailyProblems.values()];
-        if (where.istDate) list = list.filter((dp) => dp.istDate === where.istDate);
-        if (where.cycle) list = list.filter((dp) => dp.cycle === where.cycle);
+        if (where.istDate) {
+          if (typeof where.istDate === "string") {
+            list = list.filter((dp) => dp.istDate === where.istDate);
+          } else if (typeof where.istDate === "object") {
+            if (where.istDate.lt) list = list.filter((dp) => dp.istDate < where.istDate.lt);
+            if (where.istDate.lte) list = list.filter((dp) => dp.istDate <= where.istDate.lte);
+            if (where.istDate.gt) list = list.filter((dp) => dp.istDate > where.istDate.gt);
+            if (where.istDate.gte) list = list.filter((dp) => dp.istDate >= where.istDate.gte);
+            if (where.istDate.equals) list = list.filter((dp) => dp.istDate === where.istDate.equals);
+          }
+        }
         if (where.problemId) list = list.filter((dp) => dp.problemId === where.problemId);
         if (orderBy?.istDate === "asc") list.sort((a, b) => a.istDate.localeCompare(b.istDate));
         else if (orderBy?.istDate === "desc") list.sort((a, b) => b.istDate.localeCompare(a.istDate));
@@ -555,7 +567,10 @@ function createModelProxy(modelName) {
       }
       if (modelName === "problem") {
         let list = [...store.problems.values()];
-        if (where.difficulty) list = list.filter((p) => p.difficulty?.toLowerCase() === where.difficulty.toLowerCase());
+        if (where.difficulty) {
+          const diffStr = typeof where.difficulty === "object" ? where.difficulty.equals : where.difficulty;
+          if (diffStr) list = list.filter((p) => p.difficulty?.toLowerCase() === String(diffStr).toLowerCase());
+        }
         if (where.dsaTopicId) list = list.filter((p) => p.dsaTopicId === where.dsaTopicId);
         if (where.NOT?.id) list = list.filter((p) => p.id !== where.NOT.id);
         if (where.id && typeof where.id === "object" && Array.isArray(where.id.in)) {
@@ -659,7 +674,6 @@ function createModelProxy(modelName) {
           id,
           istDate: data.istDate,
           problemId: data.problemId,
-          cycle: data.cycle ?? 1,
           createdAt: data.createdAt || new Date(),
         };
         store.dailyProblems.set(id, dp);
@@ -681,15 +695,12 @@ function createModelProxy(modelName) {
           err.code = "P2002";
           throw err;
         }
-        const id = data.id || `dpc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         const record = {
-          id,
           userId: data.userId,
           dailyProblemId: data.dailyProblemId,
           submissionId: data.submissionId || null,
           completedAt: data.completedAt || new Date(),
         };
-        store.dailyProblemCompletions.set(id, record);
         store.dailyProblemCompletions.set(key, record);
         return { ...record };
       }
@@ -839,15 +850,13 @@ function createModelProxy(modelName) {
         }
       }
       if (modelName === "dailyProblemCompletion") {
-        const key = `${where.userId_dailyProblemId?.userId || createData.userId}_${where.userId_dailyProblemId?.dailyProblemId || createData.dailyProblemId}`;
+        const key = `${where.userId_dailyProblemId?.userId || where.userId || createData.userId}_${where.userId_dailyProblemId?.dailyProblemId || where.dailyProblemId || createData.dailyProblemId}`;
         const existing = store.dailyProblemCompletions.get(key);
         if (existing) {
           Object.assign(existing, update);
           return { ...existing };
         } else {
-          const id = createData.id || `dpc_${Date.now()}`;
-          const rec = { id, ...createData, completedAt: new Date() };
-          store.dailyProblemCompletions.set(id, rec);
+          const rec = { ...createData, completedAt: new Date() };
           store.dailyProblemCompletions.set(key, rec);
           return { ...rec };
         }
@@ -935,6 +944,40 @@ function createModelProxy(modelName) {
         ).length;
       }
       return 0;
+    },
+
+    async groupBy({ by = [], where = {} } = {}) {
+      if (modelName === "submission") {
+        const matching = [...store.submissions.values()].filter((sub) => {
+          if (where.problemId?.in && !where.problemId.in.includes(sub.problemId)) return false;
+          if (where.userId && sub.userId !== where.userId) return false;
+          if (where.status) {
+            const exp = typeof where.status === "object" ? where.status.equals : where.status;
+            const insens = typeof where.status === "object" && where.status.mode === "insensitive";
+            if (insens) {
+              if (String(sub.status).toLowerCase() !== String(exp).toLowerCase()) return false;
+            } else {
+              if (sub.status !== exp) return false;
+            }
+          }
+          if (where.totalCount?.gt !== undefined && (sub.totalCount || 0) <= where.totalCount.gt) return false;
+          return true;
+        });
+
+        const groups = new Map();
+        for (const item of matching) {
+          const key = by.map((k) => item[k]).join("::");
+          if (!groups.has(key)) {
+            const grp = {};
+            for (const k of by) grp[k] = item[k];
+            grp._count = { _all: 0 };
+            groups.set(key, grp);
+          }
+          groups.get(key)._count._all += 1;
+        }
+        return [...groups.values()];
+      }
+      return [];
     },
   };
 }

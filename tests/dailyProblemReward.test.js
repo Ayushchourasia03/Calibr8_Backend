@@ -109,7 +109,7 @@ try {
   assert.equal(d6.reason, "NO_DAILY_PROBLEM_TODAY");
   console.log("✔ D6: Missing daily problem row fails safely without crash");
 
-  // D7: Daily problem + login + streak bonus on same day (Day 7)
+  // D7: Combined Reward (FR-07) - Login (+1) + Solve Daily Problem (+2) = +3 coins total and +1 streak
   const user7 = await createUser(100);
   // Setup user with 6-day streak ending yesterday
   await prisma.user.update({
@@ -123,24 +123,27 @@ try {
     },
   });
 
-  // 1. Day 7 login (+1 login + 5 bonus = +6)
+  // 1. First login today: +1 coin, streak unchanged (6)
   const loginReward = await grantDailyLoginReward(user7.id);
-  assert.equal(loginReward.coinsEarnedToday, 6);
+  assert.equal(loginReward.coinsEarnedToday, 1, "Login grants +1 coin");
 
-  // 2. Day 7 solve daily problem (+2)
+  // 2. Solve daily problem today: +2 coins, streak increments to 7
   const problemReward = await grantDailyProblemReward(user7.id, "two-sum");
   assert.equal(problemReward.awarded, true);
-  assert.equal(problemReward.coinsEarned, 2);
+  assert.equal(problemReward.coinsEarned, 2, "Daily problem solve grants +2 coins");
+  assert.equal(problemReward.streak, 7, "Streak increments to 7 on daily problem solve");
+  assert.equal(problemReward.longestStreak, 7);
 
-  // Total coins added today: +1 + 5 + 2 = +8 (106 + 8 = 114)
+  // Total coins added today: +1 (login) + 2 (daily solve) = +3 coins (106 + 3 = 109)
   const storedUser7 = await prisma.user.findUnique({ where: { id: user7.id } });
-  assert.equal(storedUser7.coins, 114);
+  assert.equal(storedUser7.coins, 109, "User coins should be 106 + 3 = 109");
+  assert.equal(storedUser7.streak, 7, "User streak should be 7");
 
   const user7Txs = await prisma.coinTransaction.findMany({
     where: { userId: user7.id },
   });
-  assert.equal(user7Txs.length, 3, "Should have 3 transactions: DAILY_LOGIN, STREAK_7_BONUS, DAILY_PROBLEM");
-  console.log("✔ D7: Stacking login (+1) + streak 7 (+5) + daily problem (+2) = +8 coins total");
+  assert.equal(user7Txs.length, 2, "Should have 2 transactions: DAILY_LOGIN (+1) and DAILY_PROBLEM (+2)");
+  console.log("✔ D7: Combined reward (login +1, daily problem +2 = +3 total, streak 6 -> 7) verified");
 
   // D8: Daily problem concurrent submissions
   const user8 = await createUser(100);
