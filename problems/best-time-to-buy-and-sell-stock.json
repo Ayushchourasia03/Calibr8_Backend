@@ -6,6 +6,26 @@
   "timeLimit": 1000,
   "memoryLimit": 256,
   "description": "You are given an array prices where prices[i] is the price of a given stock on the ith day. Return the maximum profit you can achieve from this transaction. If you cannot achieve any profit, return 0.\n\nInput Format:\nFirst line: n\nSecond line: n space-separated prices\n\nOutput Format:\nMaximum profit integer",
+  "examples": [
+    {
+      "order": 0,
+      "input": "prices = [7, 1, 5, 3, 6, 4]",
+      "output": "5",
+      "explanation": "Buy on day 2 (price = 1) and sell on day 5 (price = 6), profit = 6 - 1 = 5."
+    },
+    {
+      "order": 1,
+      "input": "prices = [7, 6, 4, 3, 1]",
+      "output": "0",
+      "explanation": "In this case, no transactions are done and the max profit = 0."
+    },
+    {
+      "order": 2,
+      "input": "prices = [3, 2, 6, 5, 0, 3]",
+      "output": "4",
+      "explanation": "Buy on day 2 (price = 2) and sell on day 3 (price = 6), profit = 6 - 2 = 4."
+    }
+  ],
   "testcases": [
     {
       "testIndex": 0,

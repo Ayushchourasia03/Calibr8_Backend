@@ -28,7 +28,7 @@ async function getActivitySummary(userId) {
         activeDays: Object.keys(activity).length,
       };
     } catch {
-      // Fall back to the in-memory-compatible query when raw SQL is unavailable.
+      // Fall back to Prisma query when raw SQL is unavailable.
     }
   }
 

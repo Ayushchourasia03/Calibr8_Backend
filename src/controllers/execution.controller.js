@@ -1340,53 +1340,45 @@ export const submitSolution = async (req, res, next) => {
 export const getSubmissionStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
-    let submission = null;
-
-    try {
-      submission = await prisma.submission.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          problemId: true,
-          userId: true,
-          language: true,
-          code: true,
-          status: true,
-          passedCount: true,
-          totalCount: true,
-          time: true,
-          memory: true,
-          createdAt: true,
-          problem: {
-            select: {
-              slug: true,
-              title: true,
-            },
+    let submission = await prisma.submission.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        problemId: true,
+        userId: true,
+        language: true,
+        code: true,
+        status: true,
+        passedCount: true,
+        totalCount: true,
+        time: true,
+        memory: true,
+        createdAt: true,
+        problem: {
+          select: {
+            slug: true,
+            title: true,
           },
         },
-      });
-    } catch (dbErr) {
-      // In-memory poll fallback
+      },
+    });
+
+    if (!submission) {
+      throw new ApiError(404, "Submission not found.", "SUBMISSION_NOT_FOUND");
     }
 
     const cachedSubmission = submissionCache.get(id);
     if (cachedSubmission) {
-      submission = submission
-        ? {
-            ...submission,
-            results: cachedSubmission.results,
-            complexity: cachedSubmission.complexity,
-            firstFailure: cachedSubmission.firstFailure,
-            tierReached: cachedSubmission.tierReached,
-            reward: cachedSubmission.reward,
-            dailyProblemReward: cachedSubmission.dailyProblemReward,
-            problem: submission.problem || cachedSubmission.problem,
-          }
-        : cachedSubmission;
-    }
-
-    if (!submission) {
-      throw new ApiError(404, "Submission not found.", "SUBMISSION_NOT_FOUND");
+      submission = {
+        ...submission,
+        results: cachedSubmission.results,
+        complexity: cachedSubmission.complexity,
+        firstFailure: cachedSubmission.firstFailure,
+        tierReached: cachedSubmission.tierReached,
+        reward: cachedSubmission.reward,
+        dailyProblemReward: cachedSubmission.dailyProblemReward,
+        problem: submission.problem || cachedSubmission.problem,
+      };
     }
 
     // Authenticated users may only inspect submissions explicitly owned by them.

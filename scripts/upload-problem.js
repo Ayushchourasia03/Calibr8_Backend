@@ -3,20 +3,20 @@ import fs from 'fs';
 import path from 'path';
 import prisma from '../src/config/db.js';
 
-async function uploadProblem(jsonPath) {
-  const raw = fs.readFileSync(jsonPath, 'utf8');
-  const data = JSON.parse(raw);
-  const slug = data.slug || path.basename(jsonPath, '.json');
-
-  // Agar already hai to SKIP - yehi tujhe chahiye
-  const existing = await prisma.problem.findUnique({ where: { slug } });
-  if (existing) {
-    console.log(`⏭️  SKIP ${slug} - already exists in DB, keeping old one`);
-    return { skipped: true, slug };
-  }
-
+function mapProblemPayload(data, slug) {
   const timeLimit = data.timeLimit || data.time_limit || 1000;
   const memoryLimit = data.memoryLimit || data.memory_limit || 256;
+  const tags = Array.isArray(data.tags) ? data.tags.map(String) : [];
+
+  const examples = (data.examples || []).map((ex, idx) => ({
+    order: ex.order ?? idx,
+    input: String(ex.input ?? ''),
+    output: String(ex.output ?? ''),
+    explanation:
+      ex.explanation != null && String(ex.explanation).trim() !== ''
+        ? String(ex.explanation)
+        : null,
+  }));
 
   const testcases = (data.testcases || []).map((tc, idx) => {
     const input = tc.input ?? tc.stdinSmall ?? tc.stdin ?? tc.stdin_small ?? '';
@@ -29,61 +29,132 @@ async function uploadProblem(jsonPath) {
       stdinSmall: inputStr,
       expectedSmall: outputStr,
       sizeBytes: Buffer.byteLength(inputStr, 'utf8'),
-      r2Key: tc.r2Key || null
+      r2Key: tc.r2Key || null,
     };
   });
 
   const templates = Object.entries(data.templates || {}).map(([lang, code]) => ({
     language: lang,
-    code: String(code)
+    code: typeof code === 'object' && code !== null ? JSON.stringify(code) : String(code),
   }));
+
+  return {
+    title: data.title || slug,
+    description: data.description || data.title || 'No description',
+    difficulty: data.difficulty || 'Easy',
+    timeLimit,
+    memoryLimit,
+    tags,
+    examples,
+    testcases,
+    templates,
+  };
+}
+
+async function uploadProblem(jsonPath, forceUpdate = false) {
+  const raw = fs.readFileSync(jsonPath, 'utf8');
+  const data = JSON.parse(raw);
+  const slug = data.slug || path.basename(jsonPath, '.json');
+  const payload = mapProblemPayload(data, slug);
+
+  const existing = await prisma.problem.findUnique({
+    where: { slug },
+    include: { _count: { select: { examples: true, testcases: true, templates: true } } },
+  });
+
+  if (existing) {
+    if (forceUpdate) {
+      const updated = await prisma.problem.update({
+        where: { id: existing.id },
+        data: {
+          title: payload.title,
+          description: payload.description,
+          difficulty: payload.difficulty,
+          timeLimit: payload.timeLimit,
+          memoryLimit: payload.memoryLimit,
+          tags: payload.tags,
+          examples: { deleteMany: {}, create: payload.examples },
+          testcases: { deleteMany: {}, create: payload.testcases },
+          templates: { deleteMany: {}, create: payload.templates },
+        },
+        include: { _count: { select: { examples: true, testcases: true, templates: true } } },
+      });
+      console.log(
+        `🔄 UPDATED ${updated.slug} (#${updated.problemNumber}) - ${updated._count.examples} examples, ${updated._count.testcases} TCs, ${updated._count.templates} templates`,
+      );
+      return { status: 'updated', slug: updated.slug };
+    }
+
+    if (existing._count.examples === 0 && payload.examples.length > 0) {
+      await prisma.example.createMany({
+        data: payload.examples.map((ex) => ({
+          problemId: existing.id,
+          ...ex,
+        })),
+      });
+      console.log(
+        `🔄 BACKFILLED ${slug} (#${existing.problemNumber}) - added ${payload.examples.length} examples`,
+      );
+      return { status: 'updated', slug };
+    }
+
+    console.log(`⏭️  SKIP ${slug} - already exists in DB (use --update to overwrite)`);
+    return { status: 'skipped', slug };
+  }
 
   const created = await prisma.problem.create({
     data: {
       slug,
-      title: data.title || slug,
-      description: data.description || data.title || 'No description',
-      difficulty: data.difficulty || 'Easy',
-      timeLimit,
-      memoryLimit,
-      testcases: { create: testcases },
-      templates: { create: templates }
+      title: payload.title,
+      description: payload.description,
+      difficulty: payload.difficulty,
+      timeLimit: payload.timeLimit,
+      memoryLimit: payload.memoryLimit,
+      tags: payload.tags,
+      examples: { create: payload.examples },
+      testcases: { create: payload.testcases },
+      templates: { create: payload.templates },
     },
-    include: { _count: { select: { testcases: true, templates: true } } }
+    include: { _count: { select: { examples: true, testcases: true, templates: true } } },
   });
 
-  console.log(`✅ NEW ${created.slug} (#${created.problemNumber}) - ${created._count.testcases} TCs, ${created._count.templates} templates`);
-  return { skipped: false, slug: created.slug };
+  console.log(
+    `✅ NEW ${created.slug} (#${created.problemNumber}) - ${created._count.examples} examples, ${created._count.testcases} TCs, ${created._count.templates} templates`,
+  );
+  return { status: 'added', slug: created.slug };
 }
 
-const target = process.argv[2];
+const args = process.argv.slice(2);
+const forceUpdate = args.includes('--update') || args.includes('--force');
+const target = args.find((a) => !a.startsWith('--'));
+
 if (!target) {
-  console.log("Usage: node scripts/upload-problem.js ./problems");
+  console.log('Usage: node scripts/upload-problem.js ./problems [--update]');
   process.exit(1);
 }
 
-let results = { added: 0, skipped: 0 };
+const results = { added: 0, updated: 0, skipped: 0 };
 
-if (fs.existsSync(target) && fs.statSync(target).isDirectory()) {
-  const files = fs.readdirSync(target).filter(f => f.endsWith('.json')).sort();
-  console.log(`📂 Found ${files.length} JSON files in ${target}\n`);
-  for (const f of files) {
-    const fullPath = path.join(target, f);
-    const res = await uploadProblem(fullPath);
-    if (res.skipped) results.skipped++;
-    else results.added++;
+try {
+  if (fs.existsSync(target) && fs.statSync(target).isDirectory()) {
+    const files = fs.readdirSync(target).filter((f) => f.endsWith('.json')).sort();
+    console.log(`📂 Found ${files.length} JSON files in ${target}\n`);
+    for (const f of files) {
+      const fullPath = path.join(target, f);
+      const res = await uploadProblem(fullPath, forceUpdate);
+      results[res.status]++;
+    }
+  } else {
+    const res = await uploadProblem(target, forceUpdate);
+    results[res.status]++;
   }
-} else {
-  const res = await uploadProblem(target);
-  if (res.skipped) results.skipped++;
-  else results.added++;
+} finally {
+  await prisma.$disconnect();
 }
 
-await prisma.$disconnect();
-
-console.log(`\n🎉 DONE - Added: ${results.added}, Skipped: ${results.skipped}`);
-
-
+console.log(
+  `\n🎉 DONE - Added: ${results.added}, Updated: ${results.updated}, Skipped: ${results.skipped}`,
+);
 
 // ==============================================================================
 // SCRIPT DOCUMENTATION & USAGE GUIDE
@@ -91,36 +162,24 @@ console.log(`\n🎉 DONE - Added: ${results.added}, Skipped: ${results.skipped}`
 /**
  * WHAT IS THE NEED FOR THIS SCRIPT:
  * ---------------------------------
- * 1. Incremental Problem Ingestion:
- *    When you add a new problem JSON file or multiple problem definitions to the
- *    `./problems` directory, this script reads each JSON file, parses its metadata,
- *    testcases, and starter templates, and inserts them into PostgreSQL via Prisma.
+ * 1. Incremental Problem, Example & Testcase Ingestion:
+ *    Reads problem JSON files from `./problems` (including metadata, LeetCode-style
+ *    `examples`, `testcases`, and structured `templates`) and persists them into
+ *    PostgreSQL via Prisma.
  *
- * 2. Idempotent & Safe against Duplication:
- *    Unlike naive insert scripts, `upload-problem.js` checks if the problem slug
- *    already exists in the database. If it exists, it safely SKIPS it, ensuring
- *    existing problem records and primary keys are preserved without P2002 errors.
- *
- * 3. Supports Single File or Entire Folder:
- *    Allows developers to either ingest one specific problem or bulk-process all
- *    JSON files present in a target folder.
- *
- * PREREQUISITES:
- * --------------
- * - A valid DATABASE_URL must be defined in your `.env` file.
- * - Database tables must exist (run `npm run db:push` or apply Prisma migrations).
+ * 2. Safe Backfill & Optional Full Sync:
+ *    - If a problem does not exist, creates it with examples, testcases, and templates.
+ *    - If a problem exists with 0 examples, automatically backfills `examples`.
+ *    - Pass `--update` (or `--force`) to replace examples, testcases, and templates.
  *
  * HOW TO USE THIS SCRIPT:
  * -----------------------
- * 1. To upload/sync all JSON problem files in the problems directory:
+ * 1. Upload/backfill all JSON problem files in `./problems`:
  *    $ node scripts/upload-problem.js ./problems
  *
- * 2. To upload a single problem JSON file:
- *    $ node scripts/upload-problem.js ./problems/two-sum.json
+ * 2. Force-update all existing problems with latest examples, TCs, and templates:
+ *    $ node scripts/upload-problem.js ./problems --update
  *
- * 3. To run with custom environment variables:
- *    $ DATABASE_URL="postgresql://user:pass@host/db" node scripts/upload-problem.js ./problems
+ * 3. Upload a single problem JSON file:
+ *    $ node scripts/upload-problem.js ./problems/two-sum.json
  */
-
-
-// node scripts/upload-problem.js ./problems

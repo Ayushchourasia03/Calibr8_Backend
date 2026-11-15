@@ -6,6 +6,26 @@
   "timeLimit": 1000,
   "memoryLimit": 256,
   "description": "Given an integer array nums of length n and an integer target, find three integers in nums such that the sum is closest to target. Return the sum of the three integers.\n\nInput Format:\nFirst line: n target\nSecond line: n space-separated integers\n\nOutput Format:\nClosest sum integer",
+  "examples": [
+    {
+      "order": 0,
+      "input": "nums = [-1, 2, 1, -4], target = 1",
+      "output": "2",
+      "explanation": "The sum that is closest to the target is 2. (-1 + 2 + 1 = 2)."
+    },
+    {
+      "order": 1,
+      "input": "nums = [0, 0, 0], target = 1",
+      "output": "0",
+      "explanation": "The sum that is closest to the target is 0. (0 + 0 + 0 = 0)."
+    },
+    {
+      "order": 2,
+      "input": "nums = [-3, -2, -5, 3, -4], target = 0",
+      "output": "-2",
+      "explanation": "The triplet (-3, -2, 3) produces sum -2, which is closest to 0."
+    }
+  ],
   "testcases": [
     {
       "testIndex": 0,

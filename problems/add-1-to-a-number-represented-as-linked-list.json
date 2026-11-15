@@ -6,6 +6,26 @@
   "timeLimit": 1000,
   "memoryLimit": 256,
   "description": "A number N is represented in Linked List such that each digit corresponds to a node in linked list. You need to add 1 to it and return the head of modified list.\n\nInput Format:\nFirst line: n (digit count)\nSecond line: n space-separated digits\n\nOutput Format:\nSpace-separated result digits",
+  "examples": [
+    {
+      "order": 0,
+      "input": "head = [4, 5, 6, 7]",
+      "output": "[4, 5, 6, 8]",
+      "explanation": "The linked list represents the number 4567. Adding 1 yields 4568, represented as [4, 5, 6, 8]."
+    },
+    {
+      "order": 1,
+      "input": "head = [9, 9, 9]",
+      "output": "[1, 0, 0, 0]",
+      "explanation": "999 + 1 = 1000, creating a new leading node with value 1."
+    },
+    {
+      "order": 2,
+      "input": "head = [1, 9, 9, 9]",
+      "output": "[2, 0, 0, 0]",
+      "explanation": "Adding 1 propagates the carry across the trailing 9s, turning 1999 into 2000."
+    }
+  ],
   "testcases": [
     {
       "testIndex": 0,

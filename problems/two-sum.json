@@ -6,6 +6,26 @@
   "timeLimit": 1000,
   "memoryLimit": 256,
   "description": "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target. You may assume that each input would have exactly one solution, and you may not use the same element twice.\n\nInput Format:\nFirst line: n target\nSecond line: n space-separated integers\n\nOutput Format:\nSpace-separated indices",
+  "examples": [
+    {
+      "order": 0,
+      "input": "nums = [2, 7, 11, 15], target = 9",
+      "output": "[0, 1]",
+      "explanation": "Because nums[0] + nums[1] == 9, we return [0, 1]."
+    },
+    {
+      "order": 1,
+      "input": "nums = [3, 2, 4], target = 6",
+      "output": "[1, 2]",
+      "explanation": "Because nums[1] + nums[2] == 6, we return [1, 2]."
+    },
+    {
+      "order": 2,
+      "input": "nums = [3, 3], target = 6",
+      "output": "[0, 1]",
+      "explanation": "Because nums[0] + nums[1] == 6, we return [0, 1]."
+    }
+  ],
   "testcases": [
     {
       "testIndex": 0,

@@ -43,10 +43,12 @@ export const errorHandler = (err, req, res, next) => {
 
   // Database connection or environment configuration errors
   if (
-    err.message &&
-    (err.message.includes("No database host") ||
-      err.message.includes("connection string") ||
-      err.message.includes("DATABASE_URL"))
+    err.name === "PrismaClientInitializationError" ||
+    ["P1000", "P1001", "P1002", "P1003"].includes(err.code) ||
+    (err.message &&
+      (err.message.includes("No database host") ||
+        err.message.includes("connection string") ||
+        err.message.includes("DATABASE_URL")))
   ) {
     return res.status(503).json({
       success: false,

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -8,9 +9,10 @@ function getSecret(name, fallback) {
     return value;
   }
   if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      `${name} must be explicitly configured with at least ${minimumLength} characters.`,
+    console.warn(
+      `[Security] ${name} not configured (>=${minimumLength} chars); using ephemeral runtime secret.`,
     );
+    return crypto.randomBytes(32).toString("hex");
   }
   return fallback;
 }

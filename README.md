@@ -33,7 +33,7 @@ High-performance, production-grade backend engine powering the **Calibr8** devel
   - **Theme Store**: Users can spend coins to purchase and activate custom IDE editor themes (`Orbit`, `Arcade`, `Cyberpunk`, etc.).
 
 - **🎯 DSA Skill Calibration & Adaptive Problems Catalog**:
-  - Comprehensive problem repository (161 DSA problems) with starter code snippets, input/output drivers, and structured testcases.
+  - Comprehensive problem repository with LeetCode-style `examples`, starter code snippets, input/output drivers, and structured testcases.
   - Adaptive 1-click beginner presets and per-topic skill calibration (Easy, Medium, Hard).
   - Structured categorization (Arrays, Two Pointers, Sliding Window, Trees, Graphs, Dynamic Programming).
 
@@ -47,7 +47,7 @@ High-performance, production-grade backend engine powering the **Calibr8** devel
   - Automated rating tier mapping: *Pulse*, *Flux*, *Prism*, *Aurora*, *Eclipse*, and *Zenith* across divisions *I*, *II*, and *III*.
 
 - **🛡️ Enterprise Security & Resilience**:
-  - Zero-database-leak test isolation (`DATABASE_URL = ""` falls back to high-fidelity in-memory store).
+  - Direct PostgreSQL / Neon persistence via Prisma ORM (`503 DATABASE_UNAVAILABLE` on connection errors).
   - Strict Content Security Policy (CSP), `X-Content-Type-Options: nosniff`, and `Referrer-Policy: strict-origin-when-cross-origin`.
   - Rate limiting on authentication routes and max-concurrency in-flight execution limiters (2 concurrent jobs per client).
   - Safe OAuth callbacks with HMAC-SHA256 state signing and host white-listing against open-redirect exploits.
@@ -96,14 +96,12 @@ High-performance, production-grade backend engine powering the **Calibr8** devel
                      +------------------------+------------------------+
                                               |
                                   +-----------v-----------+
-                                  |    Prisma Client /    |
-                                  |  InMemoryStore Proxy  |
+                                  |     Prisma Client     |
+                                  |  (@prisma/adapter-*)  |
                                   +-----------+-----------+
                                               |
-                               +--------------+--------------+
-                               |                             |
-                      [Production Neon DB]          [InMemory Fallback]
-                       (Live Deployments)            (Automated Tests)
+                                              v
+                                  [PostgreSQL / Neon DB]
 ```
 
 ---
@@ -126,7 +124,7 @@ High-performance, production-grade backend engine powering the **Calibr8** devel
 │   ├── server.js                  # Entry point (port 3000, 0.0.0.0)
 │   ├── app.js                     # Express app setup & middleware configuration
 │   ├── config/
-│   │   ├── db.js                  # Prisma Client with Dual-Mode InMemoryStore proxy
+│   │   ├── db.js                  # Direct Prisma Client (Neon & pg adapter)
 │   │   └── jwt.js                 # JWT configuration
 │   ├── controllers/               # 11 Domain controllers (auth, execution, coin, etc.)
 │   ├── routers/                   # 12 Express routers mounted under /api/*
@@ -170,7 +168,7 @@ CODEBOX_URL="https://runner.calibr8.internal"
 CODEBOX_TOKEN="your-codebox-token"
 ```
 
-> **Note on Zero-Config Fallback**: If `DATABASE_URL` is omitted or left empty, the server automatically boots into **InMemoryStore** mode. You can run and test the complete platform locally without needing a PostgreSQL server!
+> **Database Requirement**: Set `DATABASE_URL` in `.env` to your Neon or PostgreSQL connection string, then push schema & seed problems (`npm run db:push && npm run problems:seed`, or `node scripts/upload-problem.js ./problems --update`).
 
 ### 4. Running the Development Server
 ```bash
@@ -182,7 +180,7 @@ The server will start on `http://localhost:3000`. Navigate to `http://localhost:
 
 ## 🧪 Testing Suite
 
-Calibr8 includes an exhaustive automated test suite using Node.js's native test runner (`node --test`). Tests run in memory and never touch remote databases.
+Calibr8 includes an automated test suite using Node.js's native test runner (`node --test`). Unit tests (`npm run test:unit`) run without a database; integration tests connect to the configured PostgreSQL / Neon `DATABASE_URL`.
 
 ```bash
 # Run all 38 test suites (full test suite)

@@ -6,6 +6,26 @@
   "timeLimit": 1000,
   "memoryLimit": 256,
   "description": "Given an integer array nums, return the number of unique triplets [nums[i], nums[j], nums[k]] such that i != j, i != k, and j != k, and nums[i] + nums[j] + nums[k] == 0.\n\nInput Format:\nFirst line: n\nSecond line: n space-separated integers\n\nOutput Format:\nCount of unique triplets",
+  "examples": [
+    {
+      "order": 0,
+      "input": "nums = [-1, 0, 1, 2, -1, -4]",
+      "output": "2",
+      "explanation": "The distinct triplets that sum to 0 are [-1, -1, 2] and [-1, 0, 1], so the count is 2."
+    },
+    {
+      "order": 1,
+      "input": "nums = [0, 1, 1]",
+      "output": "0",
+      "explanation": "The only possible triplet does not sum up to 0."
+    },
+    {
+      "order": 2,
+      "input": "nums = [0, 0, 0]",
+      "output": "1",
+      "explanation": "The only possible triplet [0, 0, 0] sums up to 0."
+    }
+  ],
   "testcases": [
     {
       "testIndex": 0,

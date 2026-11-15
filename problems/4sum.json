@@ -6,6 +6,26 @@
   "timeLimit": 1000,
   "memoryLimit": 256,
   "description": "Given an array nums of n integers, return an array of all the unique quadruplets [nums[a], nums[b], nums[c], nums[d]] such that the sum is equal to target. Return the count of unique quadruplets.\n\nInput Format:\nFirst line: n target\nSecond line: n space-separated integers\n\nOutput Format:\nNumber of unique quadruplets",
+  "examples": [
+    {
+      "order": 0,
+      "input": "nums = [1, 0, -1, 0, -2, 2], target = 0",
+      "output": "3",
+      "explanation": "There are 3 unique quadruplets summing to 0: [-2, -1, 1, 2], [-2, 0, 0, 2], and [-1, 0, 0, 1]."
+    },
+    {
+      "order": 1,
+      "input": "nums = [2, 2, 2, 2, 2], target = 8",
+      "output": "1",
+      "explanation": "Only one unique quadruplet [2, 2, 2, 2] sums to 8."
+    },
+    {
+      "order": 2,
+      "input": "nums = [1, 2, 3, 4], target = 1",
+      "output": "0",
+      "explanation": "The minimum possible quadruplet sum is 10, so no quadruplet sums to 1."
+    }
+  ],
   "testcases": [
     {
       "testIndex": 0,
