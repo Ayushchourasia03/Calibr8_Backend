@@ -141,11 +141,27 @@ model Problem {
   templates     CodeTemplate[]
   dsaTopic      DsaTopic?             @relation(fields: [dsaTopicId], references: [id])
   testcases     Testcase[]
-  submissions   Submission[] // ADD THIS
+  submissions   Submission[]
   userProgress  UserProblemProgress[]
   dailyProblems DailyProblem[]
+  examples      Example[] // ADD THIS
 
   @@map("problems")
+}
+
+model Example {
+  id          String   @id @default(cuid())
+  problemId   String   @map("problemId")
+  order       Int      @default(0) @map("order")
+  input       String   @db.Text
+  output      String   @db.Text
+  explanation String?  @db.Text
+
+  problem     Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now()) @map("createdAt")
+
+  @@index([problemId, order])
+  @@map("examples")
 }
 
 model UserProblemProgress {

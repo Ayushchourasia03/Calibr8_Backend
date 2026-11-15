@@ -20,7 +20,8 @@ const MAX_CASES_PER_BATCH = 20;
 const BATCH_POLL_INITIAL_INTERVAL_MS = 250;
 const BATCH_POLL_MAX_INTERVAL_MS = 800;
 const BATCH_TIMEOUT_MS = 60 * 1000;
-const MAX_CONCURRENT_BATCHES = Number(process.env.CODEBOX_MAX_CONCURRENT_BATCHES) || 2;
+const MAX_CONCURRENT_BATCHES =
+  Number(process.env.CODEBOX_MAX_CONCURRENT_BATCHES) || 2;
 
 /** Compact complexity summary avoiding unnecessary metadata */
 export function compactComplexitySummary(complexity) {
@@ -100,7 +101,6 @@ export const getLanguages = async (req, res, next) => {
   }
 };
 
-
 function getCodeboxUrl(required = true) {
   const codeboxUrl = process.env.CODEBOX_URL;
   const codeboxToken = process.env.CODEBOX_TOKEN;
@@ -129,8 +129,7 @@ function getCodeboxUrl(required = true) {
 
   const isHttps = runnerUrl.protocol === "https:";
   const isHttp = runnerUrl.protocol === "http:";
-  const allowInsecureHttp =
-    process.env.CODEBOX_ALLOW_INSECURE_HTTP === "true";
+  const allowInsecureHttp = process.env.CODEBOX_ALLOW_INSECURE_HTTP === "true";
 
   if (!isHttps && !(isHttp && allowInsecureHttp)) {
     if (!required) return null;
@@ -143,7 +142,6 @@ function getCodeboxUrl(required = true) {
 
   return runnerUrl;
 }
-
 
 async function fetchCodeboxJson(url, options = {}) {
   const codeboxToken = process.env.CODEBOX_TOKEN;
@@ -187,6 +185,253 @@ async function fetchCodeboxJson(url, options = {}) {
   }
 }
 
+function isCodeboxBatchExecutionEnabled() {
+  return (
+    process.env.CODEBOX_BATCH_EXECUTION_ENABLED === "true" ||
+    process.env.CODEBOX_BATCH_EXECUTION_ENABLED === "1"
+  );
+}
+
+function normalizeBatchStatus(status) {
+  const normalized = String(status || "")
+    .trim()
+    .toLowerCase();
+  if (["completed", "done", "success"].includes(normalized)) return "OK";
+  if (
+    [
+      "compile_failed",
+      "compile-failed",
+      "compilation_error",
+      "compilation-error",
+      "compile-error",
+      "ce",
+    ].includes(normalized)
+  )
+    return "Compilation Error";
+  if (
+    ["timeout", "time_limit_exceeded", "time-limit-exceeded", "tle"].includes(
+      normalized,
+    )
+  )
+    return "Time Limit Exceeded";
+  if (
+    ["memory_limit_exceeded", "memory-limit-exceeded", "memory-limit"].includes(
+      normalized,
+    )
+  )
+    return "Memory Limit Exceeded";
+  if (
+    ["output_limit_exceeded", "output-limit-exceeded", "output-limit"].includes(
+      normalized,
+    )
+  )
+    return "Output Limit Exceeded";
+  if (
+    [
+      "cancelled",
+      "canceled",
+      "cancelled_by_user",
+      "cancelled-by-user",
+    ].includes(normalized)
+  )
+    return "Cancelled";
+  if (
+    ["failed", "error", "runtime_error", "runtime-error"].includes(normalized)
+  )
+    return "Runtime Error";
+  return "Runtime Error";
+}
+
+function normalizeBatchResult(rawResult = {}, fallbackIndex = 0) {
+  const rawStatus = String(
+    rawResult.status || rawResult.state || "completed",
+  ).trim();
+  const exitCode = Number(rawResult.exitCode ?? rawResult.exit_code ?? 0);
+  const stdout = typeof rawResult.stdout === "string" ? rawResult.stdout : "";
+  const stderr = typeof rawResult.stderr === "string" ? rawResult.stderr : "";
+  const compileOutput =
+    typeof rawResult.compile_output === "string"
+      ? rawResult.compile_output
+      : "";
+  const timeMs = Number(
+    rawResult.timeMs ?? rawResult.time ?? rawResult.elapsedMs ?? 0,
+  );
+  const wallTimeMs = Number(
+    rawResult.wallTimeMs ?? rawResult.wall_time ?? timeMs ?? 0,
+  );
+  const memoryKb = Number(
+    rawResult.memory ?? rawResult.memoryKb ?? rawResult.memory_kb ?? 0,
+  );
+  const status = normalizeBatchStatus(rawStatus);
+
+  return {
+    status,
+    studentStdout: "",
+    actual: stdout.trim(),
+    errorText: stderr || compileOutput || rawResult.message || null,
+    timeMs,
+    cpuTimeMs: timeMs,
+    wallTimeMs,
+    memoryKb,
+    memorySource: rawResult.memory_source || "max-rss",
+    exitCode,
+    index: Number(rawResult.index ?? fallbackIndex),
+    inputBytes: Number(rawResult.inputBytes ?? 0),
+  };
+}
+
+async function executeCodeboxBatchOnce({
+  language,
+  fullCode,
+  testcases,
+  timeLimit = 2000,
+  memoryLimit = 256,
+}) {
+  if (!Array.isArray(testcases) || testcases.length === 0) return [];
+
+  const runnerUrl = getCodeboxUrl(true);
+  const languageId = LANGUAGE_IDS[language] || 54;
+  const headers = { "Content-Type": "application/json" };
+  const payload = {
+    language_id: languageId,
+    source_code: fullCode,
+    testcases: testcases.map((testcase) => ({
+      stdin: testcase.stdin ?? testcase.stdinSmall ?? testcase.input ?? "",
+    })),
+    limits: {
+      cpu_time_limit: Math.max(1, Math.ceil((timeLimit || 2000) / 1000)),
+      wall_time_limit: Math.max(2, Math.ceil((timeLimit || 2000) / 1000) * 2),
+      memory_limit: Math.max(1, Number(memoryLimit || 256) * 1024),
+      max_processes_and_or_threads: 60,
+    },
+  };
+
+  let created;
+  try {
+    created = await fetchCodeboxJson(new URL("/batches", runnerUrl), {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    if (err instanceof ApiError && err.code === "EXECUTION_UNAVAILABLE") {
+      throw err;
+    }
+    throw err;
+  }
+
+  const batchId = created?.batchId || created?.id || created?.batch_id;
+  if (!batchId) {
+    throw new ApiError(
+      503,
+      "Code execution service returned an invalid batch response.",
+      "EXECUTION_UNAVAILABLE",
+    );
+  }
+
+  const statusUrl = new URL("/batches", runnerUrl);
+  statusUrl.searchParams.set("batchId", batchId);
+
+  const deadline = Date.now() + BATCH_TIMEOUT_MS;
+  let currentInterval = BATCH_POLL_INITIAL_INTERVAL_MS;
+  let batchStatus = created;
+
+  while (true) {
+    batchStatus = await fetchCodeboxJson(statusUrl, { headers });
+    const normalizedStatus = String(batchStatus?.status || "")
+      .trim()
+      .toLowerCase();
+    const terminalStatuses = new Set([
+      "completed",
+      "compile_failed",
+      "compile-failed",
+      "failed",
+      "timeout",
+      "cancelled",
+      "canceled",
+    ]);
+
+    if (terminalStatuses.has(normalizedStatus)) break;
+    if (Date.now() >= deadline) {
+      throw new ApiError(
+        503,
+        "Code execution service timed out.",
+        "EXECUTION_UNAVAILABLE",
+      );
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, currentInterval));
+    currentInterval = Math.min(
+      BATCH_POLL_MAX_INTERVAL_MS,
+      Math.round(currentInterval * 1.35),
+    );
+  }
+
+  const rawResults = Array.isArray(batchStatus?.results)
+    ? batchStatus.results
+    : [];
+  const byIndex = new Map(
+    rawResults.map((result, index) => [Number(result.index ?? index), result]),
+  );
+
+  const results = testcases.map((_, index) => {
+    const rawResult = byIndex.get(index) || rawResults[index] || {};
+    const fallback = {
+      index,
+      status:
+        batchStatus?.status === "compile_failed" ||
+        batchStatus?.status === "COMPILE_FAILED"
+          ? "Compilation Error"
+          : "Runtime Error",
+      stderr:
+        batchStatus?.status === "compile_failed" ||
+        batchStatus?.status === "COMPILE_FAILED"
+          ? batchStatus?.compileError || batchStatus?.error || ""
+          : batchStatus?.message || "",
+      stdout: "",
+      exitCode: 1,
+    };
+
+    return {
+      ...normalizeBatchResult({ ...fallback, ...rawResult }, index),
+      inputBytes: Buffer.byteLength(
+        String(testcases[index]?.stdin ?? ""),
+        "utf-8",
+      ),
+    };
+  });
+
+  if (
+    batchStatus?.status === "compile_failed" ||
+    batchStatus?.status === "COMPILE_FAILED" ||
+    batchStatus?.status === "compile-failed"
+  ) {
+    return results.map((result, index) => ({
+      ...result,
+      status: "Compilation Error",
+      actual: "",
+      studentStdout: "",
+      errorText:
+        rawResults[index]?.stderr ||
+        rawResults[index]?.compile_output ||
+        batchStatus?.message ||
+        batchStatus?.error ||
+        "Compilation failed.",
+      timeMs: 0,
+      cpuTimeMs: 0,
+      wallTimeMs: 0,
+      memoryKb: 0,
+      exitCode: 1,
+      inputBytes: Buffer.byteLength(
+        String(testcases[index]?.stdin ?? ""),
+        "utf-8",
+      ),
+    }));
+  }
+
+  return results;
+}
+
 function normalizeRunnerResult(data) {
   const statusId = Number(data.status?.id);
   const status =
@@ -201,9 +446,16 @@ function normalizeRunnerResult(data) {
             : "OK";
 
   const cpuTimeMs = Math.round(parseFloat(data.time || "0") * 1000);
-  const wallTimeMs = Math.round(parseFloat(data.wall_time || data.time || "0") * 1000);
+  const wallTimeMs = Math.round(
+    parseFloat(data.wall_time || data.time || "0") * 1000,
+  );
   const memoryKb = Number(data.memory) || 0;
-  const exitCode = data.exit_code !== undefined ? Number(data.exit_code) : (status === "OK" ? 0 : 1);
+  const exitCode =
+    data.exit_code !== undefined
+      ? Number(data.exit_code)
+      : status === "OK"
+        ? 0
+        : 1;
 
   return {
     status,
@@ -227,6 +479,27 @@ export async function executeCodeBatch({
   memoryLimit = 256,
 }) {
   if (!testcases.length) return [];
+
+  if (
+    isCodeboxBatchExecutionEnabled() &&
+    normalizeLanguage(language) === "cpp"
+  ) {
+    try {
+      return await executeCodeboxBatchOnce({
+        language,
+        fullCode,
+        testcases,
+        timeLimit,
+        memoryLimit,
+      });
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "EXECUTION_UNAVAILABLE") {
+        // Fall back to the legacy codepath if the batch API is not available.
+      } else {
+        throw err;
+      }
+    }
+  }
 
   // CodeBox is the exclusive execution engine - no local fallback allowed.
   const runnerUrl = getCodeboxUrl(true);
@@ -322,9 +595,7 @@ export async function executeCodeBatch({
         );
       }
 
-      await new Promise((resolve) =>
-        setTimeout(resolve, currentInterval),
-      );
+      await new Promise((resolve) => setTimeout(resolve, currentInterval));
       // Adaptive backoff up to BATCH_POLL_MAX_INTERVAL_MS
       currentInterval = Math.min(
         BATCH_POLL_MAX_INTERVAL_MS,
@@ -543,7 +814,8 @@ export const runCode = async (req, res, next) => {
         cpuTimeMs: execResult.cpuTimeMs ?? execResult.timeMs,
         wallTimeMs: execResult.wallTimeMs ?? execResult.timeMs,
         memoryKb: execResult.memoryKb,
-        inputBytes: execResult.inputBytes ?? Buffer.byteLength(testInput, "utf-8"),
+        inputBytes:
+          execResult.inputBytes ?? Buffer.byteLength(testInput, "utf-8"),
         errorText: execResult.errorText,
       });
     }
@@ -614,9 +886,24 @@ async function evaluateAllTestcases(problem, language, code, providedFullCode) {
   const tier3Cases = allTestcases.slice(tier2Count);
 
   const tiers = [
-    { name: "Tier 1", cases: tier1Cases, rankIfFailed: "Tier 0 (Failed)", rankIfPassed: "Tier 1 (Brute Force)" },
-    { name: "Tier 2", cases: tier2Cases, rankIfFailed: "Tier 1 (Brute Force)", rankIfPassed: "Tier 2 (Better)" },
-    { name: "Tier 3", cases: tier3Cases, rankIfFailed: "Tier 2 (Better)", rankIfPassed: "Tier 3 (Optimal)" },
+    {
+      name: "Tier 1",
+      cases: tier1Cases,
+      rankIfFailed: "Tier 0 (Failed)",
+      rankIfPassed: "Tier 1 (Brute Force)",
+    },
+    {
+      name: "Tier 2",
+      cases: tier2Cases,
+      rankIfFailed: "Tier 1 (Brute Force)",
+      rankIfPassed: "Tier 2 (Better)",
+    },
+    {
+      name: "Tier 3",
+      cases: tier3Cases,
+      rankIfFailed: "Tier 2 (Better)",
+      rankIfPassed: "Tier 3 (Optimal)",
+    },
   ];
 
   let tierReached = "Tier 0 (Failed)";
@@ -667,7 +954,8 @@ async function evaluateAllTestcases(problem, language, code, providedFullCode) {
         wallTimeMs: execResult.wallTimeMs ?? execResult.timeMs ?? 0,
         memory: execResult.memoryKb || 0,
         memoryKb: execResult.memoryKb || 0,
-        inputBytes: execResult.inputBytes ?? Buffer.byteLength(testInput, "utf-8"),
+        inputBytes:
+          execResult.inputBytes ?? Buffer.byteLength(testInput, "utf-8"),
         status: isPassed ? "Accepted" : failureType,
         errorText: execResult.errorText,
       };
@@ -680,14 +968,15 @@ async function evaluateAllTestcases(problem, language, code, providedFullCode) {
         if (!firstFailure) {
           if (failureType === "Time Limit Exceeded")
             finalStatus = "TIME_LIMIT_EXCEEDED";
-          else if (failureType === "Runtime Error") finalStatus = "RUNTIME_ERROR";
+          else if (failureType === "Runtime Error")
+            finalStatus = "RUNTIME_ERROR";
           else if (failureType === "Compilation Error")
             finalStatus = "COMPILATION_ERROR";
           else finalStatus = "WRONG_ANSWER";
 
           const isVisible = Boolean(tc.isVisible);
           firstFailure = {
-            testIndex: tc.testIndex ?? (results.length - 1),
+            testIndex: tc.testIndex ?? results.length - 1,
             status: failureType,
             errorText: isVisible ? execResult.errorText : null,
             input: isVisible ? testInput : undefined,
@@ -876,14 +1165,19 @@ export const submitSolution = async (req, res, next) => {
           let dpGranted = false;
           let dpCoins = 0;
           try {
-            const dpReward = await grantDailyProblemReward(userId, problem.id, submission.id);
+            const dpReward = await grantDailyProblemReward(
+              userId,
+              problem.id,
+              submission.id,
+            );
             if (dpReward) {
               dpGranted = Boolean(dpReward.granted);
               dpCoins = Number(dpReward.coins) || 0;
               dailyProblemReward = { granted: dpGranted, coins: dpCoins };
               if (dpGranted && reward?.stats) {
                 reward.stats.coins = dpReward.balance || dpReward.balanceAfter;
-                reward.coinsEarned = (Number(reward.coinsEarned) || 0) + dpCoins;
+                reward.coinsEarned =
+                  (Number(reward.coinsEarned) || 0) + dpCoins;
               }
             } else {
               dailyProblemReward = { granted: false, coins: 0 };
@@ -1129,7 +1423,9 @@ export const getSubmissionStatus = async (req, res, next) => {
         createdAt: submission.createdAt,
         firstFailure: submission.firstFailure || null,
         results: publicTestResults(submission.results || []),
-        complexity: compactComplexitySummary(cachedSubmission?.complexity || submission.complexity || null),
+        complexity: compactComplexitySummary(
+          cachedSubmission?.complexity || submission.complexity || null,
+        ),
         reward: submission.reward || null,
         rewardError: submission.rewardError || false,
         dailyProblemReward: submission.dailyProblemReward || null,
@@ -1150,7 +1446,8 @@ export const getSubmissionStatus = async (req, res, next) => {
  */
 export const getComplexityAnalysis = async (req, res, next) => {
   try {
-    const { code, userCode, source_code, language, lang, slug, problemSlug } = req.body;
+    const { code, userCode, source_code, language, lang, slug, problemSlug } =
+      req.body;
     const studentCode = userCode || code || source_code;
     const rawLang = language || lang || "python";
     const problemId = slug || problemSlug || "";
