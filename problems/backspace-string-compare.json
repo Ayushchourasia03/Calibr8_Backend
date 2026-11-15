@@ -6,6 +6,26 @@
   "timeLimit": 1000,
   "memoryLimit": 256,
   "description": "Given two strings s and t, return true if they are equal when both are typed into empty text editors where '#' means a backspace character.\n\nInput Format:\nFirst line: s\nSecond line: t\n\nOutput Format:\ntrue or false",
+  "examples": [
+    {
+      "order": 0,
+      "input": "s = \"ab#c\", t = \"ad#c\"",
+      "output": "true",
+      "explanation": "Both s and t become \"ac\"."
+    },
+    {
+      "order": 1,
+      "input": "s = \"ab##\", t = \"c#d#\"",
+      "output": "true",
+      "explanation": "Both s and t become \"\"."
+    },
+    {
+      "order": 2,
+      "input": "s = \"a#c\", t = \"b\"",
+      "output": "false",
+      "explanation": "s becomes \"c\" while t becomes \"b\"."
+    }
+  ],
   "testcases": [
     {
       "testIndex": 0,

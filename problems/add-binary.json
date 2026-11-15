@@ -6,6 +6,26 @@
   "timeLimit": 1000,
   "memoryLimit": 256,
   "description": "Given two binary strings a and b, return their sum as a binary string.\n\nInput Format:\nFirst line: a\nSecond line: b\n\nOutput Format:\nBinary sum string",
+  "examples": [
+    {
+      "order": 0,
+      "input": "a = \"11\", b = \"1\"",
+      "output": "\"100\"",
+      "explanation": "In binary, 11 (3) + 1 (1) = 100 (4)."
+    },
+    {
+      "order": 1,
+      "input": "a = \"1010\", b = \"1011\"",
+      "output": "\"10101\"",
+      "explanation": "In binary, 1010 (10) + 1011 (11) = 10101 (21)."
+    },
+    {
+      "order": 2,
+      "input": "a = \"111\", b = \"111\"",
+      "output": "\"1110\"",
+      "explanation": "In binary, 111 (7) + 111 (7) = 1110 (14)."
+    }
+  ],
   "testcases": [
     {
       "testIndex": 0,

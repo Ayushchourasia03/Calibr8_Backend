@@ -56,6 +56,17 @@ export const getProblemBySlug = async (req, res, next) => {
         expectedSmall: testcase.expectedSmall ?? testcase.output ?? "",
       }));
 
+    const examples = (problem.examples || [])
+      .slice()
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map((ex) => ({
+        id: ex.id,
+        order: ex.order,
+        input: ex.input,
+        output: ex.output,
+        explanation: ex.explanation ?? null,
+      }));
+
     res.status(200).json({
       success: true,
       data: {
@@ -67,6 +78,9 @@ export const getProblemBySlug = async (req, res, next) => {
         difficulty: problem.difficulty,
         timeLimit: problem.timeLimit,
         memoryLimit: problem.memoryLimit,
+        solvedCount: problem.solvedCount ?? 0,
+        tags: problem.tags || [],
+        examples,
         testcases: visibleTestcases,
         templates: userTemplates,
         userTemplates,

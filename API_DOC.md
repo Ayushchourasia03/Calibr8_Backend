@@ -43,6 +43,7 @@ All errors emitted by the API adhere strictly to this schema:
 | `413` | `CODE_TOO_LARGE` | Source code exceeds 64 KB limit |
 | `422` | `UNSUPPORTED_LANGUAGE` | Programming language not supported |
 | `429` | `RATE_LIMITED` | Too many requests within rate limit window |
+| `503` | `DATABASE_UNAVAILABLE` | PostgreSQL / Neon connection unavailable or `DATABASE_URL` missing |
 | `503` | `EXECUTION_UNAVAILABLE` | CodeBox execution runner is unreachable |
 
 ---
@@ -293,8 +294,52 @@ Lists problems with optional filtering and pagination.
 - **Access**: Public (Optional Auth)
 
 ### 7.2 `GET /api/problems/:slug`
-Retrieves problem statement, constraints, visible testcases, and templates. Hidden testcases are redacted.
+Retrieves problem statement, constraints, LeetCode-style `examples` (ordered by `order`), visible testcases, and templates. Hidden testcases are redacted.
 - **Access**: Public
+- **Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "p-1",
+    "problemNumber": 1,
+    "slug": "two-sum",
+    "title": "Two Sum",
+    "description": "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target...",
+    "difficulty": "Easy",
+    "timeLimit": 1000,
+    "memoryLimit": 256,
+    "solvedCount": 0,
+    "tags": [],
+    "examples": [
+      {
+        "id": "ex-1",
+        "order": 0,
+        "input": "nums = [2, 7, 11, 15], target = 9",
+        "output": "[0, 1]",
+        "explanation": "Because nums[0] + nums[1] == 9, we return [0, 1]."
+      }
+    ],
+    "testcases": [
+      {
+        "testIndex": 0,
+        "isVisible": true,
+        "input": "4 9\n2 7 11 15",
+        "output": "0 1",
+        "stdinSmall": "4 9\n2 7 11 15",
+        "expectedSmall": "0 1"
+      }
+    ],
+    "templates": {
+      "cpp": "...",
+      "c": "...",
+      "java": "...",
+      "python": "...",
+      "javascript": "..."
+    }
+  }
+}
+```
 
 ### 7.3 `GET /api/problems/:slug/starter` & `/template`
 Retrieves clean starter function signature for student editor.

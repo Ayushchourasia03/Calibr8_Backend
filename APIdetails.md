@@ -34,7 +34,7 @@
 16. [Social & GitHub OAuth Linking (`/api/social`)](#16-social--github-oauth-linking-apisocial)
 17. [Gamification: Scoring, Streaks & Tiers](#17-gamification-scoring-streaks--tiers)
 18. [Rate Limits, Quotas & Security](#18-rate-limits-quotas--security)
-19. [Dual-Tier Database & Auto-Healing Architecture](#19-dual-tier-database--auto-healing-architecture)
+19. [PostgreSQL / Neon Database Architecture](#19-postgresql--neon-database-architecture)
 20. [Automated Test Suite](#20-automated-test-suite)
 - [Appendix A — Merge Changelog](#appendix-a--merge-changelog-what-was-fixed-or-removed)
 - [Appendix B — Open Items to Verify](#appendix-b--open-items-to-verify-against-code)
@@ -48,7 +48,7 @@ Router-Controller-Model:
 - **Routers** (`src/routers/*.router.js`): route matching, middleware (auth, rate limits, in-flight counters), delegation.
 - **Controllers** (`src/controllers/*.controller.js`): domain logic, validation, transactions, response shaping.
 - **Utilities & Services** (`src/utils/`, `src/services/`): code building, driver injection, output comparison, gamification, AST complexity parsing, coin and daily-problem services.
-- **Database layer** (`src/config/db.js`, `prisma/schema.prisma`): transparent proxy to PostgreSQL/Neon, or an in-memory store when no `DATABASE_URL` is set.
+- **Database layer** (`src/config/db.js`, `prisma/schema.prisma`): direct Prisma Client connection to PostgreSQL / Neon using `@prisma/adapter-neon` (for `neon.tech` URLs) or `@prisma/adapter-pg`. Requires `DATABASE_URL`; returns `503 DATABASE_UNAVAILABLE` when the database is unreachable.
 
 ### 1.2 Business Rules (authoritative)
 1. **Default account**: every new user starts with `100 coins`, `streak: 0`, `longestStreak: 0`, `rating: 800` (tier **Pulse II**).
@@ -301,6 +301,14 @@ export interface TestCase {
   expectedSmall?: string;
 }
 
+export interface ProblemExample {
+  id: string;
+  order: number;
+  input: string;
+  output: string;
+  explanation: string | null;
+}
+
 export interface ProblemDetail {
   id: string;
   problemNumber: number;
@@ -312,9 +320,11 @@ export interface ProblemDetail {
   memoryLimit: number;
   solvedCount: number;
   tags: string[];
+  examples: ProblemExample[];
   testcases: TestCase[]; // visible sample cases only
   templates: Record<SupportedLanguage, string>;
-  templatesMap?: Record<SupportedLanguage, string>;
+  userTemplates?: Record<SupportedLanguage, string>;
+  templatesArray?: Array<{ id: string; problemId: string; language: string; code: string }>;
 }
 
 // ===== 4. Execution & Submissions =====
@@ -1031,18 +1041,34 @@ Calibrates skill per topic, computes the initial Elo rating, sets `onboarded = t
 ```
 
 ### 10.2 `GET /api/problems/:slug`
-- **Protected**: No. Only `isVisible: true` testcases are returned; hidden ones are omitted entirely.
+- **Protected**: No. Returns problem details with ordered `examples`, `isVisible: true` testcases (hidden ones omitted), and user starter `templates`.
 ```json
 {
   "success": true,
-  "problem": {
+  "data": {
     "id": "p-1", "problemNumber": 1, "slug": "two-sum", "title": "Two Sum",
     "description": "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.\n\nYou may assume that each input would have exactly one solution, and you may not use the same element twice.",
     "difficulty": "Easy", "timeLimit": 1000, "memoryLimit": 256, "solvedCount": 420,
     "tags": ["Array", "Hash Table"],
+    "examples": [
+      {
+        "id": "ex-1",
+        "order": 0,
+        "input": "nums = [2, 7, 11, 15], target = 9",
+        "output": "[0, 1]",
+        "explanation": "Because nums[0] + nums[1] == 9, we return [0, 1]."
+      },
+      {
+        "id": "ex-2",
+        "order": 1,
+        "input": "nums = [3, 2, 4], target = 6",
+        "output": "[1, 2]",
+        "explanation": "Because nums[1] + nums[2] == 6, we return [1, 2]."
+      }
+    ],
     "testcases": [
-      { "testIndex": 0, "isVisible": true, "input": "4 9\n2 7 11 15", "output": "0 1" },
-      { "testIndex": 1, "isVisible": true, "input": "3 6\n3 2 4", "output": "1 2" }
+      { "testIndex": 0, "isVisible": true, "input": "4 9\n2 7 11 15", "output": "0 1", "stdinSmall": "4 9\n2 7 11 15", "expectedSmall": "0 1" },
+      { "testIndex": 1, "isVisible": true, "input": "3 6\n3 2 4", "output": "1 2", "stdinSmall": "3 6\n3 2 4", "expectedSmall": "1 2" }
     ],
     "templates": {
       "cpp": "class Solution {\npublic:\n    vector<int> twoSum(vector<int>& nums, int target) {\n        // Write code here\n    }\n};",
@@ -1465,7 +1491,7 @@ Exceeding the in-flight cap returns `429` with message `"Another execution is al
 
 ---
 
-## 19. Dual-Tier Database & Auto-Healing Architecture
+## 19. PostgreSQL / Neon Database Architecture
 
 ```
 Incoming API request
@@ -1474,19 +1500,16 @@ Incoming API request
 Auth middleware (JWT validation)
         |
         v
-   DATABASE_URL set?
-     YES /      \ NO
-        v        v
- PrismaClient   Transparent model proxy
- (PostgreSQL /  (InMemoryStore fallback)
-  Neon)
-        |  (on connection error)
-        +------------>  InMemoryStore
+  PrismaClient (src/config/db.js)
+   ├── neon.tech URL -> @prisma/adapter-neon
+   └── standard PG   -> @prisma/adapter-pg
+        |
+        v
+PostgreSQL / Neon Database
+ (Problems, Examples, Testcases, CodeTemplates, Users, Submissions, Study)
 ```
 
-**InMemoryStore** provides: 14 calibrated topics (DSA & Core), 10 store themes, a pre-seeded demo student, the full CS curriculum (5 subjects, 75+ chapters, 150+ topics and MCQs), and the multi-tier evaluation sandbox.
-
-**Demo credentials**: `student@example.com` / `StrongPassword123` · 100 coins · rating 800 (Pulse II) · available via the `⚡ 1-Click Demo Login` button on `/`.
+All API endpoints and seeding scripts (`scripts/upload-problem.js`, `scripts/reset-and-upload.js`, `scripts/bulk-push.js`, `scripts/seedProblems.js`) read and write directly against PostgreSQL / Neon via Prisma. If `DATABASE_URL` is missing or the database is unreachable, requests fail cleanly with `503 DATABASE_UNAVAILABLE`.
 
 ---
 
@@ -1526,7 +1549,7 @@ npm run test:coverage     # experimental coverage
 | `problemSecurity` | Integration | Hidden testcase redaction, 503 fallback when runner unreachable |
 | `streakService` | Unit | IST boundaries, increment, missed-day reset |
 
-All tests set `DATABASE_URL = ""`, so the in-memory store handles everything: no network calls and no production data touched.
+Unit tests (`npm run test:unit`) execute without a database connection; database-backed integration tests require a valid `DATABASE_URL` configured in `.env`.
 
 ---
 

@@ -6,6 +6,26 @@
   "timeLimit": 1000,
   "memoryLimit": 256,
   "description": "Add two numbers represented as linked lists in reverse order.\n\nInput Format:\nFirst line: n m\nSecond line: l1 digits\nThird line: l2 digits\n\nOutput Format:\nSpace-separated sum digits",
+  "examples": [
+    {
+      "order": 0,
+      "input": "l1 = [2, 4, 3], l2 = [5, 6, 4]",
+      "output": "[7, 0, 8]",
+      "explanation": "342 + 465 = 807, represented in reverse order as [7, 0, 8]."
+    },
+    {
+      "order": 1,
+      "input": "l1 = [0], l2 = [0]",
+      "output": "[0]",
+      "explanation": "0 + 0 = 0."
+    },
+    {
+      "order": 2,
+      "input": "l1 = [9, 9, 9, 9, 9, 9, 9], l2 = [9, 9, 9, 9]",
+      "output": "[8, 9, 9, 9, 0, 0, 0, 1]",
+      "explanation": "9999999 + 9999 = 10009998, represented in reverse order."
+    }
+  ],
   "testcases": [
     {
       "testIndex": 0,

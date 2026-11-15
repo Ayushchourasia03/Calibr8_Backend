@@ -2,62 +2,22 @@
 // Seeds DailyProblem table for today + next 34 days = 35 rows.
 // Loop starts at i = 0 (today).
 
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import prisma from "../src/config/db.js";
 import { getISTDateString, addDaysToISTDate } from "../src/services/streakService.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const PROBLEMS_DIR = path.resolve(__dirname, "../problems");
 
 export async function seedDailyProblems(customPrisma = prisma) {
   const todayIST = getISTDateString(new Date());
   console.log(`[Seed DailyProblems] Today IST: ${todayIST}`);
 
-  // 1. Get problems from database first, or fallback to json files
-  let problemPool = [];
-  try {
-    const dbProblems = await customPrisma.problem.findMany({
-      select: { id: true, slug: true, title: true, difficulty: true },
-      orderBy: { problemNumber: "asc" },
-    });
-    if (dbProblems && dbProblems.length > 0) {
-      problemPool = dbProblems;
-    }
-  } catch (err) {
-    console.warn("[Seed DailyProblems] DB query notice:", err.message);
-  }
+  const problemPool = await customPrisma.problem.findMany({
+    select: { id: true, slug: true, title: true, difficulty: true },
+    orderBy: { problemNumber: "asc" },
+  });
 
-  // Fallback to local files if DB was empty
-  if (problemPool.length === 0 && fs.existsSync(PROBLEMS_DIR)) {
-    try {
-      const files = fs.readdirSync(PROBLEMS_DIR).filter((f) => f.endsWith(".json"));
-      for (const f of files) {
-        try {
-          const raw = fs.readFileSync(path.join(PROBLEMS_DIR, f), "utf-8");
-          const json = JSON.parse(raw);
-          problemPool.push({
-            id: json.id || json.slug || f.replace(".json", ""),
-            slug: json.slug || f.replace(".json", ""),
-            title: json.title,
-            difficulty: json.difficulty || "Easy",
-          });
-        } catch (_) {}
-      }
-    } catch (_) {}
-  }
-
-  // Hardcoded fallback if no problems could be found
-  if (problemPool.length === 0) {
-    problemPool = [
-      { id: "two-sum", slug: "two-sum", title: "Two Sum", difficulty: "Easy" },
-      { id: "add-two-numbers", slug: "add-two-numbers", title: "Add Two Numbers", difficulty: "Medium" },
-      { id: "best-time-to-buy-and-sell-stock", slug: "best-time-to-buy-and-sell-stock", title: "Best Time to Buy and Sell Stock", difficulty: "Easy" },
-      { id: "backspace-string-compare", slug: "backspace-string-compare", title: "Backspace String Compare", difficulty: "Easy" },
-      { id: "3sum", slug: "3sum", title: "3Sum", difficulty: "Medium" },
-    ];
+  if (!problemPool || problemPool.length === 0) {
+    throw new Error(
+      "No problems found in database. Seed problems first using 'npm run problems:seed' or 'node scripts/upload-problem.js ./problems'.",
+    );
   }
 
   console.log(`[Seed DailyProblems] Rotating across ${problemPool.length} problems for 35 days`);

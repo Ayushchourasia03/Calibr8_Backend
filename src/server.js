@@ -15,6 +15,10 @@ let shuttingDown = false;
 // Codebox engine check
 async function checkCodeboxEngine() {
   const url = process.env.CODEBOX_URL;
+  if (!url) {
+    console.log("ℹ CODEBOX_URL not configured — Codebox engine health check skipped.");
+    return;
+  }
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
@@ -32,9 +36,6 @@ async function checkCodeboxEngine() {
     }
   } catch (err) {
     console.log(`❌ Codebox OFF - Exec engine down at ${url} (${err.message})`);
-    console.log(
-      `   👉 VPS pe jaake 'cd /opt/codebox && docker compose up -d' chala de mere bhai`,
-    );
   }
 }
 

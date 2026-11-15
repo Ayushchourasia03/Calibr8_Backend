@@ -953,6 +953,11 @@
               Loading problem statement...
             </div>
 
+            <h3 style="font-size: 0.9rem; font-weight: 700; margin-bottom: 0.6rem; color: #94a3b8;">Examples</h3>
+            <div id="sbExamplesContainer" style="display: flex; flex-direction: column; gap: 0.7rem; margin-bottom: 1.25rem;">
+              <!-- Populated dynamically -->
+            </div>
+
             <h3 style="font-size: 0.9rem; font-weight: 700; margin-bottom: 0.6rem; color: #94a3b8;">Visible Sample Cases</h3>
             <div id="sbSampleTestcases" style="display: flex; flex-direction: column; gap: 0.6rem;">
               <!-- Populated dynamically -->
@@ -1304,26 +1309,26 @@
             </span>
           </div>
           <p style="color:var(--text-muted); font-size:0.86rem; margin-bottom:1rem;">
-            Full test suite verified using Node.js native test runner (<code style="color:#60a5fa;">node --test</code>). Tests execute against an isolated in-memory proxy with <strong>zero database leaks</strong>.
+            Automated verification suite using Node.js native test runner (<code style="color:#60a5fa;">node --test</code>) backed by PostgreSQL / Neon via Prisma ORM.
           </p>
 
           <!-- Metrics Grid -->
           <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1.5rem;">
             <div style="background:#0b1120; border:1px solid var(--card-border); border-radius:8px; padding:1rem; text-align:center;">
-              <div style="font-size:1.8rem; font-weight:800; color:#34d399;">38 / 38</div>
-              <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-top:0.25rem;">Test Suites Passed</div>
+              <div style="font-size:1.4rem; font-weight:800; color:#34d399;">PostgreSQL</div>
+              <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-top:0.25rem;">Direct Neon / Prisma DB</div>
             </div>
             <div style="background:#0b1120; border:1px solid var(--card-border); border-radius:8px; padding:1rem; text-align:center;">
-              <div style="font-size:1.8rem; font-weight:800; color:#60a5fa;">0</div>
-              <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-top:0.25rem;">Failing / Flaky Tests</div>
+              <div style="font-size:1.4rem; font-weight:800; color:#60a5fa;">Prisma 6</div>
+              <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-top:0.25rem;">ORM &amp; Migrations</div>
             </div>
             <div style="background:#0b1120; border:1px solid var(--card-border); border-radius:8px; padding:1rem; text-align:center;">
-              <div style="font-size:1.8rem; font-weight:800; color:#fbbf24;">&lt; 10s</div>
-              <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-top:0.25rem;">Total Suite Runtime</div>
+              <div style="font-size:1.4rem; font-weight:800; color:#fbbf24;">3-Tier</div>
+              <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-top:0.25rem;">Short-Circuit Judging</div>
             </div>
             <div style="background:#0b1120; border:1px solid var(--card-border); border-radius:8px; padding:1rem; text-align:center;">
-              <div style="font-size:1.8rem; font-weight:800; color:#c084fc;">100%</div>
-              <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-top:0.25rem;">Isolation Guarantee</div>
+              <div style="font-size:1.4rem; font-weight:800; color:#c084fc;">IST</div>
+              <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-top:0.25rem;">Asia/Kolkata Boundaries</div>
             </div>
           </div>
 
@@ -1331,7 +1336,7 @@
           <div style="background:#090e1a; border:1px solid var(--card-border); border-radius:8px; padding:1.25rem; margin-bottom:1.25rem;">
             <h4 style="font-size:0.95rem; margin-bottom:0.75rem; color:#fff;">🛡️ Production Safeguards & Architectural Invariants</h4>
             <ul style="color:var(--text-muted); font-size:0.83rem; line-height:1.6; margin:0; padding-left:1.2rem;">
-              <li><strong style="color:#e2e8f0;">Zero Database Leakage:</strong> Automated test runs strictly initialize <code style="color:#93c5fd;">DATABASE_URL = ""</code>, engaging the <code style="color:#93c5fd;">InMemoryStore</code> proxy in <code style="color:#93c5fd;">src/config/db.js</code>. Production Neon databases are never touched during testing.</li>
+              <li><strong style="color:#e2e8f0;">Direct PostgreSQL / Neon Persistence:</strong> <code style="color:#93c5fd;">src/config/db.js</code> connects directly to PostgreSQL / Neon via Prisma ORM (<code style="color:#93c5fd;">DATABASE_URL</code> required), returning <code style="color:#93c5fd;">503 DATABASE_UNAVAILABLE</code> if the database is unreachable.</li>
               <li><strong style="color:#e2e8f0;">True Tier Short-Circuiting:</strong> The evaluation pipeline breaks into 3 tiers. Any Tier 1 failure (e.g. Wrong Answer, TLE, or CE) immediately halts execution without sending Tier 2 or Tier 3 batches to CodeBox.</li>
               <li><strong style="color:#e2e8f0;">Strict Hidden Testcase Privacy:</strong> Test cases marked <code style="color:#93c5fd;">isVisible: false</code> have their input and expected output stripped before leaving the server.</li>
               <li><strong style="color:#e2e8f0;">IST Midnight Boundary:</strong> Gamification, daily login rewards (+1 coin), and daily problem streaks (+2 coins, +1 streak) strictly compute dates using <code style="color:#93c5fd;">Asia/Kolkata</code> (UTC+5:30) at 00:00:00 IST.</li>
@@ -1407,7 +1412,7 @@
 
         // Coding Problems
         { id: "prb-1", category: "problems", method: "GET", path: "/api/problems", auth: true, desc: "List coding problems catalogue with search & difficulty filters", query: { difficulty: "", search: "", status: "" } },
-        { id: "prb-2", category: "problems", method: "GET", path: "/api/problems/:slug", auth: true, desc: "Get problem definition with visible testcases and code templates", pathParams: { slug: "two-sum" } },
+        { id: "prb-2", category: "problems", method: "GET", path: "/api/problems/:slug", auth: false, desc: "Get problem definition with examples, visible testcases, and code templates", pathParams: { slug: "two-sum" } },
         { id: "prb-3", category: "problems", method: "GET", path: "/api/problems/:slug/starter", auth: false, desc: "Get clean starter template function for a language", pathParams: { slug: "two-sum" }, query: { language: "python" } },
         { id: "prb-4", category: "problems", method: "POST", path: "/api/problems/:slug/run", auth: true, desc: "Run problem-scoped sample visible test cases", pathParams: { slug: "two-sum" }, body: { language: "python", code: "class Solution:\n    def twoSum(self, nums, target):\n        return [0, 1]" } },
         { id: "prb-5", category: "problems", method: "POST", path: "/api/problems/:slug/submit", auth: true, desc: "Submit problem-scoped solution for multi-tier judging", pathParams: { slug: "two-sum" }, body: { language: "python", code: "class Solution:\n    def twoSum(self, nums, target):\n        return [0, 1]" } },
@@ -2465,6 +2470,38 @@
         document.getElementById("sbTimeLimit").textContent = (p.timeLimit || 1000) + "ms";
         document.getElementById("sbMemoryLimit").textContent = (p.memoryLimit || 256) + "MB";
         document.getElementById("sbProblemDescription").textContent = p.description || p.title;
+
+        // Render LeetCode-style Examples
+        const examplesBox = document.getElementById("sbExamplesContainer");
+        if (examplesBox) {
+          examplesBox.innerHTML = "";
+          const examples = (p.examples || []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+          if (!examples.length) {
+            examplesBox.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem;">No examples provided.</div>';
+          } else {
+            examples.forEach((ex, i) => {
+              const exCard = document.createElement("div");
+              exCard.style.background = "#0b1120";
+              exCard.style.border = "1px solid var(--border-color)";
+              exCard.style.borderLeft = "3px solid #3b82f6";
+              exCard.style.borderRadius = "6px";
+              exCard.style.padding = "0.7rem 0.9rem";
+              exCard.style.fontSize = "0.82rem";
+              exCard.style.lineHeight = "1.5";
+
+              const explanationHtml = ex.explanation
+                ? '<div style="color:#cbd5e1; margin-top:0.25rem;"><strong>Explanation:</strong> <span>' + escapeHtml(ex.explanation) + '</span></div>'
+                : '';
+
+              exCard.innerHTML =
+                '<div style="color:#e2e8f0; font-weight:700; margin-bottom:0.35rem;">Example ' + (i + 1) + ':</div>' +
+                '<div style="font-family:monospace; color:#cbd5e1;"><strong>Input:</strong> <span style="color:#38bdf8;">' + escapeHtml(ex.input || "") + '</span></div>' +
+                '<div style="font-family:monospace; color:#cbd5e1; margin-top:0.15rem;"><strong>Output:</strong> <span style="color:#34d399;">' + escapeHtml(ex.output || "") + '</span></div>' +
+                explanationHtml;
+              examplesBox.appendChild(exCard);
+            });
+          }
+        }
 
         // Render visible sample cases
         const sampleBox = document.getElementById("sbSampleTestcases");
