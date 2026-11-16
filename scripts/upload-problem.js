@@ -6,7 +6,12 @@ import prisma from '../src/config/db.js';
 function mapProblemPayload(data, slug) {
   const timeLimit = data.timeLimit || data.time_limit || 1000;
   const memoryLimit = data.memoryLimit || data.memory_limit || 256;
-  const tags = Array.isArray(data.tags) ? data.tags.map(String) : [];
+  const tags =
+    Array.isArray(data.tags) && data.tags.length > 0
+      ? data.tags.map(String)
+      : data.topic
+        ? [String(data.topic)]
+        : [];
 
   const examples = (data.examples || []).map((ex, idx) => ({
     order: ex.order ?? idx,

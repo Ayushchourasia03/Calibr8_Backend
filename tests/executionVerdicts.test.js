@@ -1,10 +1,11 @@
+import "dotenv/config";
 import assert from "node:assert/strict";
 
 process.env.JWT_SECRET = "test-secret-key-that-is-at-least-32-chars-long";
 process.env.OAUTH_STATE_SECRET = "test-oauth-secret-key-at-least-32-chars";
-process.env.DATABASE_URL = "";
 process.env.CODEBOX_URL = "https://runner.calibr8.internal";
 process.env.CODEBOX_TOKEN = "secret-codebox-token";
+process.env.CODEBOX_BATCH_EXECUTION_ENABLED = "false";
 
 let currentBehavior = null;
 let tokenCounter = 0;
@@ -52,6 +53,7 @@ globalThis.fetch = async (input, options = {}) => {
 };
 
 const { default: app } = await import("../src/app.js");
+const { default: prisma } = await import("../src/config/db.js");
 const { signToken } = await import("../src/utils/jwt.js");
 
 const server = app.listen(0);
@@ -347,5 +349,7 @@ def twoSum(nums, target):
   console.log("=== All Execution Verdicts Tests Passed Successfully ===");
 } finally {
   globalThis.fetch = originalFetch;
+  await prisma.user.deleteMany({ where: { id: "user-exec-1" } }).catch(() => {});
+  await prisma.$disconnect().catch(() => {});
   await new Promise((resolve) => server.close(resolve));
 }

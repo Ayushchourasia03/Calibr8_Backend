@@ -36,6 +36,19 @@ export async function grantDailyLoginReward(userId) {
 
   try {
     return await prisma.$transaction(async (tx) => {
+      // Acquire atomic row-level claim so concurrent logins serialize on PostgreSQL
+      // and at most one transaction transitions lastLoginISTDate to todayIST.
+      const claim = await tx.user.updateMany({
+        where: {
+          id: userId,
+          OR: [
+            { lastLoginISTDate: null },
+            { lastLoginISTDate: { not: todayIST } },
+          ],
+        },
+        data: { lastLoginISTDate: todayIST },
+      });
+
       const user = await tx.user.findUnique({ where: { id: userId } });
       if (!user) {
         console.error(`[CoinService] User not found: ${userId}`);
@@ -50,13 +63,24 @@ export async function grantDailyLoginReward(userId) {
         };
       }
 
-      // Check if user already claimed DAILY_LOGIN for today's IST date
-      const alreadyClaimedByDate = user.lastLoginISTDate === todayIST;
+      if (claim.count === 0) {
+        return {
+          coinsEarnedToday: 0,
+          loginCoins: 0,
+          streak: safeNumber(user.streak, 0),
+          longestStreak: safeNumber(user.longestStreak, 0),
+          isNewDay: false,
+          granted: false,
+          balanceAfter: safeNumber(user.coins, 100),
+          user,
+        };
+      }
+
       const existingTx = await tx.coinTransaction.findFirst({
         where: { userId, type: "DAILY_LOGIN", istDate: todayIST },
       });
 
-      if (alreadyClaimedByDate || existingTx) {
+      if (existingTx) {
         return {
           coinsEarnedToday: 0,
           loginCoins: 0,
@@ -74,10 +98,7 @@ export async function grantDailyLoginReward(userId) {
 
       const updatedUser = await tx.user.update({
         where: { id: userId },
-        data: {
-          coins: newBalance,
-          lastLoginISTDate: todayIST,
-        },
+        data: { coins: newBalance },
       });
 
       await tx.coinTransaction.create({

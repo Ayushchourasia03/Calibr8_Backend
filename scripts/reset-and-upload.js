@@ -31,7 +31,12 @@ for (const file of files) {
 
   const timeLimit = p.timeLimit || p.time_limit || 1000;
   const memoryLimit = p.memoryLimit || p.memory_limit || 256;
-  const tags = Array.isArray(p.tags) ? p.tags.map(String) : [];
+  const tags =
+    Array.isArray(p.tags) && p.tags.length > 0
+      ? p.tags.map(String)
+      : p.topic
+        ? [String(p.topic)]
+        : [];
 
   const examples = (p.examples || []).map((ex, idx) => ({
     order: ex.order ?? idx,

@@ -47,7 +47,7 @@ export const getAllThemes = async (req, res, next) => {
         previewColor: t.previewColor,
         isDefault: t.isDefault,
         owned: t.isDefault || ownedSet.has(t.id),
-        applied: activeId === t.id,
+        applied: activeId ? activeId === t.id : Boolean(t.isDefault),
         canAfford: (user?.coins ?? 0) >= t.price,
       })),
     });

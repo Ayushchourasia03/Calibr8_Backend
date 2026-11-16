@@ -1,7 +1,9 @@
+import "dotenv/config";
 import assert from "node:assert";
 
 process.env.CODEBOX_URL = "https://codebox.internal";
 process.env.CODEBOX_TOKEN = "test-token";
+process.env.CODEBOX_BATCH_EXECUTION_ENABLED = "false";
 
 let lastSubmittedSubmissions = [];
 const originalFetch = globalThis.fetch;
@@ -82,6 +84,7 @@ globalThis.fetch = async (input, options = {}) => {
 };
 
 const app = (await import("../src/app.js")).default;
+const prisma = (await import("../src/config/db.js")).default;
 
 async function runTests() {
   console.log("Starting Calibr8 Execution & Function-Only Pipeline Tests (CodeBox Exclusive)...");
@@ -222,8 +225,9 @@ async function runTests() {
 
     console.log("\nALL EXECUTION & REGRESSION TESTS PASSED! 🎉");
   } finally {
-    server.close();
     globalThis.fetch = originalFetch;
+    await prisma.$disconnect().catch(() => {});
+    await new Promise((resolve) => server.close(resolve));
   }
 }
 

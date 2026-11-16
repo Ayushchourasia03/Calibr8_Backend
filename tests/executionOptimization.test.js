@@ -1,3 +1,4 @@
+import "dotenv/config";
 import assert from "node:assert/strict";
 import {
   analyzeComplexity,
@@ -9,9 +10,9 @@ import {
 
 process.env.JWT_SECRET = "a".repeat(40);
 process.env.OAUTH_STATE_SECRET = "b".repeat(40);
-process.env.DATABASE_URL = "";
 process.env.CODEBOX_URL = "https://codebox.internal";
 process.env.CODEBOX_TOKEN = "test-token";
+process.env.CODEBOX_BATCH_EXECUTION_ENABLED = "false";
 
 let lastSubmittedSubmissions = [];
 let codeboxCallCount = 0;
@@ -73,6 +74,7 @@ globalThis.fetch = async (input, options = {}) => {
 };
 
 const app = (await import("../src/app.js")).default;
+const prisma = (await import("../src/config/db.js")).default;
 const { signToken } = await import("../src/utils/jwt.js");
 
 async function runOptimizationTests() {
@@ -382,7 +384,12 @@ async function runOptimizationTests() {
     console.log("✔ ALL CALIBR8 EXECUTION OPTIMIZATION TESTS PASSED!");
     console.log("=======================================================\n");
   } finally {
-    server.close();
+    globalThis.fetch = originalFetch;
+    await prisma.user
+      .deleteMany({ where: { id: { in: [testUser.id, otherUser.id] } } })
+      .catch(() => {});
+    await prisma.$disconnect().catch(() => {});
+    await new Promise((resolve) => server.close(resolve));
   }
 }
 

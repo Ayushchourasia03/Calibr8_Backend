@@ -1,9 +1,9 @@
+import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 
-process.env.DATABASE_URL = "postgresql://localhost:5432/calibr8_test";
-
 const { default: app } = await import("../src/app.js");
+const { default: prisma } = await import("../src/config/db.js");
 const server = app.listen(0);
 const baseUrl = `http://127.0.0.1:${server.address().port}/api`;
 
@@ -24,6 +24,7 @@ try {
     }),
   });
   const registration = await registerResponse.json();
+  const createdUserId = registration.user?.id;
   assert.equal(registerResponse.status, 201);
   assert.equal(registration.user.onboarded, false);
 
@@ -85,6 +86,8 @@ try {
 
   console.log("Onboarding topics, calibration, and language APIs passed.");
 } finally {
+  await prisma.user.deleteMany({ where: { email: { startsWith: "onboarding-" } } }).catch(() => {});
+  await prisma.$disconnect().catch(() => {});
   await new Promise((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
   });

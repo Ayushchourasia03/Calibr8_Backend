@@ -1,13 +1,14 @@
+import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { getISTDateString, getYesterdayIST } from "../src/services/streakService.js";
-
-process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/calibr8_daily_problem_test";
 
 const { default: prisma } = await import("../src/config/db.js");
 const { grantDailyProblemReward, grantDailyLoginReward } = await import("../src/services/coinService.js");
 
 console.log("Running Daily Problem Reward Integration Tests (D1 - D8)...");
+
+const createdUserIds = [];
 
 async function createUser(initialCoins = 100) {
   const id = `usr-${randomUUID()}`;
@@ -22,6 +23,7 @@ async function createUser(initialCoins = 100) {
       longestStreak: 0,
     },
   });
+  createdUserIds.push(user.id);
   return user;
 }
 
@@ -29,11 +31,16 @@ try {
   const todayIST = getISTDateString();
   const yesterdayIST = getYesterdayIST(todayIST);
 
+  const twoSumProblem = await prisma.problem.findUnique({ where: { slug: "two-sum" } });
+  const addTwoNumbersProblem = await prisma.problem.findUnique({ where: { slug: "add-two-numbers" } });
+  assert.ok(twoSumProblem, "two-sum problem must exist in database (run npm run problems:seed)");
+  assert.ok(addTwoNumbersProblem, "add-two-numbers problem must exist in database (run npm run problems:seed)");
+
   // Seed daily problem for today: 'two-sum'
   await prisma.dailyProblem.upsert({
     where: { istDate: todayIST },
-    update: { problemId: "two-sum" },
-    create: { istDate: todayIST, problemId: "two-sum" },
+    update: { problemId: twoSumProblem.id },
+    create: { istDate: todayIST, problemId: twoSumProblem.id },
   });
 
   // D1: Solve daily problem for today -> +2 coins
@@ -82,8 +89,8 @@ try {
   // Daily problem set for yesterday: 'add-two-numbers'
   await prisma.dailyProblem.upsert({
     where: { istDate: yesterdayIST },
-    update: { problemId: "add-two-numbers" },
-    create: { istDate: yesterdayIST, problemId: "add-two-numbers" },
+    update: { problemId: addTwoNumbersProblem.id },
+    create: { istDate: yesterdayIST, problemId: addTwoNumbersProblem.id },
   });
   const user4 = await createUser(100);
   // Solving yesterday's problem today (todayISTDate)
@@ -101,6 +108,7 @@ try {
 
   // D6: Daily problem missing for a specific future date
   const futureIST = "2029-12-31";
+  await prisma.dailyProblem.deleteMany({ where: { istDate: futureIST } });
   const futureDate = new Date("2029-12-31T10:00:00Z");
   const user6 = await createUser(100);
   const d6 = await grantDailyProblemReward(user6.id, "two-sum", futureDate);
@@ -167,5 +175,10 @@ try {
   console.log("ALL DAILY PROBLEM REWARD TESTS PASSED! 🎉");
 } catch (err) {
   console.error("Test failure:", err);
-  process.exit(1);
+  process.exitCode = 1;
+} finally {
+  if (createdUserIds.length > 0) {
+    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } }).catch(() => {});
+  }
+  await prisma.$disconnect().catch(() => {});
 }

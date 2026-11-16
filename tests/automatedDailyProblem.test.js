@@ -1,8 +1,10 @@
+import "dotenv/config";
 import assert from "node:assert/strict";
-process.env.DATABASE_URL = "";
+import { randomUUID } from "node:crypto";
 process.env.JWT_SECRET = "a".repeat(40);
 process.env.CODEBOX_URL = "https://codebox.internal";
 process.env.CODEBOX_TOKEN = "test-token";
+process.env.CODEBOX_BATCH_EXECUTION_ENABLED = "false";
 
 const { default: prisma } = await import("../src/config/db.js");
 const {
@@ -71,30 +73,38 @@ async function runDailyProblemTests() {
   const port = server.address().port;
   const baseUrl = `http://localhost:${port}`;
 
+  const createdUserIds = [];
+  const createdSimDates = ["2029-12-31"];
+  for (let day = 1; day <= 15; day++) {
+    createdSimDates.push(`2035-01-${String(day).padStart(2, "0")}`);
+  }
+
   try {
     const todayIST = getAuthoritativeISTDate();
     console.log(`[Test Setup] Current IST Date: ${todayIST}`);
 
+    const runId = randomUUID();
     // Create 2 test users
     const user1 = {
-      id: "usr_daily_test_1",
-      email: "user1@calibr8.test",
+      id: `usr_daily_test_1_${runId}`,
+      email: `user1-${runId}@calibr8.test`,
+      passwordHash: "test-hash-not-for-login",
       name: "User One",
       coins: 100,
       tier: "Prism I",
-      role: "USER",
     };
     const user2 = {
-      id: "usr_daily_test_2",
-      email: "user2@calibr8.test",
+      id: `usr_daily_test_2_${runId}`,
+      email: `user2-${runId}@calibr8.test`,
+      passwordHash: "test-hash-not-for-login",
       name: "User Two",
       coins: 100,
       tier: "Prism I",
-      role: "USER",
     };
 
     await prisma.user.create({ data: user1 });
     await prisma.user.create({ data: user2 });
+    createdUserIds.push(user1.id, user2.id);
 
     const token1 = signToken(user1);
     const token2 = signToken(user2);
@@ -442,7 +452,17 @@ async function runDailyProblemTests() {
     console.log("=======================================================\n");
   } finally {
     stopDailyProblemScheduler();
-    server.close();
+    globalThis.fetch = originalFetch;
+    await prisma.dailyProblem
+      .deleteMany({ where: { istDate: { in: createdSimDates } } })
+      .catch(() => {});
+    if (createdUserIds.length > 0) {
+      await prisma.user
+        .deleteMany({ where: { id: { in: createdUserIds } } })
+        .catch(() => {});
+    }
+    await prisma.$disconnect().catch(() => {});
+    await new Promise((resolve) => server.close(resolve));
   }
 }
 

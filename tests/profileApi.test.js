@@ -1,9 +1,9 @@
+import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 
-process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/calibr8_test";
-
 const { default: app } = await import("../src/app.js");
+const { default: prisma } = await import("../src/config/db.js");
 const server = app.listen(0);
 const baseUrl = `http://127.0.0.1:${server.address().port}/api`;
 
@@ -103,6 +103,8 @@ try {
 
   console.log("Profile API, role removal, and retired admin route tests passed.");
 } finally {
+  await prisma.user.deleteMany({ where: { email: { startsWith: "profile-" } } }).catch(() => {});
+  await prisma.$disconnect().catch(() => {});
   await new Promise((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
   });

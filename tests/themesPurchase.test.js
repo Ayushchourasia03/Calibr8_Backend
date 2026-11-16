@@ -1,7 +1,6 @@
+import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-
-process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/calibr8_themes_test";
 
 const { default: app } = await import("../src/app.js");
 const { default: prisma } = await import("../src/config/db.js");
@@ -44,8 +43,10 @@ try {
   assert.equal(purchase.coins, 550);
   assert.equal(purchase.stats.coins, 550);
 
+  const orbitTheme = await prisma.theme.findUnique({ where: { slug: "orbit" } });
+  assert.ok(orbitTheme, "orbit theme should exist in the catalog");
   const ownedTheme = await prisma.userTheme.findFirst({
-    where: { userId: account.user.id, themeId: "thm-orbit" },
+    where: { userId: account.user.id, themeId: orbitTheme.id },
   });
   assert.ok(ownedTheme, "theme purchase should be persisted");
 
@@ -53,7 +54,7 @@ try {
     where: { id: account.user.id },
   });
   assert.equal(storedUser.coins, 550);
-  assert.equal(storedUser.activeThemeId, "thm-orbit");
+  assert.equal(storedUser.activeThemeId, orbitTheme.id);
 
   const themesResponse = await fetch(`${baseUrl}/themes`, { headers });
   const themes = await themesResponse.json();
@@ -106,5 +107,7 @@ try {
 
   console.log("Theme purchase persistence tests passed.");
 } finally {
+  await prisma.user.deleteMany({ where: { email: { startsWith: "theme-" } } }).catch(() => {});
+  await prisma.$disconnect().catch(() => {});
   await new Promise((resolve) => server.close(resolve));
 }

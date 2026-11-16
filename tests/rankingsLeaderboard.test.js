@@ -1,7 +1,7 @@
+import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 
-process.env.DATABASE_URL = "";
 process.env.JWT_SECRET = "test-jwt-secret-key-that-is-at-least-32-chars-long";
 
 const { default: app } = await import("../src/app.js");
@@ -122,5 +122,7 @@ try {
 
   console.log("✔ Rankings & Leaderboard tests passed successfully!");
 } finally {
+  await prisma.user.deleteMany({ where: { id: { startsWith: "usr_rank_" } } }).catch(() => {});
+  await prisma.$disconnect().catch(() => {});
   await new Promise((resolve) => server.close(resolve));
 }
