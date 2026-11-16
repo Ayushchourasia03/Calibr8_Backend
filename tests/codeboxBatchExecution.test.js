@@ -1,8 +1,8 @@
+import "dotenv/config";
 import assert from "node:assert/strict";
 
 process.env.JWT_SECRET = "a".repeat(40);
 process.env.OAUTH_STATE_SECRET = "b".repeat(40);
-process.env.DATABASE_URL = "";
 process.env.CODEBOX_URL = "https://runner.invalid";
 process.env.CODEBOX_TOKEN = "test-token";
 process.env.CODEBOX_BATCH_EXECUTION_ENABLED = "true";

@@ -1147,7 +1147,7 @@ export const submitSolution = async (req, res, next) => {
           evaluation.totalCount > 0 &&
           evaluation.passedCount === evaluation.totalCount;
 
-        let dailyProblemReward = null;
+        let dailyProblemReward = { granted: false, coins: 0 };
         if (userId && isAccepted) {
           try {
             reward = await prisma.$transaction((tx) =>
@@ -1289,7 +1289,7 @@ export const submitSolution = async (req, res, next) => {
         complexity: compactComplexitySummary(completed.complexity),
         reward: completed.reward || null,
         rewardError: completed.rewardError || false,
-        dailyProblemReward: completed.dailyProblemReward || null,
+        dailyProblemReward: completed.dailyProblemReward || { granted: false, coins: 0 },
         problem: {
           slug: problem.slug,
           title: problem.title,
@@ -1420,7 +1420,7 @@ export const getSubmissionStatus = async (req, res, next) => {
         ),
         reward: submission.reward || null,
         rewardError: submission.rewardError || false,
-        dailyProblemReward: submission.dailyProblemReward || null,
+        dailyProblemReward: submission.dailyProblemReward || { granted: false, coins: 0 },
         problem: {
           slug: submission.problem?.slug || "problem",
           title: submission.problem?.title || "Problem",

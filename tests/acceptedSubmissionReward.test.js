@@ -90,49 +90,80 @@ assert.equal(nextDayReward.stats.scoreUnits, 600);
 assert.equal(nextDayReward.stats.coins, 100);
 assert.equal(progress.size, 2);
 
-process.env.DATABASE_URL =
-  "postgresql://test:test@localhost:5432/calibr8_fallback_test";
-const { default: fallbackPrisma } = await import("../src/config/db.js");
-const fallbackUser = await fallbackPrisma.user.create({
-  data: {
-    id: "fallback-reward-user",
-    email: "fallback-reward@example.test",
-    name: "Fallback Reward Test",
-    rating: 950,
-    coins: 120,
-    score: 25,
-    streak: 4,
-    longestStreak: 6,
-    lastStreakDate: new Date("2026-10-28T23:59:00.000Z"),
-  },
-});
-const persistedFallbackUser = await fallbackPrisma.user.findUnique({
-  where: { id: fallbackUser.id },
-});
-assert.equal(persistedFallbackUser.rating, 950);
-assert.equal(persistedFallbackUser.coins, 120);
-assert.equal(persistedFallbackUser.score, 25);
-assert.equal(persistedFallbackUser.streak, 4);
-assert.equal(persistedFallbackUser.longestStreak, 6);
-const fallbackFirstReward = await fallbackPrisma.$transaction((fallbackTx) =>
-  applyAcceptedSubmissionReward(fallbackTx, {
-    userId: fallbackUser.id,
-    problem: { id: "fallback-problem", difficulty: "Medium" },
-    now: dayOne,
-  }),
-);
-const fallbackDuplicateReward = await fallbackPrisma.$transaction((fallbackTx) =>
-  applyAcceptedSubmissionReward(fallbackTx, {
-    userId: fallbackUser.id,
-    problem: { id: "fallback-problem", difficulty: "Medium" },
-    now: dayOne,
-  }),
-);
-assert.equal(fallbackFirstReward.awarded, true);
-assert.equal(fallbackFirstReward.stats.streak, 4);
-assert.equal(fallbackFirstReward.stats.longestStreak, 6);
-assert.equal(fallbackDuplicateReward.awarded, false);
-assert.equal(fallbackDuplicateReward.stats.scoreUnits, 275);
-assert.equal(fallbackDuplicateReward.stats.coins, 120);
+import "dotenv/config";
+import { randomUUID } from "node:crypto";
+
+if (process.env.DATABASE_URL) {
+  const { default: fallbackPrisma } = await import("../src/config/db.js");
+  const testUserId = `fallback-reward-user-${randomUUID()}`;
+  let createdProblemId = null;
+  try {
+    let targetProblem = await fallbackPrisma.problem.findFirst({
+      select: { id: true, difficulty: true },
+    });
+    if (!targetProblem) {
+      targetProblem = await fallbackPrisma.problem.create({
+        data: {
+          slug: `reward-test-problem-${randomUUID()}`,
+          title: "Reward Test Problem",
+          description: "Temporary test problem",
+          difficulty: "Medium",
+        },
+        select: { id: true, difficulty: true },
+      });
+      createdProblemId = targetProblem.id;
+    }
+
+    const fallbackUser = await fallbackPrisma.user.create({
+      data: {
+        id: testUserId,
+        email: `${testUserId}@example.test`,
+        passwordHash: "test-hash-not-for-login",
+        name: "Fallback Reward Test",
+        rating: 950,
+        coins: 120,
+        score: 25,
+        streak: 4,
+        longestStreak: 6,
+        lastStreakDate: new Date("2026-10-28T23:59:00.000Z"),
+      },
+    });
+    const persistedFallbackUser = await fallbackPrisma.user.findUnique({
+      where: { id: fallbackUser.id },
+    });
+    assert.equal(persistedFallbackUser.rating, 950);
+    assert.equal(persistedFallbackUser.coins, 120);
+    assert.equal(persistedFallbackUser.score, 25);
+    assert.equal(persistedFallbackUser.streak, 4);
+    assert.equal(persistedFallbackUser.longestStreak, 6);
+    const fallbackFirstReward = await fallbackPrisma.$transaction((fallbackTx) =>
+      applyAcceptedSubmissionReward(fallbackTx, {
+        userId: fallbackUser.id,
+        problem: { id: targetProblem.id, difficulty: "Medium" },
+        now: dayOne,
+      }),
+    );
+    const fallbackDuplicateReward = await fallbackPrisma.$transaction((fallbackTx) =>
+      applyAcceptedSubmissionReward(fallbackTx, {
+        userId: fallbackUser.id,
+        problem: { id: targetProblem.id, difficulty: "Medium" },
+        now: dayOne,
+      }),
+    );
+    assert.equal(fallbackFirstReward.awarded, true);
+    assert.equal(fallbackFirstReward.stats.streak, 4);
+    assert.equal(fallbackFirstReward.stats.longestStreak, 6);
+    assert.equal(fallbackDuplicateReward.awarded, false);
+    assert.equal(fallbackDuplicateReward.stats.scoreUnits, 275);
+    assert.equal(fallbackDuplicateReward.stats.coins, 120);
+  } finally {
+    await fallbackPrisma.userProblemProgress.deleteMany({ where: { userId: testUserId } }).catch(() => {});
+    await fallbackPrisma.user.deleteMany({ where: { id: testUserId } }).catch(() => {});
+    if (createdProblemId) {
+      await fallbackPrisma.problem.deleteMany({ where: { id: createdProblemId } }).catch(() => {});
+    }
+    await fallbackPrisma.$disconnect().catch(() => {});
+  }
+}
 
 console.log("Accepted submission reward tests passed.");

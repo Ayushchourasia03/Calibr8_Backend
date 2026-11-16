@@ -1,9 +1,9 @@
+import "dotenv/config";
 import assert from "node:assert/strict";
 import { createRateLimiter, inFlightLimiter } from "../src/middlewares/rateLimit.middleware.js";
 import { errorHandler } from "../src/middlewares/error.middleware.js";
 import { ApiError } from "../src/utils/ApiError.js";
 
-process.env.DATABASE_URL = "";
 process.env.JWT_SECRET = "test-jwt-secret-key-that-is-at-least-32-chars-long";
 
 const { default: app } = await import("../src/app.js");

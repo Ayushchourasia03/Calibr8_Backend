@@ -1,7 +1,25 @@
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import prisma from "../config/db.js";
 import { getUserTemplate } from "./codeBuilder.js";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const problemsDir = path.resolve(__dirname, "../../problems");
 const pendingProblemLoads = new Map();
+
+function readBundledProblemTopic(slug) {
+  if (!slug) return null;
+  try {
+    const filePath = path.join(problemsDir, `${slug}.json`);
+    if (!fs.existsSync(filePath)) return null;
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return raw.topic || (Array.isArray(raw.tags) ? raw.tags[0] : null) || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Resolves a problem by slug, ID, or problemNumber directly from PostgreSQL via Prisma.
@@ -182,7 +200,17 @@ export async function listAllProblems({
 
   problems = problems.map((problem) => {
     const stats = submissionsByProblem.get(problem.id);
-    const resolvedTopic = problem.dsaTopic?.name || problem.tags?.[0] || "Other";
+    const resolvedTopic =
+      problem.dsaTopic?.name ||
+      problem.tags?.[0] ||
+      readBundledProblemTopic(problem.slug) ||
+      "Other";
+    const tags =
+      Array.isArray(problem.tags) && problem.tags.length > 0
+        ? problem.tags
+        : resolvedTopic !== "Other"
+          ? [resolvedTopic]
+          : [];
     return {
       ...problem,
       topic: resolvedTopic,
@@ -193,7 +221,7 @@ export async function listAllProblems({
           .trim()
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-|-$/g, ""),
-      tags: problem.tags || [],
+      tags,
       isSolved: solvedProblemIds.has(problem.id),
       acceptanceRate:
         stats?.total > 0

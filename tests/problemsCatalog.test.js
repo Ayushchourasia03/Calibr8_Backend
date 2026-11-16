@@ -1,5 +1,7 @@
+import "dotenv/config";
 import assert from "node:assert/strict";
 import app from "../src/app.js";
+import prisma from "../src/config/db.js";
 
 const server = app.listen(0);
 const apiBaseUrl = `http://127.0.0.1:${server.address().port}/api`;
@@ -111,5 +113,6 @@ try {
 
   console.log("Problems catalog API filter tests passed.");
 } finally {
-  server.close();
+  await prisma.$disconnect().catch(() => {});
+  await new Promise((resolve) => server.close(resolve));
 }

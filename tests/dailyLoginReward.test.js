@@ -1,8 +1,7 @@
+import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { getISTDateString, getYesterdayIST } from "../src/services/streakService.js";
-
-process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/calibr8_login_rewards_test";
 
 const { default: app } = await import("../src/app.js");
 const { default: prisma } = await import("../src/config/db.js");
@@ -12,6 +11,8 @@ const server = app.listen(0);
 const baseUrl = `http://127.0.0.1:${server.address().port}/api`;
 
 console.log("Running Daily Login Reward Integration Tests (I1 - I10)...");
+
+const createdUserIds = [];
 
 async function registerUser(customEmail = null) {
   const email = customEmail || `login-test-${randomUUID()}@example.test`;
@@ -27,6 +28,7 @@ async function registerUser(customEmail = null) {
   });
   const data = await res.json();
   assert.equal(res.status, 201, "Registration should succeed");
+  if (data.user?.id) createdUserIds.push(data.user.id);
   return { ...data, rawPassword: password };
 }
 
@@ -243,5 +245,9 @@ try {
 
   console.log("ALL DAILY LOGIN REWARD INTEGRATION TESTS PASSED! 🎉");
 } finally {
-  server.close();
+  if (createdUserIds.length > 0) {
+    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } }).catch(() => {});
+  }
+  await prisma.$disconnect().catch(() => {});
+  await new Promise((resolve) => server.close(resolve));
 }

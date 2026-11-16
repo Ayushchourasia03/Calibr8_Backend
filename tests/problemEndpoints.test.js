@@ -1,9 +1,10 @@
+import "dotenv/config";
 import assert from "node:assert/strict";
 
-process.env.DATABASE_URL = "";
 process.env.JWT_SECRET = "test-jwt-secret-key-that-is-at-least-32-chars-long";
 process.env.CODEBOX_URL = "https://codebox.internal";
 process.env.CODEBOX_TOKEN = "test-token";
+process.env.CODEBOX_BATCH_EXECUTION_ENABLED = "false";
 
 const { default: app } = await import("../src/app.js");
 const { default: prisma } = await import("../src/config/db.js");
@@ -154,5 +155,6 @@ try {
   console.log("✔ Problem Endpoints & Templates tests passed successfully!");
 } finally {
   globalThis.fetch = originalFetch;
+  await prisma.$disconnect().catch(() => {});
   await new Promise((resolve) => server.close(resolve));
 }

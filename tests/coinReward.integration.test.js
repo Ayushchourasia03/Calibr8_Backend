@@ -218,6 +218,7 @@ async function main() {
     await prisma.coinTransaction.deleteMany({ where: { userId } });
     await prisma.dailyProblemCompletion.deleteMany({ where: { userId } });
     await prisma.user.delete({ where: { id: userId } }).catch(() => {});
+    await prisma.$disconnect().catch(() => {});
     console.log("Cleanup done. Test user removed.");
   }
 

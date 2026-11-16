@@ -70,6 +70,7 @@ export const protect = async (req, res, next) => {
           create: {
             id: decoded.id,
             email: decoded.email || `${decoded.id}@calibr8.dev`,
+            passwordHash: 'jwt-restored-account',
             name: decoded.name || 'Calibr8 Developer',
             difficulty: 'easy',
             rating: 800,
@@ -82,7 +83,21 @@ export const protect = async (req, res, next) => {
             onboarded: false,
             preferredLanguage: 'cpp',
           },
-          include: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            difficulty: true,
+            rating: true,
+            score: true,
+            streak: true,
+            longestStreak: true,
+            tier: true,
+            coins: true,
+            onboarded: true,
+            preferredLanguage: true,
+            createdAt: true,
+            updatedAt: true,
             socialAccounts: true,
             topics: {
               include: {
