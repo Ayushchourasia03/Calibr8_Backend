@@ -32,7 +32,7 @@ try {
   assert.equal(regData.user.name, "Alice Engineer");
   assert.equal("passwordHash" in regData.user, false, "passwordHash must never be exposed");
   assert.ok(regData.token, "JWT token must be returned");
-  assert.equal(regData.stats.coins, 100);
+  assert.equal(regData.stats.coins, 101, "100 starting coins + 1 registration-day login coin");
   assert.equal(regData.stats.rating, 800);
 
   // 2. Duplicate Registration Rejection

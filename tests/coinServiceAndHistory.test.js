@@ -41,7 +41,7 @@ try {
   assert.equal(balanceRes.status, 200);
   const balanceData = await balanceRes.json();
   assert.equal(balanceData.success, true);
-  assert.equal(balanceData.coins, 100);
+  assert.equal(balanceData.coins, 101);
   assert.equal(balanceData.streak, 0);
   assert.equal(balanceData.longestStreak, 0);
 
@@ -74,7 +74,7 @@ try {
   const historyData = await historyRes.json();
   assert.equal(historyData.success, true);
   assert.ok(Array.isArray(historyData.transactions));
-  assert.equal(historyData.transactions.length, 5);
+  assert.equal(historyData.transactions.length, 6, "5 seeded + 1 registration-day DAILY_LOGIN");
 
   // 5b. History pagination (?limit=2&offset=1)
   const paginatedRes = await fetch(

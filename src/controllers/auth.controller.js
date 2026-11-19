@@ -82,6 +82,13 @@ export const register = async (req, res, next) => {
     // 7. Generate authentication JWT token with jti
     const token = signToken({ id: user.id, email: user.email });
 
+    // 7b. Registration day counts as a daily login (FR-05); idempotent per IST day.
+    const loginReward = await grantDailyLoginReward(user.id);
+    if (loginReward?.user) {
+      user.coins = loginReward.user.coins;
+      user.lastLoginISTDate = loginReward.user.lastLoginISTDate;
+    }
+
     // 8. Strip password hash before sending
     const { passwordHash: _, ...safeUser } = user;
 
@@ -91,6 +98,13 @@ export const register = async (req, res, next) => {
       stats: getUserHeaderStats(safeUser),
       token,
       isNewUser: true,
+      rewards: {
+        coinsEarnedToday: loginReward?.coinsEarnedToday ?? 0,
+        loginCoins: loginReward?.loginCoins ?? 0,
+        streak: user.streak ?? 0,
+        longestStreak: user.longestStreak ?? 0,
+        isNewDay: loginReward?.isNewDay ?? false,
+      },
     });
   } catch (err) {
     next(err);
@@ -235,6 +249,10 @@ export const refreshToken = async (req, res, next) => {
       throw new ApiError(401, "Account no longer exists. Please log in again.", "UNAUTHORIZED");
     }
 
+    // Users who stay signed in via refresh still earn their daily login coin.
+    const loginReward = await grantDailyLoginReward(user.id);
+    if (loginReward?.user) user.coins = loginReward.user.coins;
+
     // Issue fresh 1-day token
     const newToken = signToken({ id: user.id, email: user.email });
 
@@ -249,6 +267,11 @@ export const refreshToken = async (req, res, next) => {
       token: newToken,
       user,
       stats: getUserHeaderStats(user),
+      rewards: {
+        coinsEarnedToday: loginReward?.coinsEarnedToday ?? 0,
+        loginCoins: loginReward?.loginCoins ?? 0,
+        isNewDay: loginReward?.isNewDay ?? false,
+      },
     });
   } catch (err) {
     next(err);
@@ -262,6 +285,9 @@ export const refreshToken = async (req, res, next) => {
 export const verifyAuth = async (req, res, next) => {
   try {
     const todayISTDate = getISTDateString();
+    // Opening the app with a still-valid token counts as today's login (idempotent per IST day).
+    // Runs first so the user read and coinsEarnedToday below include the reward.
+    const loginReward = await grantDailyLoginReward(req.user.id);
     // getCoinsEarnedToday never throws, so both queries can run concurrently.
     const [user, coinsEarnedToday] = await Promise.all([
       prisma.user.findUnique({
@@ -302,6 +328,7 @@ export const verifyAuth = async (req, res, next) => {
       ...user,
       todayISTDate,
       coinsEarnedToday,
+      loginCoins: loginReward?.loginCoins ?? 0,
     };
 
     res.status(200).json({

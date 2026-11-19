@@ -39,7 +39,7 @@ try {
   const myThemeData = await myThemeRes.json();
   assert.equal(myThemeData.success, true);
   assert.equal(myThemeData.activeTheme, "default");
-  assert.equal(myThemeData.coins, 100);
+  assert.equal(myThemeData.coins, 101);
 
   // 3. GET /api/themes (themes list with ownership & pricing)
   const listRes = await fetch(`${baseUrl}/themes`, { headers: authHeaders });

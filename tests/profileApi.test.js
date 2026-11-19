@@ -37,7 +37,7 @@ try {
     tier: "Pulse II",
     score: 0,
     scoreUnits: 0,
-    coins: 100,
+    coins: 101,
     streak: 0,
     longestStreak: 0,
   });

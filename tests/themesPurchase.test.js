@@ -102,7 +102,7 @@ try {
     (await prisma.user.findUnique({
       where: { id: lowBalanceAccount.user.id },
     })).coins,
-    100,
+    101,
   );
 
   console.log("Theme purchase persistence tests passed.");

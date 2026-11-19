@@ -28,7 +28,7 @@ export async function grantDailyLoginReward(userId) {
       longestStreak: 0,
       isNewDay: false,
       granted: false,
-      coins: 0,
+      coins: null,
     };
   }
 
@@ -59,7 +59,7 @@ export async function grantDailyLoginReward(userId) {
           longestStreak: 0,
           isNewDay: false,
           granted: false,
-          coins: 0,
+          coins: null,
         };
       }
 
@@ -134,7 +134,7 @@ export async function grantDailyLoginReward(userId) {
       longestStreak: 0,
       isNewDay: false,
       granted: false,
-      coins: 0,
+      coins: null,
     };
   }
 }
