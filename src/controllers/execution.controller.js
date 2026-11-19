@@ -17,6 +17,13 @@ import { applyAcceptedSubmissionReward } from "../utils/acceptedSubmissionReward
 import { publicTestResults } from "../utils/testcaseResults.js";
 import { analyzeComplexity } from "../services/complexityAnalyzer.service.js";
 import { grantDailyProblemReward } from "../services/coinService.js";
+import {
+  supportsMultiCase,
+  wrapWithHarness,
+  buildHarnessStdin,
+  parseHarnessOutput,
+  normalizeHarnessCase,
+} from "../utils/multiCaseHarness.js";
 
 // Holds per-testcase results/complexity that are not persisted, so polling
 // clients can read them. Bounded by TTL and size so it cannot grow forever.
@@ -511,14 +518,217 @@ function normalizeRunnerResult(data) {
   };
 }
 
+function isMultiCaseEnabled() {
+  const flag = String(process.env.CODEBOX_MULTICASE_ENABLED ?? "true").toLowerCase();
+  return flag !== "false" && flag !== "0";
+}
+
+// Judge0-compatible servers cap per-submission limits (defaults: 15s CPU, 20s wall).
+const MULTICASE_MAX_CPU_SEC = Number(process.env.CODEBOX_MAX_CPU_TIME_LIMIT) || 15;
+const MULTICASE_MAX_WALL_SEC = Number(process.env.CODEBOX_MAX_WALL_TIME_LIMIT) || 20;
+const MULTICASE_POLL_INITIAL_INTERVAL_MS = 120;
+const MULTICASE_MAX_CASES_PER_SUBMISSION = 200;
+const MULTICASE_MAX_ROUNDS = 6;
+
+/**
+ * Runs all testcases in as few submissions as possible using the fork-per-case
+ * harness (one compile per chunk). Returns results by index; entries are
+ * undefined for cases that did not report.
+ */
+async function executeMultiCase({
+  language,
+  fullCode,
+  testcases,
+  timeLimit,
+  memoryLimit,
+}) {
+  const runnerUrl = getCodeboxUrl(true);
+  const languageId = LANGUAGE_IDS[language] || 54;
+  const headers = { "Content-Type": "application/json" };
+  const perCaseMs = Math.max(100, Number(timeLimit) || 2000);
+  const memLimitMb = Math.max(1, Number(memoryLimit) || 256);
+  const source = Buffer.from(wrapWithHarness(fullCode)).toString("base64");
+
+  // One compile per chunk. The harness stops starting new cases before the
+  // budget runs out, so a slow/TLE-heavy chunk reports partial results instead
+  // of being killed; the caller re-runs whatever was not reported.
+  const budgetMs =
+    Math.min(MULTICASE_MAX_CPU_SEC, MULTICASE_MAX_WALL_SEC) * 1000 - 1500;
+  const casesPerChunk = MULTICASE_MAX_CASES_PER_SUBMISSION;
+  const chunks = [];
+  for (let offset = 0; offset < testcases.length; offset += casesPerChunk) {
+    chunks.push({ offset, cases: testcases.slice(offset, offset + casesPerChunk) });
+  }
+
+  const runChunk = async ({ offset, cases }) => {
+    const stdins = cases.map(
+      (tc) => tc.stdin ?? tc.stdinSmall ?? tc.input ?? "",
+    );
+    const created = await fetchCodeboxJson(
+      new URL("/submissions?base64_encoded=true&wait=false", runnerUrl),
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          source_code: source,
+          language_id: languageId,
+          stdin: buildHarnessStdin(stdins, perCaseMs, budgetMs).toString("base64"),
+          cpu_time_limit: MULTICASE_MAX_CPU_SEC,
+          wall_time_limit: MULTICASE_MAX_WALL_SEC,
+          memory_limit: memLimitMb * 1024,
+          max_processes_and_or_threads: 60,
+        }),
+      },
+    );
+    if (!created?.token) {
+      throw new ApiError(
+        503,
+        "Code execution service returned an invalid response.",
+        "EXECUTION_UNAVAILABLE",
+      );
+    }
+
+    const pollUrl = new URL(`/submissions/${created.token}`, runnerUrl);
+    pollUrl.searchParams.set("base64_encoded", "true");
+    const deadline = Date.now() + BATCH_TIMEOUT_MS;
+    let interval = MULTICASE_POLL_INITIAL_INTERVAL_MS;
+    let sub;
+    while (true) {
+      await new Promise((resolve) => setTimeout(resolve, interval));
+      sub = await fetchCodeboxJson(pollUrl, { headers });
+      if (![1, 2].includes(Number(sub?.status?.id))) break;
+      if (Date.now() >= deadline) {
+        throw new ApiError(503, "Code execution service timed out.", "EXECUTION_UNAVAILABLE");
+      }
+      interval = Math.min(BATCH_POLL_MAX_INTERVAL_MS, Math.round(interval * 1.25));
+    }
+
+    const decode = (v) => (v ? Buffer.from(v, "base64").toString("utf-8") : "");
+    const inputBytesOf = (i) => Buffer.byteLength(String(stdins[i] ?? ""), "utf-8");
+
+    // Compilation error applies to every case.
+    if (Number(sub.status?.id) === 6 || sub.compile_output && !sub.stdout) {
+      const compileOutput = decode(sub.compile_output) || decode(sub.message) || "Compilation failed.";
+      return cases.map((_, i) => ({
+        status: "Compilation Error",
+        studentStdout: "",
+        actual: "",
+        errorText: compileOutput,
+        timeMs: 0,
+        cpuTimeMs: 0,
+        wallTimeMs: 0,
+        memoryKb: 0,
+        memorySource: "max-rss",
+        exitCode: 1,
+        inputBytes: inputBytesOf(i),
+      }));
+    }
+
+    const parsed = parseHarnessOutput(
+      sub.stdout ? Buffer.from(sub.stdout, "base64") : Buffer.alloc(0),
+      cases.length,
+    );
+    if (!parsed) {
+      // Harness never started (unexpected environment) - let caller fall back.
+      throw new ApiError(503, "Multi-case harness unavailable.", "EXECUTION_UNAVAILABLE");
+    }
+    return parsed.map((raw, i) =>
+      raw
+        ? normalizeHarnessCase(raw, {
+            timeLimitMs: perCaseMs,
+            memoryLimitMb: memLimitMb,
+            inputBytes: inputBytesOf(i),
+          })
+        : undefined,
+    );
+  };
+
+  const results = new Array(testcases.length);
+  let nextChunk = 0;
+  const worker = async () => {
+    while (nextChunk < chunks.length) {
+      const chunk = chunks[nextChunk++];
+      const chunkResults = await runChunk(chunk);
+      chunkResults.forEach((r, i) => {
+        results[chunk.offset + i] = r;
+      });
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.max(1, Math.min(MAX_CONCURRENT_BATCHES, chunks.length)) }, worker),
+  );
+  return results;
+}
+
 export async function executeCodeBatch({
   language,
   fullCode,
   testcases,
   timeLimit = 2000,
   memoryLimit = 256,
+  allowMultiCase = true,
 }) {
   if (!testcases.length) return [];
+
+  // Fast path for compiled languages: compile once, fork per testcase.
+  const normLang = normalizeLanguage(language);
+  if (allowMultiCase && isMultiCaseEnabled() && supportsMultiCase(normLang)) {
+    try {
+      const results = new Array(testcases.length);
+      let missing = testcases.map((_, i) => i);
+      // Each round compiles once; the harness reports as many cases as fit in
+      // its time budget, and later rounds pick up the rest.
+      for (let round = 0; round < MULTICASE_MAX_ROUNDS && missing.length; round++) {
+        const roundResults = await executeMultiCase({
+          language: normLang,
+          fullCode,
+          testcases: missing.map((i) => testcases[i]),
+          timeLimit,
+          memoryLimit,
+        });
+        let progressed = false;
+        missing.forEach((caseIndex, k) => {
+          if (roundResults[k]) {
+            results[caseIndex] = roundResults[k];
+            progressed = true;
+          }
+        });
+        if (!progressed) break;
+        missing = missing.filter((i) => !results[i]);
+        // A compile error applies to everything: no point running more rounds.
+        if (results.some((r) => r?.status === "Compilation Error")) {
+          const ce = results.find((r) => r?.status === "Compilation Error");
+          missing.forEach((i) => {
+            results[i] = { ...ce, inputBytes: Buffer.byteLength(String(testcases[i]?.stdin ?? ""), "utf-8") };
+          });
+          missing = [];
+        }
+      }
+      // Anything still unreported runs on the per-testcase path so verdicts
+      // are never guessed.
+      if (missing.length > 0) {
+        const rerun = await executeCodeBatch({
+          language,
+          fullCode,
+          testcases: missing.map((i) => testcases[i]),
+          timeLimit,
+          memoryLimit,
+          allowMultiCase: false,
+        });
+        missing.forEach((caseIndex, k) => {
+          results[caseIndex] = rerun[k];
+        });
+      }
+      return results;
+    } catch (err) {
+      if (
+        !(err instanceof ApiError && err.code === "EXECUTION_UNAVAILABLE")
+      ) {
+        throw err;
+      }
+      // Service rejected the harness submission: fall back to per-testcase runs.
+    }
+  }
 
   if (
     isCodeboxBatchExecutionEnabled() &&
