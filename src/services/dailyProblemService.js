@@ -331,6 +331,34 @@ export async function getDailyProblemHistory({
  * 2. Validates problem matches today's daily problem.
  * 3. Enforces idempotency via atomic transaction: creates completion, updates streak, & awards +2 coins.
  */
+// Every accepted submission asks "is this today's daily problem?". The answer
+// changes once a day, so keep the lookup in memory briefly instead of paying a
+// database round trip per submit. Only found rows are cached, so a daily
+// problem created later is picked up immediately.
+const DAILY_LOOKUP_TTL_MS = 60 * 1000;
+const dailyLookupCache = new Map(); // istDate -> { value, expiresAt }
+
+async function findDailyProblemCached(istDate) {
+  const hit = dailyLookupCache.get(istDate);
+  if (hit && hit.expiresAt > Date.now()) return hit.value;
+  const value = await prisma.dailyProblem.findUnique({
+    where: { istDate },
+    include: { problem: { select: { id: true, slug: true } } },
+  });
+  if (value) {
+    if (dailyLookupCache.size > 32) dailyLookupCache.clear();
+    dailyLookupCache.set(istDate, { value, expiresAt: Date.now() + DAILY_LOOKUP_TTL_MS });
+  } else {
+    dailyLookupCache.delete(istDate);
+  }
+  return value;
+}
+
+/** Drops cached daily-problem lookups (e.g. after re-seeding daily problems). */
+export function clearDailyProblemLookupCache() {
+  dailyLookupCache.clear();
+}
+
 export async function completeDailyProblemSubmission({
   userId,
   problemId,
@@ -345,10 +373,7 @@ export async function completeDailyProblemSubmission({
     return { granted: false, awarded: false, coins: 0, coinsEarned: 0, reason: "NOT_ACCEPTED" };
   }
 
-  let todayDaily = await prisma.dailyProblem.findUnique({
-    where: { istDate: targetISTDate },
-    include: { problem: { select: { id: true, slug: true } } },
-  });
+  let todayDaily = await findDailyProblemCached(targetISTDate);
   if (!todayDaily && targetISTDate === getAuthoritativeISTDate()) {
     todayDaily = await ensureDailyProblem(targetISTDate);
   }

@@ -36,7 +36,8 @@
     "seed:daily": "node scripts/seedDailyProblems.js",
     "problems:seed": "node scripts/seedProblems.js",
     "prisma:generate": "npx prisma generate",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "test:codebox-compare": "node --test --test-concurrency=1 tests/codeboxComparison.e2e.js"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
