@@ -56,6 +56,25 @@ export function invalidateProblemCache(problemId = null) {
 }
 
 /**
+ * After a solvedCount sync: patch the cached problems in place instead of
+ * dropping them, so the next run/submit doesn't reload the problem and all its
+ * testcases from the database just because one counter changed. The catalog
+ * (problem list) is still rebuilt.
+ */
+export function updateCachedProblemSolvedCount(problemId, solvedCount) {
+  catalogCache = null;
+  if (!problemId || !Number.isFinite(Number(solvedCount))) {
+    invalidateProblemCache(problemId);
+    return;
+  }
+  for (const [key, entry] of problemCache) {
+    if (entry.value?.id === problemId) {
+      problemCache.set(key, { ...entry, value: { ...entry.value, solvedCount: Number(solvedCount) } });
+    }
+  }
+}
+
+/**
  * Resolves a problem by slug, ID, or problemNumber directly from PostgreSQL via Prisma.
  */
 export async function resolveProblem(slugOrId) {

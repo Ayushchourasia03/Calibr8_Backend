@@ -19,27 +19,37 @@ function getTier(rating) {
   return `${DIVISION_NAMES[tierIndex]} ${DIVISIONS[divisionIndex]}`;
 }
 
+export const REWARD_USER_SELECT = {
+  id: true,
+  rating: true,
+  score: true,
+  coins: true,
+  streak: true,
+  longestStreak: true,
+  lastStreakDate: true,
+};
+
+/**
+ * @param prefetched optional { user, completedBefore }: the user row (selected
+ *   with REWARD_USER_SELECT) and their solved-problem count, read just before
+ *   the transaction (e.g. while the code was executing). Saves two sequential
+ *   round trips inside the transaction; the writes are unchanged.
+ */
 export async function applyAcceptedSubmissionReward(
   tx,
-  { userId, problem, now = new Date() },
+  { userId, problem, now = new Date(), prefetched = null },
 ) {
   if (!userId) return null;
 
   const points =
     DIFFICULTY_POINTS[String(problem.difficulty || "").toLowerCase()] ?? 10;
   const scoreAwarded = points * 10;
-  const user = await tx.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      rating: true,
-      score: true,
-      coins: true,
-      streak: true,
-      longestStreak: true,
-      lastStreakDate: true,
-    },
-  });
+  const user = prefetched
+    ? prefetched.user
+    : await tx.user.findUnique({
+      where: { id: userId },
+      select: REWARD_USER_SELECT,
+    });
 
   if (!user) return null;
 
@@ -67,9 +77,12 @@ export async function applyAcceptedSubmissionReward(
     };
   }
 
-  const completedProblems = await tx.userProblemProgress.count({
-    where: { userId },
-  });
+  // Includes the row inserted above.
+  const completedProblems = prefetched && Number.isFinite(prefetched.completedBefore)
+    ? prefetched.completedBefore + 1
+    : await tx.userProblemProgress.count({
+      where: { userId },
+    });
   const problemRating =
     { easy: 800, medium: 1200, hard: 1600 }[
       String(problem.difficulty || "").toLowerCase()

@@ -8,12 +8,16 @@ import {
   SUPPORTED_LANGUAGES,
 } from "../utils/codeBuilder.js";
 import {
-  invalidateProblemCache,
+  updateCachedProblemSolvedCount,
   resolveProblem,
 } from "../utils/problemResolver.js";
 import { ApiError } from "../utils/ApiError.js";
 import { syncProblemSolvedCount } from "../utils/problemSolvedCount.js";
-import { applyAcceptedSubmissionReward } from "../utils/acceptedSubmissionReward.js";
+import {
+  applyAcceptedSubmissionReward,
+  REWARD_USER_SELECT,
+} from "../utils/acceptedSubmissionReward.js";
+import { getUserHeaderStats } from "../utils/userHeaderStats.js";
 import { publicTestResults } from "../utils/testcaseResults.js";
 import { analyzeComplexity } from "../services/complexityAnalyzer.service.js";
 import { grantDailyProblemReward } from "../services/coinService.js";
@@ -60,7 +64,7 @@ setInterval(() => {
 }, 5 * 60 * 1000).unref?.();
 
 const MAX_CASES_PER_BATCH = 20;
-const BATCH_POLL_INITIAL_INTERVAL_MS = 250;
+const BATCH_POLL_INITIAL_INTERVAL_MS = 150;
 const BATCH_POLL_MAX_INTERVAL_MS = 800;
 const BATCH_TIMEOUT_MS = 60 * 1000;
 const MAX_CONCURRENT_BATCHES =
@@ -189,7 +193,10 @@ function getCodeboxUrl(required = true) {
 async function fetchCodeboxJson(url, options = {}) {
   const codeboxToken = process.env.CODEBOX_TOKEN;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const timeout = setTimeout(
+    () => controller.abort(),
+    options.timeoutMs || 15_000,
+  );
 
   try {
     const response = await fetch(url, {
@@ -209,11 +216,13 @@ async function fetchCodeboxJson(url, options = {}) {
       );
     }
     if (!response.ok) {
-      throw new ApiError(
+      const statusErr = new ApiError(
         503,
         "Code execution service returned an error status.",
         "EXECUTION_UNAVAILABLE",
       );
+      statusErr.httpStatus = response.status;
+      throw statusErr;
     }
     return await response.json();
   } catch (err) {
@@ -228,11 +237,19 @@ async function fetchCodeboxJson(url, options = {}) {
   }
 }
 
+// CODEBOX_BATCH_EXECUTION_ENABLED: "auto" (default) | "true" | "false".
+// auto: use POST /batches (compile once, run many) when the CodeBox server
+// supports it; a 404 disables it for a while so old servers cost one probe.
+const BATCH_UNSUPPORTED_RETRY_MS = 10 * 60 * 1000;
+let batchUnsupportedUntil = 0;
+
 function isCodeboxBatchExecutionEnabled() {
-  return (
-    process.env.CODEBOX_BATCH_EXECUTION_ENABLED === "true" ||
-    process.env.CODEBOX_BATCH_EXECUTION_ENABLED === "1"
-  );
+  const mode = String(process.env.CODEBOX_BATCH_EXECUTION_ENABLED ?? "auto")
+    .trim()
+    .toLowerCase();
+  if (mode === "false" || mode === "0") return false;
+  if (mode === "true" || mode === "1") return true;
+  return Date.now() >= batchUnsupportedUntil;
 }
 
 function normalizeBatchStatus(status) {
@@ -240,6 +257,8 @@ function normalizeBatchStatus(status) {
     .trim()
     .toLowerCase();
   if (["completed", "done", "success"].includes(normalized)) return "OK";
+  // Not run because an earlier tier failed (stop_on_failure).
+  if (normalized === "skipped") return "Skipped";
   if (
     [
       "compile_failed",
@@ -323,12 +342,35 @@ function normalizeBatchResult(rawResult = {}, fallbackIndex = 0) {
   };
 }
 
+// Long-poll: CodeBox holds each request open until the batch finishes (up to
+// this long), so results arrive the moment they are ready instead of on the
+// next poll tick. Servers that ignore ?wait just answer immediately.
+const BATCH_LONG_POLL_MS =
+  Number(process.env.CODEBOX_BATCH_WAIT_MS) || 20_000;
+
+const BATCH_TERMINAL_STATUSES = new Set([
+  "completed",
+  "compile_failed",
+  "compile-failed",
+  "failed",
+  "timeout",
+  "cancelled",
+  "canceled",
+]);
+
+function isBatchTerminal(batchStatus) {
+  return BATCH_TERMINAL_STATUSES.has(
+    String(batchStatus?.status || "").trim().toLowerCase(),
+  );
+}
+
 async function executeCodeboxBatchOnce({
   language,
   fullCode,
   testcases,
   timeLimit = 2000,
   memoryLimit = 256,
+  stopOnFailure = false,
 }) {
   if (!Array.isArray(testcases) || testcases.length === 0) return [];
 
@@ -340,7 +382,9 @@ async function executeCodeboxBatchOnce({
     source_code: fullCode,
     testcases: testcases.map((testcase) => ({
       stdin: testcase.stdin ?? testcase.stdinSmall ?? testcase.input ?? "",
+      ...(Number.isInteger(testcase.group) ? { group: testcase.group } : {}),
     })),
+    ...(stopOnFailure ? { stop_on_failure: true } : {}),
     limits: {
       cpu_time_limit: Math.max(1, Math.ceil((timeLimit || 2000) / 1000)),
       wall_time_limit: Math.max(2, Math.ceil((timeLimit || 2000) / 1000) * 2),
@@ -351,14 +395,17 @@ async function executeCodeboxBatchOnce({
 
   let created;
   try {
-    created = await fetchCodeboxJson(new URL("/batches", runnerUrl), {
+    const createUrl = new URL("/batches", runnerUrl);
+    createUrl.searchParams.set("wait", String(BATCH_LONG_POLL_MS));
+    created = await fetchCodeboxJson(createUrl, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
+      timeoutMs: BATCH_LONG_POLL_MS + 10_000,
     });
   } catch (err) {
-    if (err instanceof ApiError && err.code === "EXECUTION_UNAVAILABLE") {
-      throw err;
+    if (err?.httpStatus === 404) {
+      batchUnsupportedUntil = Date.now() + BATCH_UNSUPPORTED_RETRY_MS;
     }
     throw err;
   }
@@ -374,27 +421,23 @@ async function executeCodeboxBatchOnce({
 
   const statusUrl = new URL("/batches", runnerUrl);
   statusUrl.searchParams.set("batchId", batchId);
+  statusUrl.searchParams.set("wait", String(BATCH_LONG_POLL_MS));
 
-  const deadline = Date.now() + BATCH_TIMEOUT_MS;
+  // Allow for every testcase hitting its wall-clock limit before giving up.
+  const deadline =
+    Date.now() +
+    BATCH_TIMEOUT_MS +
+    testcases.length * payload.limits.wall_time_limit * 1000;
   let currentInterval = BATCH_POLL_INITIAL_INTERVAL_MS;
   let batchStatus = created;
 
-  while (true) {
-    batchStatus = await fetchCodeboxJson(statusUrl, { headers });
-    const normalizedStatus = String(batchStatus?.status || "")
-      .trim()
-      .toLowerCase();
-    const terminalStatuses = new Set([
-      "completed",
-      "compile_failed",
-      "compile-failed",
-      "failed",
-      "timeout",
-      "cancelled",
-      "canceled",
-    ]);
-
-    if (terminalStatuses.has(normalizedStatus)) break;
+  while (!isBatchTerminal(batchStatus)) {
+    const requestStart = Date.now();
+    batchStatus = await fetchCodeboxJson(statusUrl, {
+      headers,
+      timeoutMs: BATCH_LONG_POLL_MS + 10_000,
+    });
+    if (isBatchTerminal(batchStatus)) break;
     if (Date.now() >= deadline) {
       const timeoutErr = new ApiError(
         503,
@@ -407,16 +450,33 @@ async function executeCodeboxBatchOnce({
       throw timeoutErr;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, currentInterval));
-    currentInterval = Math.min(
-      BATCH_POLL_MAX_INTERVAL_MS,
-      Math.round(currentInterval * 1.35),
-    );
+    // A server that does not support ?wait answers instantly: fall back to
+    // interval polling instead of hammering it.
+    if (Date.now() - requestStart < 1000) {
+      await new Promise((resolve) => setTimeout(resolve, currentInterval));
+      currentInterval = Math.min(
+        BATCH_POLL_MAX_INTERVAL_MS,
+        Math.round(currentInterval * 1.35),
+      );
+    }
   }
 
   const rawResults = Array.isArray(batchStatus?.results)
     ? batchStatus.results
     : [];
+
+  // "failed" = internal CodeBox error (not the user's code): let the caller
+  // fall back to another execution path instead of reporting Runtime Error.
+  if (
+    String(batchStatus?.status || "").toLowerCase() === "failed" &&
+    rawResults.length === 0
+  ) {
+    throw new ApiError(
+      503,
+      "Code execution service failed to run the batch.",
+      "EXECUTION_UNAVAILABLE",
+    );
+  }
   const byIndex = new Map(
     rawResults.map((result, index) => [Number(result.index ?? index), result]),
   );
@@ -670,7 +730,46 @@ export async function executeCodeBatch({
 }) {
   if (!testcases.length) return [];
 
-  // Fast path for compiled languages: compile once, fork per testcase.
+  // Fastest path (all languages): CodeBox batch API compiles once and runs
+  // every testcase in its own sandbox. Chunks run in parallel; after the first
+  // chunk compiles, the others hit CodeBox's build cache.
+  if (isCodeboxBatchExecutionEnabled()) {
+    try {
+      const chunks = [];
+      for (let offset = 0; offset < testcases.length; offset += MAX_CASES_PER_BATCH) {
+        chunks.push(testcases.slice(offset, offset + MAX_CASES_PER_BATCH));
+      }
+      const chunkResults = new Array(chunks.length);
+      let nextChunk = 0;
+      const worker = async () => {
+        while (nextChunk < chunks.length) {
+          const chunkIndex = nextChunk++;
+          chunkResults[chunkIndex] = await executeCodeboxBatchOnce({
+            language,
+            fullCode,
+            testcases: chunks[chunkIndex],
+            timeLimit,
+            memoryLimit,
+          });
+        }
+      };
+      await Promise.all(
+        Array.from({ length: Math.min(MAX_CONCURRENT_BATCHES, chunks.length) }, worker),
+      );
+      return chunkResults.flat();
+    } catch (err) {
+      if (
+        !(err instanceof ApiError && err.code === "EXECUTION_UNAVAILABLE") ||
+        err.isBatchTimeout
+      ) {
+        throw err;
+      }
+      // Batch API unavailable (old CodeBox server): fall through.
+    }
+  }
+
+  // Fallback for compiled languages on servers without the batch API:
+  // compile once, fork per testcase.
   const normLang = normalizeLanguage(language);
   if (allowMultiCase && isMultiCaseEnabled() && supportsMultiCase(normLang)) {
     try {
@@ -727,31 +826,6 @@ export async function executeCodeBatch({
         throw err;
       }
       // Service rejected the harness submission: fall back to per-testcase runs.
-    }
-  }
-
-  if (
-    isCodeboxBatchExecutionEnabled() &&
-    normalizeLanguage(language) === "cpp"
-  ) {
-    try {
-      return await executeCodeboxBatchOnce({
-        language,
-        fullCode,
-        testcases,
-        timeLimit,
-        memoryLimit,
-      });
-    } catch (err) {
-      if (
-        err instanceof ApiError &&
-        err.code === "EXECUTION_UNAVAILABLE" &&
-        !err.isBatchTimeout
-      ) {
-        // Fall back to the legacy codepath if the batch API is not available.
-      } else {
-        throw err;
-      }
     }
   }
 
@@ -1126,7 +1200,54 @@ export const runCode = async (req, res, next) => {
  * Executes Tier 1 first; if any Tier 1 test fails, halts immediately
  * without executing Tier 2 or Tier 3 batches.
  */
-async function evaluateAllTestcases(problem, language, code, providedFullCode) {
+// Largest submission sent to CodeBox as a single batch (CodeBox default max 200).
+const SINGLE_BATCH_MAX_CASES =
+  Number(process.env.CODEBOX_BATCH_MAX_CASES) || 200;
+
+/**
+ * Runs all tiers' testcases in one CodeBox batch. Returns per-tier result
+ * arrays, or null when the batch API is unavailable (caller falls back to the
+ * per-tier loop). Skipped testcases come back with status "Skipped".
+ */
+async function runAllTiersInOneBatch({ tiers, language, fullCode, timeLimit, memoryLimit }) {
+  const total = tiers.reduce((sum, tier) => sum + tier.cases.length, 0);
+  if (!isCodeboxBatchExecutionEnabled() || total === 0 || total > SINGLE_BATCH_MAX_CASES) {
+    return null;
+  }
+  try {
+    const flat = await executeCodeboxBatchOnce({
+      language,
+      fullCode,
+      testcases: tiers.flatMap((tier, group) =>
+        tier.cases.map((testcase) => ({
+          stdin: testcase.stdinSmall ?? testcase.input ?? "",
+          group,
+        })),
+      ),
+      timeLimit,
+      memoryLimit,
+      stopOnFailure: true,
+    });
+    const perTier = [];
+    let offset = 0;
+    for (const tier of tiers) {
+      perTier.push(flat.slice(offset, offset + tier.cases.length));
+      offset += tier.cases.length;
+    }
+    return perTier;
+  } catch (err) {
+    if (
+      err instanceof ApiError &&
+      err.code === "EXECUTION_UNAVAILABLE" &&
+      !err.isBatchTimeout
+    ) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+export async function evaluateAllTestcases(problem, language, code, providedFullCode) {
   const normLang = normalizeLanguage(language) || "cpp";
   const rawTestcases = problem.testcases || [];
   const allTestcases = rawTestcases;
@@ -1180,18 +1301,37 @@ async function evaluateAllTestcases(problem, language, code, providedFullCode) {
   let tierReached = "Tier 0 (Failed)";
   let shortCircuited = false;
 
-  for (const tier of tiers) {
+  // Fast path: every tier in ONE CodeBox batch (one request, one compile).
+  // Testcases carry their tier as a group; with stop_on_failure CodeBox skips
+  // later tiers once a testcase crashes/times out, so failing submissions still
+  // stop early. Verdicts below are computed exactly as in the per-tier loop.
+  const precomputedTierResults = await runAllTiersInOneBatch({
+    tiers,
+    language: normLang,
+    fullCode,
+    timeLimit: problem.timeLimit || 2000,
+    memoryLimit: problem.memoryLimit || 256,
+  });
+
+  for (const [tierIndex, tier] of tiers.entries()) {
     if (!tier.cases.length || shortCircuited) continue;
 
-    const tierExecResults = await executeCodeBatch({
-      language: normLang,
-      fullCode,
-      testcases: tier.cases.map((testcase) => ({
-        stdin: testcase.stdinSmall ?? testcase.input ?? "",
-      })),
-      timeLimit: problem.timeLimit || 2000,
-      memoryLimit: problem.memoryLimit || 256,
-    });
+    let tierExecResults = precomputedTierResults?.[tierIndex];
+    if (
+      !tierExecResults ||
+      tierExecResults.length !== tier.cases.length ||
+      tierExecResults.some((r) => !r || r.status === "Skipped")
+    ) {
+      tierExecResults = await executeCodeBatch({
+        language: normLang,
+        fullCode,
+        testcases: tier.cases.map((testcase) => ({
+          stdin: testcase.stdinSmall ?? testcase.input ?? "",
+        })),
+        timeLimit: problem.timeLimit || 2000,
+        memoryLimit: problem.memoryLimit || 256,
+      });
+    }
 
     let tierHasFailure = false;
 
@@ -1358,46 +1498,92 @@ export const submitSolution = async (req, res, next) => {
       },
     };
 
-    try {
-      submission = await prisma.submission.create({
-        data: {
-          problemId: problem.id,
-          userId,
-          language: normLang,
-          code: studentCode,
-          status: "PROCESSING",
-          passedCount: 0,
-          totalCount: totalTcs,
-        },
-        select: {
-          id: true,
-          problemId: true,
-          userId: true,
-          language: true,
-          code: true,
-          status: true,
-          passedCount: true,
-          totalCount: true,
-          createdAt: true,
+    const createSubmissionRow = async () => {
+      try {
+        submission = await prisma.submission.create({
+          data: {
+            problemId: problem.id,
+            userId,
+            language: normLang,
+            code: studentCode,
+            status: "PROCESSING",
+            passedCount: 0,
+            totalCount: totalTcs,
+          },
+          select: {
+            id: true,
+            problemId: true,
+            userId: true,
+            language: true,
+            code: true,
+            status: true,
+            passedCount: true,
+            totalCount: true,
+            createdAt: true,
+          },
+        });
+      } catch (dbErr) {
+        if (userId) {
+          throw new ApiError(
+            503,
+            "Unable to save this submission. Please try again.",
+            "SUBMISSION_STORAGE_UNAVAILABLE",
+          );
+        }
+      }
+
+      submissionCache.set(submission.id, {
+        ...submission,
+        problem: {
+          slug: problem.slug,
+          title: problem.title,
         },
       });
-    } catch (dbErr) {
-      if (userId) {
-        throw new ApiError(
-          503,
-          "Unable to save this submission. Please try again.",
-          "SUBMISSION_STORAGE_UNAVAILABLE",
-        );
-      }
+    };
+
+    // If wait=true or route is /api/execute/submit (synchronous evaluation)
+    const isDirectExecuteRoute =
+      req.originalUrl?.includes("/execute/submit") ||
+      wait === true ||
+      req.query?.wait === "true" ||
+      req.path === "/submit";
+
+    // Synchronous submits save the row while the code runs (the id is only
+    // needed afterwards); queued submits need the id before replying.
+    let submissionSaved = null;
+    if (isDirectExecuteRoute) {
+      submissionSaved = createSubmissionRow();
+      submissionSaved.catch(() => {}); // awaited in runEvaluation
+    } else {
+      await createSubmissionRow();
     }
 
-    submissionCache.set(submission.id, {
-      ...submission,
-      problem: {
-        slug: problem.slug,
-        title: problem.title,
-      },
-    });
+    // "Already solved?" lookup, also overlapped with execution: an accepted
+    // re-submit of a solved problem earns nothing, so it can skip the reward
+    // transaction (4 database round trips) entirely.
+    const priorSolvePromise = userId
+      ? prisma.userProblemProgress
+          .findUnique({
+            where: { userId_problemId: { userId, problemId: problem.id } },
+            select: {
+              user: {
+                select: { rating: true, score: true, coins: true, streak: true, longestStreak: true },
+              },
+            },
+          })
+          .catch(() => null)
+      : Promise.resolve(null);
+
+    // Reads a first solve's reward needs (rating, solved count), also done
+    // while the code runs, so the reward transaction only has to write.
+    const rewardPrefetchPromise = priorSolvePromise.then((priorSolve) =>
+      userId && !priorSolve
+        ? Promise.all([
+          prisma.user.findUnique({ where: { id: userId }, select: REWARD_USER_SELECT }),
+          prisma.userProblemProgress.count({ where: { userId } }),
+        ]).then(([user, completedBefore]) => (user ? { user, completedBefore } : null))
+        : null,
+    ).catch(() => null);
 
     const runEvaluation = async () => {
       const evaluation = await evaluateAllTestcases(
@@ -1406,6 +1592,7 @@ export const submitSolution = async (req, res, next) => {
         studentCode,
         fullCode,
       );
+      if (submissionSaved) await submissionSaved;
       let updated = {
         ...submission,
         status: evaluation.status,
@@ -1419,20 +1606,36 @@ export const submitSolution = async (req, res, next) => {
         results: evaluation.results,
       };
 
-      try {
+      const isAccepted =
+        evaluation.status === "ACCEPTED" &&
+        evaluation.totalCount > 0 &&
+        evaluation.passedCount === evaluation.totalCount;
+
+      // Rewards (user/progress/coins) and the verdict (submission row, then the
+      // problem's solved count) touch different rows and don't depend on each
+      // other, so they run in parallel. Within each chain the order is kept.
+      const rewardsChain = async () => {
         let reward = null;
         let rewardError = false;
-        const isAccepted =
-          evaluation.status === "ACCEPTED" &&
-          evaluation.totalCount > 0 &&
-          evaluation.passedCount === evaluation.totalCount;
-
         let dailyProblemReward = { granted: false, coins: 0 };
         if (userId && isAccepted) {
+          const priorSolve = await priorSolvePromise;
           try {
-            reward = await prisma.$transaction((tx) =>
-              applyAcceptedSubmissionReward(tx, { userId, problem }),
-            );
+            if (priorSolve?.user) {
+              // Already solved: no points/rating change, same response shape.
+              reward = {
+                awarded: false,
+                points: 0,
+                scoreDelta: 0,
+                coinsEarned: 0,
+                stats: getUserHeaderStats(priorSolve.user),
+              };
+            } else {
+              const prefetched = await rewardPrefetchPromise;
+              reward = await prisma.$transaction((tx) =>
+                applyAcceptedSubmissionReward(tx, { userId, problem, prefetched }),
+              );
+            }
             rewardError = !reward;
           } catch (rewardDbErr) {
             rewardError = true;
@@ -1467,7 +1670,10 @@ export const submitSolution = async (req, res, next) => {
             dailyProblemReward = { granted: false, coins: 0 };
           }
         }
+        return { reward, rewardError, dailyProblemReward };
+      };
 
+      const verdictChain = async () => {
         const dbUpdated = await prisma.submission.update({
           where: { id: submission.id },
           data: {
@@ -1486,23 +1692,14 @@ export const submitSolution = async (req, res, next) => {
             memory: true,
           },
         });
-        updated = {
-          ...dbUpdated,
-          ...updated,
-          reward,
-          rewardError,
-          dailyProblemReward,
-        };
 
-        if (
-          userId &&
-          evaluation.status === "ACCEPTED" &&
-          evaluation.totalCount > 0 &&
-          evaluation.passedCount === evaluation.totalCount
-        ) {
+        // Counts ACCEPTED rows, so it must follow the update above. A user who
+        // had already solved this problem is already counted: nothing changes.
+        const priorSolve = userId && isAccepted ? await priorSolvePromise : null;
+        if (userId && isAccepted && !priorSolve) {
           try {
-            await syncProblemSolvedCount(prisma, problem.id);
-            invalidateProblemCache(problem.id);
+            const solvedCount = await syncProblemSolvedCount(prisma, problem.id);
+            updateCachedProblemSolvedCount(problem.id, solvedCount);
           } catch (syncError) {
             console.error(
               `[Problem solved count] Failed to update problem ${problem.id}:`,
@@ -1510,6 +1707,34 @@ export const submitSolution = async (req, res, next) => {
             );
           }
         }
+        return dbUpdated;
+      };
+
+      // Promise.resolve().then(): a synchronous throw is caught like a rejection.
+      const complexityTask = Promise.resolve().then(() => analyzeComplexity({
+        code: studentCode,
+        language: normLang,
+        problemSlug: problem.slug,
+        executionResult: {
+          timeMs: evaluation.maxTimeMs,
+          memoryKb: evaluation.maxMemoryKb,
+        },
+        include: ["time", "space"],
+      })).catch((err) => {
+        console.warn("[Complexity Analyzer Warning]:", err.message);
+        return null;
+      });
+
+      try {
+        const [rewards, dbUpdated] = await Promise.all([
+          rewardsChain(),
+          verdictChain(),
+        ]);
+        updated = {
+          ...dbUpdated,
+          ...updated,
+          ...rewards,
+        };
       } catch (dbErr) {
         if (userId) {
           throw new ApiError(
@@ -1520,21 +1745,7 @@ export const submitSolution = async (req, res, next) => {
         }
       }
 
-      let complexity = null;
-      try {
-        complexity = await analyzeComplexity({
-          code: studentCode,
-          language: normLang,
-          problemSlug: problem.slug,
-          executionResult: {
-            timeMs: evaluation.maxTimeMs,
-            memoryKb: evaluation.maxMemoryKb,
-          },
-          include: ["time", "space"],
-        });
-      } catch (err) {
-        console.warn("[Complexity Analyzer Warning]:", err.message);
-      }
+      const complexity = await complexityTask;
 
       updated = {
         ...updated,
@@ -1544,13 +1755,6 @@ export const submitSolution = async (req, res, next) => {
 
       return updated;
     };
-
-    // If wait=true or route is /api/execute/submit (synchronous evaluation)
-    const isDirectExecuteRoute =
-      req.originalUrl?.includes("/execute/submit") ||
-      wait === true ||
-      req.query?.wait === "true" ||
-      req.path === "/submit";
 
     if (isDirectExecuteRoute) {
       const completed = await runEvaluation();

@@ -43,16 +43,19 @@ export const protect = async (req, res, next) => {
 
     const decoded = verifyToken(token);
 
-    const revoked = await isTokenBlacklisted(token, decoded);
+    // Revocation check and user lookup are independent: run them together
+    // (one database round trip instead of two when the revocation check is
+    // not cached). DB errors propagate to the error handler (503).
+    const [revoked, user] = await Promise.all([
+      isTokenBlacklisted(token, decoded),
+      prisma.user.findUnique({
+        where: { id: decoded.id },
+        select: AUTH_USER_SELECT,
+      }),
+    ]);
     if (revoked) {
       throw new ApiError(401, 'Token has been revoked. Please log in again.', 'TOKEN_REVOKED');
     }
-
-    // DB errors propagate to the error handler (503) instead of being masked.
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      select: AUTH_USER_SELECT,
-    });
 
     // A valid signature is not enough: the account must still exist. Never
     // recreate a deleted account from token claims.
@@ -84,13 +87,14 @@ export const optionalAuth = async (req, res, next) => {
     if (!token) return next();
 
     const decoded = verifyToken(token);
-    const revoked = await isTokenBlacklisted(token, decoded);
+    const [revoked, user] = await Promise.all([
+      isTokenBlacklisted(token, decoded),
+      prisma.user.findUnique({
+        where: { id: decoded.id },
+        select: AUTH_USER_SELECT,
+      }),
+    ]);
     if (revoked) return next();
-
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      select: AUTH_USER_SELECT,
-    });
 
     // Unknown users are treated as anonymous rather than trusted from claims.
     if (user) {
