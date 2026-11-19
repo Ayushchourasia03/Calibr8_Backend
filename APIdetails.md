@@ -1,1593 +1,1178 @@
-# Calibr8 — Unified API Documentation & Contract Specification
+# Calibr8 — API Documentation & Contract Specification
 
-> **Document Version**: 2.1.0 (merged from "Frontend Developer & AI Agent API Documentation" v2.0.0 and "API Documentation & Contract Specification" v2.1.0)
-> **Target Audience**: Frontend/mobile engineers (React, Next.js, Vue, React Native, Flutter, Swift, Kotlin) and AI coding agents.
-> **Base URL (dev)**: `http://localhost:3000` (binds to `0.0.0.0:3000`)
-> **Global Prefix**: `/api` (plus root convenience routes `/health`, `/ping`, and developer console at `/`)
-> **Content-Type**: `application/json`
-> **Auth**: `Authorization: Bearer <jwt-token>`
-> **Timestamps**: ISO 8601 UTC strings (e.g. `2026-10-24T12:00:00.000Z`)
-> **Day boundaries (all gamification)**: IST — `Asia/Kolkata`, UTC+05:30, `YYYY-MM-DD`
-> **Supported languages**: `cpp` (GCC 13 / C++20), `c` (GCC 13), `java` (OpenJDK 17), `python` (Python 3.10), `javascript` (Node.js 22)
+> **Document version**: 3.0.0 (2026-11-18). Rewritten after checking every route, controller, service and middleware in `src/` line by line. Where this document and the code disagree, the code wins. Please report the mismatch.
+> **Audience**: frontend/mobile engineers and AI coding agents integrating with the backend.
+> **Base URL (dev)**: `http://localhost:3000` (`PORT` env, binds `0.0.0.0`)
+> **Global prefix**: `/api` (plus `/health`, `/ping`, and the developer console at `/`)
+> **Content-Type**: `application/json` (body limit **1 MB**, JSON or urlencoded)
+> **Auth**: `Authorization: Bearer <jwt>` (HS256, default expiry `1d` via `JWT_EXPIRES_IN`)
+> **Timestamps**: ISO 8601 UTC strings
+> **Day boundaries**: daily login reward, daily problem and streak use IST (`Asia/Kolkata`, `YYYY-MM-DD`). The activity heatmap buckets by **UTC** day (see §7.3).
+> **Languages**: `cpp` (GCC 13 / C++20), `c` (GCC 13), `java` (OpenJDK 17), `python` (Python 3.10), `javascript` (Node.js 22)
 
-> See **Appendix A** for what was corrected/removed during the merge and **Appendix B** for items still needing verification against the source code.
+**Access legend** used below: **Public** = no token needed · **Protected** = valid token required (`401` otherwise) · **Optional** = works without a token; a valid token adds user-specific data. An invalid or revoked token on an Optional route is silently ignored.
+
+See **§21 Known Issues** for behaviour found during the review that is probably unintended, and **Appendix A** for what changed since v2.1.
 
 ---
 
 ## Table of Contents
 
-1. [Architecture, Principles & Business Rules](#1-architecture-principles--business-rules)
-2. [Error Codes & HTTP Status Taxonomy](#2-error-codes--http-status-taxonomy)
+1. [Architecture & Business Rules](#1-architecture--business-rules)
+2. [Errors, Status Codes & Rate-Limit Headers](#2-errors-status-codes--rate-limit-headers)
 3. [TypeScript Type Definitions](#3-typescript-type-definitions)
-4. [Frontend Client Implementation Guide](#4-frontend-client-implementation-guide)
-5. [System & Health APIs](#5-system--health-apis)
-6. [Authentication & Session Lifecycle (`/api/auth`)](#6-authentication--session-lifecycle-apiauth)
-7. [User Profile & Academic APIs (`/api/users`)](#7-user-profile--academic-apis-apiusers)
+4. [Frontend Client Guide](#4-frontend-client-guide)
+5. [System & Health](#5-system--health)
+6. [Authentication (`/api/auth`)](#6-authentication-apiauth)
+7. [Users & Profile (`/api/users`)](#7-users--profile-apiusers)
 8. [Topics & Categories (`/api/topics`)](#8-topics--categories-apitopics)
-9. [Onboarding & Skill Calibration (`/api/onboarding`)](#9-onboarding--skill-calibration-apionboarding)
-10. [Problems Catalogue (`/api/problems`)](#10-problems-catalogue-apiproblems)
-11. [Code Execution, Submissions & Complexity (`/api/execution`)](#11-code-execution-submissions--complexity-apiexecution)
-12. [Daily Problem of the Day (`/api/daily-problem`)](#12-daily-problem-of-the-day-apidaily-problem)
-13. [Coins & Theme Store (`/api/coins`, `/api/themes`)](#13-coins--theme-store-apicoins-apithemes)
-14. [Rankings & Leaderboard (`/api/rankings`)](#14-rankings--leaderboard-apirankings)
-15. [CS Curriculum & Study Material (`/api/study`)](#15-cs-curriculum--study-material-apistudy)
-16. [Social & GitHub OAuth Linking (`/api/social`)](#16-social--github-oauth-linking-apisocial)
-17. [Gamification: Scoring, Streaks & Tiers](#17-gamification-scoring-streaks--tiers)
-18. [Rate Limits, Quotas & Security](#18-rate-limits-quotas--security)
-19. [PostgreSQL / Neon Database Architecture](#19-postgresql--neon-database-architecture)
-20. [Automated Test Suite](#20-automated-test-suite)
-- [Appendix A — Merge Changelog](#appendix-a--merge-changelog-what-was-fixed-or-removed)
-- [Appendix B — Open Items to Verify](#appendix-b--open-items-to-verify-against-code)
+9. [Onboarding & Calibration (`/api/onboarding`)](#9-onboarding--calibration-apionboarding)
+10. [Problems (`/api/problems`)](#10-problems-apiproblems)
+11. [Code Execution (`/api/execution`, `/api/execute`)](#11-code-execution-apiexecution-apiexecute)
+12. [Daily Problem (`/api/daily-problem`)](#12-daily-problem-apidaily-problem)
+13. [Coins (`/api/coins`)](#13-coins-apicoins)
+14. [Theme Store (`/api/themes`)](#14-theme-store-apithemes)
+15. [Rankings (`/api/rankings`)](#15-rankings-apirankings)
+16. [Study Material (`/api/study`)](#16-study-material-apistudy)
+17. [Social / GitHub OAuth (`/api/social`)](#17-social--github-oauth-apisocial)
+18. [Gamification: Points, Rating, Tiers, Streaks](#18-gamification-points-rating-tiers-streaks)
+19. [Rate Limits & Security](#19-rate-limits--security)
+20. [Database & Test Suite](#20-database--test-suite)
+21. [Known Issues Found in Review](#21-known-issues-found-in-review)
+22. [Endpoint Index](#22-endpoint-index)
+- [Appendix A — Changes from v2.1](#appendix-a--changes-from-v21)
 
 ---
 
-## 1. Architecture, Principles & Business Rules
+## 1. Architecture & Business Rules
 
-### 1.1 Architectural Pattern
-Router-Controller-Model:
-- **Routers** (`src/routers/*.router.js`): route matching, middleware (auth, rate limits, in-flight counters), delegation.
-- **Controllers** (`src/controllers/*.controller.js`): domain logic, validation, transactions, response shaping.
-- **Utilities & Services** (`src/utils/`, `src/services/`): code building, driver injection, output comparison, gamification, AST complexity parsing, coin and daily-problem services.
-- **Database layer** (`src/config/db.js`, `prisma/schema.prisma`): direct Prisma Client connection to PostgreSQL / Neon using `@prisma/adapter-neon` (for `neon.tech` URLs) or `@prisma/adapter-pg`. Requires `DATABASE_URL`; returns `503 DATABASE_UNAVAILABLE` when the database is unreachable.
+### 1.1 Pattern
+- **Routers** (`src/routers/*.router.js`): route matching, middleware (`protect`, `optionalAuth`, rate limiters, in-flight limiter).
+- **Controllers** (`src/controllers/*.controller.js`): validation, transactions, response shaping.
+- **Services / utils** (`src/services/`, `src/utils/`): coin ledger, daily problem, streaks, complexity analyzer, code builder, output comparison.
+- **Database**: Prisma → PostgreSQL / Neon (`src/config/db.js`). Requires `DATABASE_URL`; connection failures return `503 DATABASE_UNAVAILABLE`.
+- **Code runner**: external CodeBox service (`CODEBOX_URL` + `CODEBOX_TOKEN`, HTTPS unless `CODEBOX_ALLOW_INSECURE_HTTP=true`). Missing or unreachable → `503 EXECUTION_UNAVAILABLE`.
 
-### 1.2 Business Rules (authoritative)
-1. **Default account**: every new user starts with `100 coins`, `streak: 0`, `longestStreak: 0`, `rating: 800` (tier **Pulse II**).
-2. **IST day boundary**: daily login rewards, daily problem rotation, and streaks all use the `Asia/Kolkata` date string (`YYYY-MM-DD`); days start at `00:00:00 IST`. UTC or client-local dates are never used for day boundaries.
-3. **Never-block rule**: coin/reward computation never fails or crashes login, registration, or submissions. On storage errors, safe defaults (`granted: false`, `coins: 0`) are returned with HTTP 200.
-4. **Single authority for coins**: only `src/services/coinService.js` and `src/services/dailyProblemService.js` may modify `User.coins`. Every change writes an immutable `CoinTransaction` audit row with `balanceAfter`.
-5. **Anti-information leak**: hidden testcases (`isVisible: false`) never expose `input`, `expected`, or `actual`.
-6. **Function-only submissions**: submit a function/class solution only. Code defining `main()` is rejected with `400 FUNCTION_ONLY_REQUIRED`.
+### 1.2 Business rules (as implemented)
+1. **New account defaults**: `coins: 100`, `rating: 800`, `score: 0`, `streak: 0`, `longestStreak: 0`, `preferredLanguage: "cpp"`, `country: "India"`, `onboarded: false`. The stored `tier` column defaults to `"Prism I"`; the computed `stats.tier` for rating 800 is `"Pulse II"` (see §21-1). **Use `stats.tier` for display.**
+2. **Coins** only change through `coinService.js` / `dailyProblemService.js`; each change writes a `CoinTransaction` row with `balanceAfter`. Sources: `DAILY_LOGIN` (+1), `DAILY_PROBLEM` (+2), `THEME_PURCHASE` (−price). **Normal problem solves award 0 coins.**
+3. **Streak** advances **only** by solving the daily problem (not by logging in, not by solving other problems).
+4. **Never-block**: reward failures never fail login or submission; they are logged and safe defaults are returned (`rewardError: true`, `dailyProblemReward: { granted: false, coins: 0 }`).
+5. **Hidden testcases** never expose `input`, `expected`, `actual` or `errorText`.
+6. **Function-only code**: for function-model problems, code containing a `main()` entry point is rejected with `400 FUNCTION_ONLY_REQUIRED`.
 
-### 1.3 Response Shapes
-
-**Single entity / action**
-```json
-{ "success": true, "message": "Operation completed successfully.", "data": { } }
-```
-
-**Collections**
-```json
-{ "success": true, "count": 25, "data": [ ] }
-```
-(Some endpoints use a named key instead of `data`, e.g. `topics`, `languages`, `history`; see each endpoint.)
-
-**Asynchronous jobs** return `202 Accepted`:
-```json
-{
-  "success": true,
-  "submissionId": "sub_1740001234_abc89f",
-  "status": "QUEUED",
-  "pollUrl": "/api/execution/submissions/sub_1740001234_abc89f",
-  "message": "Submission received and queued for execution."
-}
-```
-
-### 1.4 Strict Anti-Information-Leak Policy
-1. `GET /api/problems/:slug` returns only testcases with `isVisible === true`.
-2. Submission results pass through `publicTestResults()`: hidden cases keep only `testIndex`, `isVisible: false`, `passed`, `status`, `time`, `memory`.
-3. If the first failure is a hidden case, `firstFailure` is obfuscated (e.g. `"Failed on hidden evaluation test case #4."`).
+### 1.3 Response shapes. These are *not* uniform, so check each endpoint.
+| Shape | Used by |
+|---|---|
+| `{ success: true, ...fields }` | most endpoints |
+| `{ success: true, count, data: [...] }` | `GET /api/problems`, `GET /api/rankings` |
+| `{ success: true, data: [...], message }` | `GET /api/users/all` |
+| **Bare JSON array** (no `success`) | `GET /api/topics/categories`, `GET /api/topics/dsa/categories`, `GET /api/study/subjects`, `GET /api/study/chapters/:chapterId/topics` |
+| **Bare JSON object** (no `success`) | `GET /api/topics/dsa/:slug/problems`, `GET /api/study/subjects/:subjectSlug`, `GET /api/study/topics/:topicSlug`, `GET /api/social/:provider/link-url` |
+| `302` redirect | `GET /api/social/:provider/callback` |
+| `text/plain` `pong` | `/ping`, `/api/ping` |
 
 ---
 
-## 2. Error Codes & HTTP Status Taxonomy
+## 2. Errors, Status Codes & Rate-Limit Headers
 
-Every 4xx/5xx response uses this schema:
+Every error goes through `src/middlewares/error.middleware.js`:
 ```json
-{
-  "success": false,
-  "code": "ERROR_CODE_STRING",
-  "message": "Human-friendly explanation of the error.",
-  "details": {}
-}
+{ "success": false, "code": "ERROR_CODE", "message": "Human readable message", "details": { } }
 ```
+`details` is present only when the error carries it (rate limits, theme purchase errors). 5xx messages are sanitized to `"Internal server error."` except for the explicit codes below.
 
-| HTTP | Code | Trigger | Client action |
-| :--- | :--- | :--- | :--- |
-| 400 | `VALIDATION_ERROR` | Missing required fields / invalid types | Fix payload per `message` |
-| 400 | `INVALID_EMAIL` | Email fails format check | Ask for a valid email |
-| 400 | `WEAK_PASSWORD` | Password < 8 characters | Require ≥ 8 characters |
-| 400 | `PASSWORD_TOO_LONG` | Password > 72 bytes (bcrypt limit) | Limit to ≤ 72 bytes |
-| 400 | `PASSWORD_EQUALS_EMAIL` | Password equals email | Require a different password |
-| 400 | `MISSING_CODE` | Code empty/whitespace | Block empty runs client-side |
-| 400 | `FUNCTION_ONLY_REQUIRED` | Code contains `main()`/entrypoint | Remove `main()`; submit function/class only |
-| 400 | `INSUFFICIENT_COINS` | Balance < theme price | Earn more coins |
-| 400 | `ALREADY_OWNED` | Theme already owned | Use `PUT /api/themes/apply` |
-| 400 | `NO_TESTCASES` | Problem has no sample testcases | Contact admin |
-| 401 | `UNAUTHORIZED` | Bearer token missing/invalid | Redirect to login |
-| 401 | `INVALID_CREDENTIALS` | Wrong email/password | Show error |
-| 401 | `TOKEN_REVOKED` | Token revoked via logout | Clear storage, re-login |
-| 401 | `TOKEN_EXPIRED` | JWT past `exp` | Refresh or re-login |
-| 401 | `INVALID_CURRENT_PASSWORD` | Wrong old password on change | Re-enter current password |
-| 403 | `FORBIDDEN` | Access denied (e.g. applying an unowned theme) | Purchase first |
-| 404 | `NOT_FOUND` | Problem/topic/chapter/subject/theme/user missing | Check slug/ID |
-| 404 | `SUBMISSION_NOT_FOUND` | Unknown ID or not owner | Verify ownership |
-| 409 | `EMAIL_ALREADY_EXISTS` | Email already registered | Suggest login |
-| 409 | `SOCIAL_ALREADY_LINKED` | Social account linked to another profile | Log in with that provider |
-| 413 | `CODE_TOO_LARGE` | Code > 64 KB | Reduce size |
-| 422 | `UNSUPPORTED_LANGUAGE` | Not in `[cpp, c, java, python, javascript]` | Pick a supported language |
-| 429 | `RATE_LIMITED` | Rate limit exceeded, or > 2 concurrent executions (see Appendix B-1) | Back off, show cooldown |
-| 503 | `EXECUTION_UNAVAILABLE` | CodeBox runner unconfigured/unreachable/timed out | Show outage banner |
-| 503 | `DATABASE_UNAVAILABLE` | DB connection lost, unrecoverable | Retry shortly |
-| 503 | `SUBMISSION_STORAGE_UNAVAILABLE` | Could not persist submission | Ask user to retry |
-| 500 | `INTERNAL_ERROR` | Unhandled exception (sanitized) | Retry / report |
+When a controller throws without a specific code, the code defaults by status: `400 BAD_REQUEST`, `401 UNAUTHORIZED`, `403 FORBIDDEN`, `404 NOT_FOUND`, `409 CONFLICT`, `413 CODE_TOO_LARGE`, `422 UNPROCESSABLE_ENTITY`, `429 RATE_LIMITED`, `503 JUDGE_UNAVAILABLE`, else `INTERNAL_ERROR`.
+
+| HTTP | Code | Raised by |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | register: missing `email`/`password`/`name` |
+| 400 | `MISSING_CREDENTIALS` | login: missing `email`/`password` |
+| 400 | `MISSING_FIELDS` | change-password: missing `oldPassword`/`newPassword` |
+| 400 | `INVALID_EMAIL` | register: email fails `^[^\s@]+@[^\s@]+\.[^\s@]+$` |
+| 400 | `WEAK_PASSWORD` | password < 8 chars (register, change-password) |
+| 400 | `PASSWORD_TOO_LONG` | password > 72 UTF-8 bytes |
+| 400 | `PASSWORD_EQUALS_EMAIL` | password equals email (case-insensitive) |
+| 400 | `INVALID_CURRENT_PASSWORD` | change-password: wrong `oldPassword` (**400, not 401**) |
+| 400 | `BAD_REQUEST` | generic validation (profile, language, onboarding, theme apply without `slug`) |
+| 400 | `INVALID_STATUS` | `GET /api/problems?status=` not `solved`/`todo` |
+| 400 | `MISSING_CODE` | run/submit/analyze with empty code |
+| 400 | `FUNCTION_ONLY_REQUIRED` | code defines `main()` on a function-model problem |
+| 400 | `NO_TESTCASES` | run: problem has testcases but none are visible |
+| 400 | `ALREADY_OWNED` | theme already owned. `details: { owned: true }` |
+| 400 | `INSUFFICIENT_COINS` | theme price > balance. `details: { required, have }` |
+| 401 | `UNAUTHORIZED` | no/malformed Bearer header, or account deleted |
+| 401 | `INVALID_TOKEN` | bad signature / malformed JWT |
+| 401 | `TOKEN_EXPIRED` | JWT past `exp` |
+| 401 | `TOKEN_REVOKED` | token was logged out / refreshed away |
+| 401 | `INVALID_CREDENTIALS` | login: unknown email or wrong password |
+| 403 | `FORBIDDEN` | apply a theme you don't own |
+| 404 | `NOT_FOUND` | problem, topic, subject, study topic, theme, user, template |
+| 404 | `SUBMISSION_NOT_FOUND` | unknown submission or not the owner |
+| 404 | `UNKNOWN_PROVIDER` | `link-url` with provider other than `github` |
+| 404 | `USER_NOT_FOUND` | theme purchase for a vanished user |
+| 404 | `DAILY_PROBLEM_NOT_FOUND` | daily problem could not be resolved |
+| 409 | `EMAIL_ALREADY_EXISTS` | register with an existing email |
+| 409 | `CONFLICT` | any other Prisma unique-constraint violation |
+| 413 | `CODE_TOO_LARGE` | run/submit code > 64 KB |
+| 422 | `UNSUPPORTED_LANGUAGE` | language not recognised (see §11.1 aliases) |
+| 422 | `NO_TESTCASES` | run/submit: problem has no testcases at all |
+| 429 | `AUTH_RATE_LIMITED` | register/login limiter. `details: { retryAfterSeconds }` |
+| 429 | `RATE_LIMITED` | run/submit/analyze limiter (`details: { retryAfterSeconds }`) or > 2 in-flight executions (no `details`) |
+| 500 | `EXECUTION_AUTH_FAILED` | CodeBox rejected `CODEBOX_TOKEN` |
+| 500 | `INTERNAL_ERROR` | unhandled exception |
+| 503 | `EXECUTION_UNAVAILABLE` | CodeBox unconfigured, unreachable, error status, or 15 s timeout |
+| 503 | `DATABASE_UNAVAILABLE` | Prisma init / connection errors (`P1000`–`P1003`) |
+| 503 | `SUBMISSION_STORAGE_UNAVAILABLE` | could not save an authenticated submission or its verdict |
+| 503 | `NO_ELIGIBLE_PROBLEMS` | daily problem requested but the problems table is empty |
+
+**Rate-limit headers** (on every request through a window limiter): `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` (seconds). On `429` also `Retry-After` (seconds).
 
 ---
 
 ## 3. TypeScript Type Definitions
 
-Put in `src/types/calibr8-api.ts`:
-
 ```typescript
-// ===== 1. Core User, Auth & Profile =====
+// ===== Core =====
 export type SupportedLanguage = "cpp" | "c" | "java" | "python" | "javascript";
+export type Difficulty = "Easy" | "Medium" | "Hard";
 export type UserDifficulty = "easy" | "medium" | "hard";
 
-export type UserTier =
-  | "Pulse I" | "Pulse II" | "Pulse III"
-  | "Prism I" | "Prism II" | "Prism III"
-  | "Aurora I" | "Aurora II" | "Aurora III"
-  | "Eclipse I" | "Eclipse II" | "Eclipse III"
-  | "Zenith I" | "Zenith II";
+/** Computed tier: `${TierName} ${Division}`; see §18.3 */
+export type TierName = "Pulse" | "Flux" | "Prism" | "Aurora" | "Eclipse" | "Zenith";
+export type UserTier = `${TierName} ${"I" | "II" | "III"}`;
 
 export interface UserHeaderStats {
   rating: number;
-  tier: UserTier;
-  score: number;
-  scoreUnits: number; // score * 10
+  tier: UserTier;       // computed from rating (authoritative for display)
+  score: number;        // floor(scoreUnits / 10) = total points
+  scoreUnits: number;   // raw User.score (points × 10)
   coins: number;
   streak: number;
   longestStreak: number;
 }
 
-export interface SocialAccount {
-  id: string;
-  provider: "github";
-  providerUserId: string;
-  username: string | null;
-  name: string | null;
-  avatarUrl: string | null;
-  profileUrl: string | null;
-  connectedAt: string;
-}
+export interface Topic { id: string; slug: string; name: string; category: string /* "DSA" | "CORE" */; }
 
 export interface UserTopicLevel {
   id: string;
   userId: string;
   topicId: string;
-  level: "easy" | "medium" | "hard";
-  topic?: Topic;
+  level: string;        // normally "easy" | "medium" | "hard" (see §21-12)
+  topic: Topic;
 }
 
-export interface User {
-  id: string;
-  email: string;
-  name: string;
+export interface SocialAccount {
+  id: string; userId: string; provider: "github"; providerUserId: string;
+  username: string | null; name: string | null; email: string | null;
+  avatarUrl: string | null; profileUrl: string | null; bio: string | null; headline: string | null;
+  stats: { publicRepos: number; followers: number; following: number } | null;
+  connectedAt: string;
+}
+
+/** Shape of `user` from GET /api/users/me, /me/overview, PATCH /api/users/me */
+export interface UserProfile {
+  id: string; email: string; name: string;
   difficulty: UserDifficulty | null;
   rating: number;
-  score: number;
+  score: number;        // raw score units
   streak: number;
-  longestStreak: number;
   strictPercent: number;
-  tier: UserTier;
-  college: string | null;
-  branch: string | null;
-  batch: string | null;
-  state: string | null;
-  country: string;
+  tier: string;         // stored column, may be stale (§21-1)
+  college: string | null; branch: string | null; batch: string | null;
+  state: string | null; country: string | null;
   coins: number;
   onboarded: boolean;
   preferredLanguage: SupportedLanguage;
-  activeThemeId?: string | null;
-  createdAt: string;
-  updatedAt: string;
-  socialAccounts?: SocialAccount[];
-  topics?: UserTopicLevel[];
+  createdAt: string; updatedAt: string;
+  socialAccounts: SocialAccount[];
+  topics: UserTopicLevel[];
+  // NOTE: longestStreak is NOT included here (§21-2); read it from stats or /api/coins/balance
 }
 
+// ===== Auth =====
 export interface LoginRewards {
   coinsEarnedToday: number;
-  loginCoins: number;
-  isNewDay: boolean; // first login of the IST day
+  loginCoins: number;   // 1 on first login of the IST day, else 0
+  streak: number;
+  longestStreak: number;
+  isNewDay: boolean;
 }
 
 export interface AuthResponse {
-  success: boolean;
-  message: string;
+  success: true;
   token: string;
-  isNewUser?: boolean;
-  user: User;
-  rewards?: LoginRewards; // login only
+  isNewUser: boolean;
+  user: Record<string, unknown>;  // full user row minus passwordHash (+ socialAccounts, topics)
+  stats: UserHeaderStats;
+  rewards?: LoginRewards;         // login only
 }
 
-export interface AuthSessionResponse {
-  success: boolean;
-  user: User;
+export interface SessionResponse {
+  success: true;
+  user: Record<string, unknown> & { todayISTDate: string; coinsEarnedToday: number };
   stats: UserHeaderStats;
 }
 
-export interface UserActivityMatrix {
-  [dateIso: string]: number; // "2026-10-29": 3
-}
-
-export interface UserActivityResponse {
-  success: boolean;
-  activity: UserActivityMatrix;
+export interface ActivitySummary {
+  activity: Record<string, number>; // "2026-11-08": 2 (UTC day)
   total: number;
   activeDays: number;
 }
 
-export interface UserOverviewResponse {
-  success: boolean;
-  user: User;
-  activity: UserActivityMatrix;
-  total: number;
-  activeDays: number;
-}
-
-// ===== 2. Topics =====
-export interface Topic {
-  id: string;
-  slug: string;
-  name: string;
-  category: "DSA" | "CORE";
-}
-
-export interface TopicsListResponse {
-  success: boolean;
-  count: number;
-  topics: Topic[];
-  dsaTopics: Topic[];
-  coreTopics: Topic[];
-}
-
-export interface DsaCategory {
-  id: string;
-  slug: string;
-  name: string;
-  order: number;
-  totalProblems: number;
-}
-
-// ===== 3. Problems =====
+// ===== Problems =====
 export interface ProblemCatalogueItem {
-  id: string;
-  problemNumber: number;
-  slug: string;
-  title: string;
-  difficulty: "Easy" | "Medium" | "Hard";
-  timeLimit: number;
-  memoryLimit: number;
-  solvedCount: number;
+  id: string; problemNumber: number; slug: string; title: string;
+  difficulty: Difficulty;
   tags: string[];
-  isSolved?: boolean;
-  _count?: { testcases: number; templates: number };
+  solvedCount: number;
+  createdAt: string;
+  dsaTopic: { name: string; slug: string } | null;
+  timeLimit: number; memoryLimit: number;
+  _count: { examples: number; testcases: number; templates: number };
+  topic: string;            // resolved topic name, "Other" if unknown
+  topicSlug: string;
+  acceptanceRate: number | null; // % accepted submissions, 1 decimal
+  points: 10 | 25 | 50;
+  isSolved: boolean;
 }
 
-export interface ProblemsListResponse {
-  success: boolean;
-  count: number;
-  total: number;
-  page: number;
-  pageSize: number;
-  data: ProblemCatalogueItem[];
-}
-
-export interface TestCase {
-  testIndex: number;
-  isVisible: boolean;
-  input: string;
-  output: string;
-  stdinSmall?: string;
-  expectedSmall?: string;
-}
-
-export interface ProblemExample {
-  id: string;
-  order: number;
-  input: string;
-  output: string;
-  explanation: string | null;
-}
+export interface ProblemExample { id: string; order: number; input: string; output: string; explanation: string | null; }
+export interface VisibleTestcase { testIndex: number; isVisible: true; input: string; output: string; stdinSmall: string; expectedSmall: string; }
 
 export interface ProblemDetail {
-  id: string;
-  problemNumber: number;
-  slug: string;
-  title: string;
-  description: string;
-  difficulty: "Easy" | "Medium" | "Hard";
-  timeLimit: number;
-  memoryLimit: number;
-  solvedCount: number;
-  tags: string[];
+  id: string; problemNumber: number; slug: string; title: string; description: string;
+  difficulty: Difficulty; timeLimit: number; memoryLimit: number; solvedCount: number; tags: string[];
   examples: ProblemExample[];
-  testcases: TestCase[]; // visible sample cases only
-  templates: Record<SupportedLanguage, string>;
-  userTemplates?: Record<SupportedLanguage, string>;
-  templatesArray?: Array<{ id: string; problemId: string; language: string; code: string }>;
+  testcases: VisibleTestcase[];                       // visible only
+  templates: Partial<Record<SupportedLanguage, string>>;
+  userTemplates: Partial<Record<SupportedLanguage, string>>; // same as templates
+  templatesArray: Array<Record<string, unknown>>;     // raw template rows (§21-14)
 }
 
-// ===== 4. Execution & Submissions =====
-export type ExecutionCaseStatus =
-  | "Accepted" | "Wrong Answer" | "Runtime Error"
-  | "Time Limit Exceeded" | "Compilation Error";
-
+// ===== Execution =====
 export interface ExecutionLanguage {
-  key: SupportedLanguage;
-  label: string;
-  version: string;
-  judge0Id: number;
-  starterAvailable: boolean;
-  monacoLanguage: string;
+  key: SupportedLanguage; label: string; version: string;
+  judge0Id: number; starterAvailable: boolean; monacoLanguage: string;
 }
 
-// Run (sample-case) result item. Time/memory field naming differs between
-// source docs — see Appendix B-2. Treat both variants as optional.
+/** Per-case status strings: "Accepted" | "Wrong Answer" | "Time Limit Exceeded" | "Runtime Error" | "Compilation Error" | other runner status */
+export type CaseStatus = string;
+
 export interface RunCaseResult {
-  index?: number;
-  testIndex: number;
-  isVisible: boolean;
-  input: string;
-  expected: string;
-  actual: string;
-  studentStdout?: string;
-  status: ExecutionCaseStatus;
-  passed: boolean;
-  time?: number;     // ms
-  memory?: number;   // KB
-  timeMs?: number;
-  memoryKb?: number;
-  cpuTimeMs?: number;
-  wallTimeMs?: number;
-  inputBytes?: number;
-  errorText?: string | null;
+  index: number; testIndex: number; isVisible: true;
+  input: string; expected: string; actual: string; studentStdout?: string;
+  status: CaseStatus; passed: boolean;
+  timeMs: number; cpuTimeMs: number; wallTimeMs: number; memoryKb: number;
+  inputBytes: number; errorText?: string | null;
+}
+
+export interface CompactComplexity {
+  time: { bestEstimate: string; confidence: string } | null;
+  space: { bestEstimate: string; confidence: string } | null;
+  summary: string | null;
 }
 
 export interface RunResponse {
-  success: boolean;
-  verdict: ExecutionCaseStatus;
-  status: ExecutionCaseStatus;
-  passedCount: number;
-  totalCount: number;
+  success: true;
+  verdict: CaseStatus; status: CaseStatus;   // first failing case's status, else "Accepted"
+  passedCount: number; totalCount: number;
   results: RunCaseResult[];
-  complexity?: ComplexityAnalysisResult | null;
+  complexity: CompactComplexity | null;
 }
 
-export interface SubmissionQueuedResponse {
-  success: boolean;
-  submissionId: string;
-  verdict?: "QUEUED";
-  status: "QUEUED";
-  pollUrl: string;
-  message: string;
-  problem: { slug: string; title: string };
+export type SubmissionStatus =
+  | "PROCESSING" | "ACCEPTED" | "WRONG_ANSWER" | "TIME_LIMIT_EXCEEDED"
+  | "RUNTIME_ERROR" | "COMPILATION_ERROR" | "ERROR";
+
+export type TierReached = "Tier 0 (Failed)" | "Tier 1 (Brute Force)" | "Tier 2 (Better)" | "Tier 3 (Optimal)";
+
+export interface VisibleSubmissionCase {
+  testIndex: number; isVisible: true; passed: boolean; status: CaseStatus;
+  input: string; expected: string; actual: string;
+  time: number; timeMs: number; cpuTimeMs: number; wallTimeMs: number;
+  memory: number; memoryKb: number; inputBytes: number; errorText?: string | null;
+}
+export interface HiddenSubmissionCase {
+  testIndex: number; isVisible: false; passed: boolean; status: CaseStatus; time: number; memory: number;
+}
+
+export interface FirstFailure {
+  testIndex: number; status: CaseStatus; message: string;
+  errorText: string | null;                    // null for hidden cases
+  input?: string; expected?: string; actual?: string; // visible cases only
 }
 
 export interface SubmissionReward {
-  awarded: boolean;
-  points: number;
-  scoreDelta: number;
-  coinsEarned: number;
+  awarded: boolean;      // false if this problem was already solved before
+  points: number; scoreDelta: number;
+  coinsEarned: number;   // 0, or 2 when it was today's daily problem
   stats: UserHeaderStats;
 }
 
-export interface SubmissionFirstFailure {
-  testIndex: number;
-  status: string;
-  errorText?: string | null;
-  input?: string;
-  expected?: string;
-  actual?: string;
-  message: string;
-}
-
-export interface PublicSubmissionCase {
-  testIndex: number;
-  isVisible: boolean;
-  passed: boolean;
-  status: string;
-  time?: number;
-  memory?: number;
-  input?: string;    // only if isVisible
-  expected?: string; // only if isVisible
-  actual?: string;   // only if isVisible
-}
-
-export interface ComplexityEstimate {
-  bestEstimate: string; // "O(n)", "O(n log n)", "O(n^2)"
-  confidence: "low" | "medium" | "high";
-  explanation?: string;
-}
-
-export interface ComplexityAnalysisResult {
-  time: ComplexityEstimate;
-  space: ComplexityEstimate;
-  summary?: string;
-  details?: {
-    nestedLoops: number;
-    recursionDetected: boolean;
-    dataStructuresAllocated: string[];
-    empiricalPoints?: Array<{ n: number; timeMs: number }>;
-  };
-}
-
-export interface SubmissionDetail {
-  id: string;
-  problemId: string;
-  language: SupportedLanguage;
-  status:
-    | "QUEUED" | "PROCESSING" | "ACCEPTED" | "WRONG_ANSWER"
-    | "RUNTIME_ERROR" | "TIME_LIMIT_EXCEEDED" | "COMPILATION_ERROR" | "ERROR";
-  verdict: string;
-  tierReached:
-    | "Tier 0 (Failed)" | "Tier 1 (Brute Force)"
-    | "Tier 2 (Better)" | "Tier 3 (Optimal)";
-  passedCount: number;
-  totalCount: number;
-  time: string | null;
-  memory: number | null;
-  createdAt: string;
-  reward?: SubmissionReward | null;
-  rewardError?: boolean;
-  firstFailure?: SubmissionFirstFailure | null;
-  results: PublicSubmissionCase[];
-  complexity?: ComplexityAnalysisResult | null;
+export interface SubmissionQueued {
+  success: true; submissionId: string;
+  verdict: "QUEUED"; status: "QUEUED";
+  pollUrl: string; message: string;
   problem: { slug: string; title: string };
 }
 
-// ===== 5. Daily Problem =====
+export interface SubmissionResult {
+  success: true; submissionId: string;
+  verdict: SubmissionStatus; status: SubmissionStatus;
+  tierReached: TierReached;
+  passedCount: number; totalCount: number;
+  time: string;          // e.g. "52ms" (max across cases)
+  memory: number;        // KB (max across cases)
+  results: Array<VisibleSubmissionCase | HiddenSubmissionCase>;
+  firstFailure: FirstFailure | null;
+  complexity: CompactComplexity | null;
+  reward: SubmissionReward | null;   // null when anonymous or not accepted
+  rewardError: boolean;
+  dailyProblemReward: { granted: boolean; coins: number };
+  problem: { slug: string; title: string };
+}
+
+export interface SubmissionPoll {
+  success: true;
+  submission: Omit<SubmissionResult, "success" | "submissionId"> & {
+    id: string; problemId: string; language: SupportedLanguage; createdAt: string;
+  };
+}
+
+// ===== Daily problem / coins =====
 export interface DailyProblemResponse {
-  success: boolean;
-  istDate: string;
-  problem: {
-    id: string; slug: string; title: string;
-    difficulty: "Easy" | "Medium" | "Hard";
-    description?: string; tags?: string[]; solvedCount?: number;
-  };
-  reward: { coins: number; streak: number; description?: string };
-  completed: boolean;
-  solvedToday?: boolean;
-  rewardClaimed?: boolean;
-  completedAt?: string | null;
-  streak?: number;
-  longestStreak?: number;
-  nextRefreshMs?: number;
-  nextRefreshTime: string; // "12:00 AM IST"
+  success: true; istDate: string;
+  problem: { id: string; slug: string; title: string; difficulty: Difficulty; description: string; tags: string[]; solvedCount: number };
+  reward: { coins: 2; description: string };
+  completed: boolean; solvedToday: boolean; rewardClaimed: boolean; completedAt: string | null;
+  streak: number; longestStreak: number;
+  nextRefreshMs: number; nextRefreshTime: "12:00 AM IST";
 }
 
-// ===== 6. Study =====
-export interface StudySubject {
-  id: string;
-  slug: "cn" | "dbms" | "oops" | "os" | "system-design";
-  name: string;
-  description: string | null;
-  icon: string | null;
-  order: number;
-  _count: { chapters: number };
+export interface CoinTransaction {
+  id: string; amount: number; type: "DAILY_LOGIN" | "DAILY_PROBLEM" | "THEME_PURCHASE";
+  referenceId: string | null; istDate: string; balanceAfter: number; createdAt: string;
 }
 
-export interface StudyChapter {
-  id: string;
-  slug: string;
-  name: string;
-  subjectId: string;
-  order: number;
-  _count?: { topics: number };
+// ===== Themes =====
+export interface StoreTheme {
+  id: string; slug: string; name: string; price: number; previewColor: string | null;
+  isDefault: boolean; owned: boolean; applied: boolean; canAfford: boolean;
 }
 
-export interface StudyMCQ {
-  id: string;
-  question: string;
-  options: string[];
-  difficulty: "Easy" | "Medium" | "Hard";
-  order: number;
-  // correctIndex & explanation are stripped until submission
-}
-
-export interface StudyTopicDetail {
-  id: string;
-  slug: string;
-  name: string;
-  order: number;
-  content: string; // Markdown article
-  isPublished: boolean;
-  chapter: {
-    id: string; slug: string; name: string;
-    subject: { slug: string; name: string };
-  };
-  mcqs: StudyMCQ[];
-}
-
-export interface MCQEvaluationResult {
-  mcqId: string;
-  correct: boolean;
-  userAnswer: number;
-  correctIndex: number;
-  explanation: string;
-}
-
-export interface StudyQuizSubmitResponse {
-  success: boolean;
-  totalQuestions: number;
-  score: number;
-  percentage: number;
-  results: MCQEvaluationResult[];
-}
-
-// ===== 7. Themes =====
-export interface Theme {
-  id: string;
-  slug: string;
-  name: string;
-  price: number;
-  previewColor: string | null;
-  cssVars?: Record<string, string>;
-  isDefault: boolean;
-  owned: boolean;
-  applied: boolean;
-  canAfford: boolean;
-}
-
-export interface UserThemesStatusResponse {
-  success: boolean;
-  coins: number;
-  activeTheme: string;
-  ownedThemes: string[];
-  stats?: UserHeaderStats;
-}
-
-// ===== 8. Rankings =====
+// ===== Rankings =====
 export interface RankedUser {
-  rank?: number;
-  id: string;
-  name: string;
-  score: number;
-  rating: number;
-  streak: number;
-  strictPercent: number;
-  tier: UserTier;
-  college: string | null;
-  branch: string | null;
-  batch: string | null;
-  state: string | null;
-  country: string;
-  createdAt: string;
+  id: string; name: string; score: number; rating: number; streak: number; strictPercent: number;
+  tier: string; college: string | null; branch: string | null; batch: string | null;
+  state: string | null; country: string | null; createdAt: string;
 }
 
-export interface RankingsResponse {
-  success: boolean;
-  count: number;
-  total?: number;
-  data: RankedUser[]; // see Appendix B-3 (alt. key: "rankings")
+// ===== Study (bare responses, no `success`) =====
+export interface StudySubject { id: string; slug: string; name: string; description: string | null; icon: string | null; order: number; createdAt: string; _count: { chapters: number }; }
+export interface StudyChapter { id: string; slug: string; name: string; subjectId: string; order: number; _count?: { topics: number }; }
+export interface StudyTopicSummary { id: string; slug: string; name: string; order: number; }
+export interface StudyMCQ { id: string; question: string; options: string[]; difficulty: string; order: number; explanation: string | null; }
+export interface StudyTopicDetail {
+  id: string; slug: string; name: string; chapterId: string; order: number;
+  content: string; isPublished: boolean; createdAt: string;
+  mcqs: StudyMCQ[];                                   // correctIndex withheld
+  chapter: StudyChapter & { subject: Omit<StudySubject, "_count"> };
+}
+export interface StudyQuizSubmitResponse {
+  success: true; userId: string; topicSlug: string; score: number; total: number;
+  result: Array<{ mcqId: string; isCorrect: boolean; correctIndex: number; explanation: string | null }>;
 }
 ```
 
 ---
 
-## 4. Frontend Client Implementation Guide
+## 4. Frontend Client Guide
 
-### 4.1 Fetch Interceptor with Token Management
-
+### 4.1 Fetch wrapper
 ```typescript
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
-interface RequestOptions extends RequestInit {
-  requiresAuth?: boolean;
-}
-
-export async function apiRequest<T>(
-  endpoint: string,
-  options: RequestOptions = {}
-): Promise<T> {
-  const { requiresAuth = true, headers: customHeaders, ...restOptions } = options;
-
-  const headers = new Headers(customHeaders || {});
-  if (!headers.has("Content-Type") && !(restOptions.body instanceof FormData)) {
-    headers.set("Content-Type", "application/json");
-  }
-
-  if (requiresAuth && typeof window !== "undefined") {
+export async function apiRequest<T>(endpoint: string, options: RequestInit & { requiresAuth?: boolean } = {}): Promise<T> {
+  const { requiresAuth = true, headers: custom, ...rest } = options;
+  const headers = new Headers(custom || {});
+  if (!headers.has("Content-Type") && rest.body) headers.set("Content-Type", "application/json");
+  if (requiresAuth) {
     const token = localStorage.getItem("calibr8_token");
     if (token) headers.set("Authorization", `Bearer ${token}`);
   }
-
-  const url = `${API_BASE_URL}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
-  const response = await fetch(url, { ...restOptions, headers });
-
-  const isJson = (response.headers.get("content-type") || "").includes("application/json");
-  const payload = isJson ? await response.json() : await response.text();
-
-  if (!response.ok) {
-    if (response.status === 401 && typeof window !== "undefined") {
+  const res = await fetch(`${API_BASE_URL}${endpoint}`, { ...rest, headers });
+  const isJson = (res.headers.get("content-type") || "").includes("application/json");
+  const payload = isJson ? await res.json() : await res.text();
+  if (!res.ok) {
+    if (res.status === 401) {
       localStorage.removeItem("calibr8_token");
-      localStorage.removeItem("calibr8_user");
       window.dispatchEvent(new Event("calibr8_session_expired"));
     }
-    throw payload; // { success: false, code, message, details }
+    throw payload; // { success: false, code, message, details? }
   }
   return payload as T;
 }
 ```
+After `POST /api/auth/refresh`, **replace the stored token immediately**. The old token is revoked.
 
-### 4.2 React Hook: Polling Async Submissions
-
+### 4.2 Polling an async submission
+`POST /api/execution/submissions` returns `202` with `status: "QUEUED"`, but polling returns `"PROCESSING"` until a verdict is stored. Treat both as pending.
 ```typescript
-import { useState, useEffect, useRef } from "react";
-import { apiRequest } from "./apiClient";
-import type { SubmissionDetail } from "./types";
+const PENDING = ["QUEUED", "PROCESSING"];
 
-const TERMINAL = ["ACCEPTED", "WRONG_ANSWER", "RUNTIME_ERROR",
-                  "TIME_LIMIT_EXCEEDED", "COMPILATION_ERROR", "ERROR"];
-
-export function useSubmissionPoller(submissionId: string | null, pollIntervalMs = 1000) {
-  const [submission, setSubmission] = useState<SubmissionDetail | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<any>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (!submissionId) return;
-    let active = true;
-    setLoading(true);
-
-    const poll = async () => {
-      try {
-        const res = await apiRequest<{ success: boolean; submission: SubmissionDetail }>(
-          `/api/execution/submissions/${submissionId}`
-        );
-        if (!active) return;
-        setSubmission(res.submission);
-        if (!TERMINAL.includes(res.submission.status)) {
-          timerRef.current = setTimeout(poll, pollIntervalMs);
-        } else {
-          setLoading(false);
-        }
-      } catch (err) {
-        if (!active) return;
-        setError(err);
-        setLoading(false);
-      }
-    };
-    poll();
-
-    return () => {
-      active = false;
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, [submissionId, pollIntervalMs]);
-
-  return { submission, loading, error };
+export async function waitForVerdict(submissionId: string, intervalMs = 1000) {
+  for (;;) {
+    const { submission } = await apiRequest<SubmissionPoll>(`/api/execution/submissions/${submissionId}`);
+    if (!PENDING.includes(submission.status)) return submission;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
 }
 ```
+Poll soon after submitting: per-case `results`, `firstFailure`, `reward` and `complexity` are held in server memory for **30 minutes** only (§11.6). If you don't need async, send `wait: true` and get the verdict in one response.
 
 ---
 
-## 5. System & Health APIs
+## 5. System & Health
 
-### 5.1 `GET /` — Root Manifest & Developer Console (content-negotiated)
-- **Protected**: No
-- `Accept: text/html` → interactive developer dashboard (`public/index.html`) with embedded tests and 1-click demo login.
-- `Accept: application/json` → service manifest:
-```json
-{
-  "service": "Calibr8 Backend API",
-  "status": "online",
-  "version": "1.2.0",
-  "architecture": { "pattern": "Router-Controller-Model", "namingConvention": "*.router.js, *.controller.js" },
-  "features": [
-    "User Registration, Login, Logout & Token Revocation",
-    "DSA Topic Level Calibration (Easy, Mid, Hard)",
-    "Beginner 1-Click Preset (Auto-sets all DSA topics to Easy, rating 800)",
-    "Composite Rating Calculation & Difficulty Mapping",
-    "Profile Management & Language Preferences",
-    "Problem Catalogue (161 coding problems with testcases & multi-language starter templates)",
-    "Code Execution Sandbox Runner & Submissions with Tier Evaluation",
-    "GitHub OAuth Account Linking"
-  ],
-  "apiGroups": {
-    "auth": "/api/auth", "users": "/api/users", "topics": "/api/topics",
-    "onboarding": "/api/onboarding", "problems": "/api/problems",
-    "execution": "/api/execution", "social": "/api/social", "study": "/api/study",
-    "themes": "/api/themes", "rankings": "/api/rankings",
-    "dailyProblem": "/api/daily-problem", "coins": "/api/coins"
-  }
-}
-```
-> The `version: "1.2.0"` is the manifest's own service version, separate from this document's version. The feature list and `apiGroups` shown are the original ones plus `dailyProblem`/`coins`, which exist per the other sections (see Appendix B-8).
+### 5.1 `GET /` (Public, content-negotiated)
+- `Accept: text/html` → developer console (`public/index.html`).
+- `Accept: application/json` → manifest: `{ service, status: "online", version: "1.2.0", architecture, features[], apiGroups{}, endpoints[] }`. The embedded `endpoints` list is hand-maintained and **out of date** (§21-10). Use §22 of this document instead.
 
-### 5.2 `GET /health` · `GET /api/health`
-- **Protected**: No
+### 5.2 `GET /health` · `GET /api/health` (Public)
 ```json
-{ "status": "ok", "service": "Calibr8 Backend", "timestamp": "2026-11-09T08:50:00.000Z" }
+{ "status": "ok", "service": "Calibr8 Backend", "timestamp": "2026-11-18T08:50:00.000Z" }
 ```
 
-### 5.3 `GET /ping` · `GET /api/ping`
-- **Protected**: No — returns plain text `pong`.
+### 5.3 `GET /ping` · `GET /api/ping` (Public)
+Plain text `pong`.
 
 ---
 
-## 6. Authentication & Session Lifecycle (`/api/auth`)
+## 6. Authentication (`/api/auth`)
 
-### 6.1 `POST /api/auth/register`
-Creates an account; bcrypt hash (salt rounds 10); defaults: 100 coins, rating 800, tier **Pulse II**; returns a signed JWT.
-- **Protected**: No · **Rate limit**: 30 req / 15 min / IP
-- **Body**:
-```json
-{ "email": "student@example.com", "password": "StrongPassword123", "name": "Alex Mercer" }
-```
-- **Validation**: `email` required, valid, lowercased; `password` required, 8–72 bytes, must not equal email (case-insensitive); `name` required, non-empty after trim.
-- **`201 Created`**:
-```json
-{
-  "success": true,
-  "message": "User registered successfully.",
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "isNewUser": true,
-  "user": {
-    "id": "u-45a8-bc91-2309",
-    "email": "student@example.com",
-    "name": "Alex Mercer",
-    "difficulty": null,
-    "rating": 800,
-    "tier": "Pulse II",
-    "score": 0,
-    "coins": 100,
-    "streak": 0,
-    "longestStreak": 0,
-    "onboarded": false,
-    "preferredLanguage": "cpp"
-  }
-}
-```
+### 6.1 `POST /api/auth/register` (Public · 30 req / 15 min / IP)
+Body: `{ "email": "student@example.com", "password": "StrongPassword123", "name": "Alex Mercer" }`
+- `email` trimmed and lowercased; `name` trimmed. Password rules: ≥ 8 chars, ≤ 72 bytes, ≠ email. bcrypt (10 rounds).
 
-### 6.2 `POST /api/auth/login`
-Verifies credentials, issues a JWT (1-day expiry), and awards **+1 daily login coin** on the first login of each IST day.
-- **Protected**: No · **Rate limit**: 30 req / 15 min / IP
-- **Body**: `{ "email": "student@example.com", "password": "StrongPassword123" }`
-- **`200 OK`**:
-```json
-{
-  "success": true,
-  "message": "Login successful.",
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "isNewUser": false,
-  "user": {
-    "id": "u-45a8-bc91-2309",
-    "email": "student@example.com",
-    "name": "Alex Mercer",
-    "difficulty": "medium",
-    "rating": 1200,
-    "tier": "Aurora II",
-    "score": 450,
-    "coins": 101,
-    "onboarded": true,
-    "preferredLanguage": "python"
-  },
-  "rewards": { "coinsEarnedToday": 1, "loginCoins": 1, "isNewDay": true }
-}
-```
-On later logins the same day, `loginCoins` is `0` and `isNewDay` is `false`.
-
-### 6.3 `GET /api/auth/me` · alias `GET /api/auth/verify`
-Validates the token, restores the session (DB or auto-heal), returns the user and compact header stats.
-- **Protected**: Yes
+**`201 Created`**
 ```json
 {
   "success": true,
   "user": {
-    "id": "u-45a8-bc91-2309",
-    "email": "student@example.com",
-    "name": "Alex Mercer",
-    "difficulty": "medium",
-    "rating": 1200,
-    "coins": 101,
-    "onboarded": true,
-    "preferredLanguage": "python",
-    "socialAccounts": [],
-    "topics": []
-  },
-  "stats": {
-    "rating": 1200, "tier": "Aurora II", "score": 450, "scoreUnits": 4500,
-    "coins": 101, "streak": 3, "longestStreak": 7
-  }
-}
-```
-
-### 6.4 `POST /api/auth/refresh`
-Issues a fresh JWT for an authenticated user.
-- **Protected**: Yes
-```json
-{ "success": true, "message": "Token refreshed successfully.", "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." }
-```
-
-### 6.5 `POST /api/auth/change-password`
-- **Protected**: Yes
-- **Body**: `{ "currentPassword": "OldPassword123", "newPassword": "NewStrongPassword456" }`
-- **Validation**: `newPassword` ≥ 8 chars, ≤ 72 bytes, ≠ email. Wrong current password → `401 INVALID_CURRENT_PASSWORD`.
-- **`200 OK`**: `{ "success": true, "message": "Password changed successfully." }`
-
-### 6.6 `POST /api/auth/logout`
-Revokes the presenting JWT by storing its `jti` in a blacklist until expiry.
-- **Protected**: Yes
-- **`200 OK`**: `{ "success": true, "message": "Logged out successfully. Token has been revoked." }`
-
----
-
-## 7. User Profile & Academic APIs (`/api/users`)
-
-All endpoints below are **Protected**.
-
-### 7.1 `GET /api/users/me` · alias `GET /api/users/`
-Full profile including calibrated topics and preferred language.
-```json
-{
-  "success": true,
-  "user": {
-    "id": "u-45a8-bc91-2309",
-    "email": "student@example.com",
-    "name": "Alex Mercer",
-    "difficulty": "medium",
-    "rating": 1200,
-    "score": 3400,
-    "streak": 14,
-    "longestStreak": 14,
-    "strictPercent": 92,
-    "tier": "Aurora II",
-    "college": "AKGEC",
-    "branch": "CSE",
-    "batch": "2026",
-    "state": "UP",
-    "country": "India",
-    "coins": 120,
-    "onboarded": true,
-    "preferredLanguage": "cpp",
-    "createdAt": "2026-09-10T08:00:00.000Z",
-    "updatedAt": "2026-10-24T06:00:00.000Z",
-    "socialAccounts": [],
-    "topics": [
-      {
-        "id": "ut-1", "topicId": "t-1", "level": "medium",
-        "topic": { "id": "t-1", "slug": "dsa-arrays", "name": "DSA - Arrays", "category": "DSA" }
-      }
-    ]
-  }
-}
-```
-
-### 7.2 `GET /api/users/me/overview`
-Profile + 371-day activity heatmap in one round-trip (for the profile screen).
-```json
-{
-  "success": true,
-  "user": {
-    "id": "u-45a8-bc91-2309", "email": "student@example.com", "name": "Alex Mercer",
-    "college": "AKGEC", "branch": "CSE", "batch": "2026", "state": "UP", "country": "India",
-    "coins": 101, "streak": 3, "longestStreak": 5, "rating": 850, "tier": "Pulse III",
+    "id": "0b6c…", "email": "student@example.com", "phone": null, "name": "Alex Mercer",
+    "difficulty": null, "rating": 800, "score": 0, "streak": 0, "strictPercent": 0,
+    "tier": "Prism I", "college": null, "branch": null, "batch": null, "state": null, "country": "India",
+    "onboarded": false, "createdAt": "…", "updatedAt": "…", "preferredLanguage": "cpp",
+    "coins": 100, "activeThemeId": null, "lastStreakDate": null, "longestStreak": 0, "lastLoginISTDate": null,
     "socialAccounts": [], "topics": []
   },
-  "activity": { "2026-11-08": 2, "2026-11-09": 1 },
-  "total": 3,
-  "activeDays": 2
+  "stats": { "rating": 800, "tier": "Pulse II", "score": 0, "scoreUnits": 0, "coins": 100, "streak": 0, "longestStreak": 0 },
+  "token": "eyJhbGciOi…",
+  "isNewUser": true
 }
 ```
+Registration does **not** grant the daily login coin. That happens on the first `login`.
 
-### 7.3 `GET /api/users/me/activity`
-Daily counts of fully accepted (100% testcases) submissions over the trailing 371 days, keyed by `YYYY-MM-DD`.
+### 6.2 `POST /api/auth/login` (Public · 30 req / 15 min / IP)
+Body: `{ "email": "student@example.com", "password": "StrongPassword123" }`
+
+**`200 OK`**: `{ success, user, stats, token, isNewUser: false, rewards }`, where `user` has the same shape as register and
 ```json
-{ "success": true, "activity": { "2026-11-08": 2, "2026-11-09": 1 }, "total": 3, "activeDays": 2 }
+"rewards": { "coinsEarnedToday": 1, "loginCoins": 1, "streak": 3, "longestStreak": 7, "isNewDay": true }
 ```
+On later logins the same IST day, `loginCoins: 0`, `isNewDay: false`. If the reward step fails, login still succeeds with zeroed `rewards`.
 
-### 7.4 `PATCH /api/users/me` · `PUT /api/users/me`
-Updates name and academic info. At least one field required.
-```json
-{ "name": "Alexander Mercer", "college": "AKGEC", "branch": "Computer Science", "batch": "2026", "state": "UP", "country": "India" }
-```
-**`200 OK`**: `{ "success": true, "user": { "id": "...", "name": "...", "email": "...", "college": "...", "branch": "...", "batch": "...", "state": "...", "country": "..." } }`
-
-### 7.5 `PATCH /api/users/me/language` · alias `PATCH /api/users/language`
-Sets the default language for editor templates and executions. Allowed: `cpp`, `c`, `java`, `python`, `javascript`.
-- **Body**: `{ "language": "python" }` → **`200 OK`**: `{ "success": true, "language": "python" }`
-
-### 7.6 `GET /api/users/all`
-All problems annotated with the user's solve status, shaped for track views.
+### 6.3 `GET /api/auth/me` · `GET /api/auth/verify` (Protected)
 ```json
 {
   "success": true,
-  "message": "Problems fetched successfully",
-  "data": [
-    {
-      "name": "Two Sum", "slug": "two-sum-001", "number": 1,
-      "topic": "Arrays & Hashing", "topicSlug": "arrays-and-hashing",
-      "level": "easy", "levelDisplay": "easy",
-      "solvedPercentage": 74, "isSolved": true
-    }
-  ]
+  "user": {
+    "id": "…", "email": "…", "name": "…", "difficulty": "medium", "rating": 1200, "score": 4500,
+    "streak": 3, "longestStreak": 7, "coins": 101, "lastStreakDate": "…", "lastLoginISTDate": "2026-11-18",
+    "tier": "Prism II", "onboarded": true, "preferredLanguage": "python", "createdAt": "…", "updatedAt": "…",
+    "socialAccounts": [], "topics": [],
+    "todayISTDate": "2026-11-18", "coinsEarnedToday": 1
+  },
+  "stats": { "rating": 1200, "tier": "Prism II", "score": 450, "scoreUnits": 4500, "coins": 101, "streak": 3, "longestStreak": 7 }
 }
 ```
+
+### 6.4 `POST /api/auth/refresh` (Protected)
+Issues a new token **and revokes the presented one**.
+```json
+{ "success": true, "token": "eyJ…", "user": { "id": "…", "email": "…", "…": "…", "socialAccounts": [], "topics": [] }, "stats": { } }
+```
+
+### 6.5 `POST /api/auth/change-password` (Protected)
+Body: **`{ "oldPassword": "OldPassword123", "newPassword": "NewStrongPassword456" }`** (field is `oldPassword`, not `currentPassword`).
+- New password is validated first (`WEAK_PASSWORD`, `PASSWORD_TOO_LONG`, `PASSWORD_EQUALS_EMAIL`), then the old one (`400 INVALID_CURRENT_PASSWORD`).
+- **`200`**: `{ "success": true, "message": "Password updated successfully." }`
+- Existing tokens stay valid (§21-11).
+
+### 6.6 `POST /api/auth/logout` (Protected)
+Revokes the presented token (stored until its expiry). **`200`**: `{ "success": true, "message": "Logged out successfully." }`
+
+---
+
+## 7. Users & Profile (`/api/users`)
+
+All Protected. Validation errors use the generic `400 BAD_REQUEST`.
+
+### 7.1 `GET /api/users/me` · alias `GET /api/users`
+`{ "success": true, "user": UserProfile }`. Fields: `id, email, name, difficulty, rating, score, streak, strictPercent, tier, college, branch, batch, state, country, coins, onboarded, preferredLanguage, createdAt, updatedAt, socialAccounts, topics[{…, topic}]`. **No `longestStreak`** (§21-2).
+
+### 7.2 `GET /api/users/me/overview`
+Profile plus activity in one call: `{ success, user: UserProfile, activity, total, activeDays }`.
+
+### 7.3 `GET /api/users/me/activity`
+`{ "success": true, "activity": { "2026-11-08": 2, "2026-11-09": 1 }, "total": 3, "activeDays": 2 }`
+Counts submissions with `status = ACCEPTED` and `passedCount = totalCount > 0` over the last **371 days**, grouped by **UTC** calendar day.
+
+### 7.4 `PUT /api/users/me` · alias `PUT /api/users`
+Name only. Body `{ "name": "Jane Developer" }` → `{ success, user }` (profile fields + topics, without `socialAccounts`). Empty name → `400 "Name cannot be empty."`.
+
+### 7.5 `PATCH /api/users/me`
+Any of `name, college, branch, batch, state, country` (at least one). Academic values are stringified and trimmed (`null` becomes `""`). Returns `{ success, user: UserProfile }`.
+
+### 7.6 `PATCH /api/users/me/academic` · alias `PATCH /api/users/academic`
+Any of `college, branch, batch, state, country` (at least one).
+```json
+{ "success": true, "message": "Academic profile saved",
+  "user": { "id": "…", "name": "…", "email": "…", "college": "AKGEC", "branch": "CSE", "batch": "2026", "state": "UP", "country": "India", "updatedAt": "…" } }
+```
+
+### 7.7 `PATCH /api/users/me/language` · alias `PATCH /api/users/language`
+Body `{ "language": "python" }` (case-insensitive; exact keys only, no aliases). → `{ "success": true, "language": "python" }`
+
+### 7.8 `GET /api/users/all`
+All problems with the caller's solve status (track view), ordered by `problemNumber`.
+```json
+{
+  "success": true,
+  "data": [
+    { "name": "Two Sum", "slug": "two-sum", "number": 1, "topic": "Array", "topicSlug": "arrays",
+      "level": "easy", "levelDisplay": "easy", "solvedPercentage": 74, "isSolved": true }
+  ],
+  "message": "Problems fetched successfully"
+}
+```
+`levelDisplay` is `"mid"` for medium. `solvedPercentage = round(solvedCount / totalUsers × 100)`. `topic`/`topicSlug` are `null` when the problem has no DSA topic.
 
 ---
 
 ## 8. Topics & Categories (`/api/topics`)
 
-### 8.1 `GET /api/topics`
-- **Protected**: No · **Query**: `category` = `dsa` | `core` (optional)
+### 8.1 `GET /api/topics` (Public)
+Query `category=dsa|core` (any other value returns all). Sorted by name.
 ```json
-{
-  "success": true,
-  "count": 3,
-  "topics": [
-    { "id": "t-1", "slug": "dsa-arrays", "name": "DSA - Arrays", "category": "DSA" },
-    { "id": "t-2", "slug": "dsa-graphs-dp", "name": "DSA - Graphs & DP", "category": "DSA" },
-    { "id": "t-6", "slug": "dbms", "name": "DBMS", "category": "CORE" }
-  ],
-  "dsaTopics": [ { "id": "t-1", "slug": "dsa-arrays", "name": "DSA - Arrays", "category": "DSA" } ],
-  "coreTopics": [ { "id": "t-6", "slug": "dbms", "name": "DBMS", "category": "CORE" } ]
-}
-```
-*(Example is truncated; the real list is longer.)*
-
-### 8.2 `GET /api/topics/dsa`
-- **Protected**: No — DSA-only calibration topics.
-
-### 8.3 `GET /api/topics/dsa/categories` · alias `GET /api/topics/categories`
-- **Protected**: No — structured DSA category groups with problem counts (Tracks page).
-```json
-[
-  { "id": "cat-1", "slug": "arrays-and-hashing", "name": "Arrays & Hashing", "order": 1, "totalProblems": 24 },
-  { "id": "cat-2", "slug": "two-pointers", "name": "Two Pointers", "order": 2, "totalProblems": 14 }
-]
+{ "message": "Topics fetched successfully", "success": true, "count": 2,
+  "topics": [ { "id": "…", "slug": "dsa-arrays", "name": "DSA - Arrays", "category": "DSA" }, { "id": "…", "slug": "dbms", "name": "DBMS", "category": "CORE" } ] }
 ```
 
-### 8.4 `GET /api/topics/dsa/:slug/problems`
-- **Protected**: No · **Query**: `difficulty` (`Easy|Medium|Hard`), `search` (title/slug keyword)
-```json
-{
-  "topic": { "id": "cat-1", "slug": "arrays-and-hashing", "name": "Arrays & Hashing" },
-  "count": 12,
-  "problems": [
-    { "id": "p-1", "problemNumber": 1, "slug": "two-sum-001", "title": "Two Sum", "difficulty": "Easy", "tags": ["Array", "Hash Table"] }
-  ]
-}
-```
+### 8.2 `GET /api/topics/dsa` (Public)
+`{ success, count, topics, dsaTopics }`. `topics` and `dsaTopics` are the same list of DSA calibration topics.
 
-### 8.5 `GET /api/topics/:identifier`
-- **Protected**: Yes — topic details by ID or unique slug.
+### 8.3 `GET /api/topics/categories` (Public) · `GET /api/topics/dsa/categories` (**Protected**)
+Same handler, **bare array**, ordered by `order`:
+```json
+[ { "id": "…", "slug": "arrays", "name": "Array", "order": 1, "totalProblems": 24 } ]
+```
+If the `DsaTopic` table is empty, a built-in default list (arrays, linked-list, strings, math, two-pointers, sliding-window, stack, binary-search, trees, graphs, dynamic-programming) plus any topics found on problems is returned.
+
+### 8.4 `GET /api/topics/dsa/:slug/problems` (Public)
+Query `difficulty` (case-insensitive), `search`. **Bare object** (no `success`):
+```json
+{ "topic": { "id": "…", "slug": "arrays", "name": "Array" }, "count": 1,
+  "problems": [ { "id": "…", "problemNumber": 1, "slug": "two-sum", "title": "Two Sum", "difficulty": "Easy", "tags": ["Array", "Hash Table"] } ] }
+```
+An unknown slug returns `200` with a synthesized topic and usually an empty list, not `404`.
+
+### 8.5 `GET /api/topics/:identifier` (Protected)
+Lookup by ID, then by slug → `{ success, topic }`; `404 NOT_FOUND` otherwise.
 
 ---
 
-## 9. Onboarding & Skill Calibration (`/api/onboarding`)
+## 9. Onboarding & Calibration (`/api/onboarding`)
+
+All Protected. No dedicated rate limit.
 
 ### 9.1 `POST /api/onboarding` · alias `PUT /api/onboarding/levels`
-Calibrates skill per topic, computes the initial Elo rating, sets `onboarded = true`, and links topic levels in one atomic transaction.
-- **Protected**: Yes · **Rate limit**: 20 req/min/user
-- `topicId` values accept the topic **slug** (e.g. `dsa-arrays`) as shown below.
+Sets per-topic levels, computes rating, sets `onboarded = true` and `difficulty`, replacing previous topic levels, all in one transaction. Only topics with category `DSA` are accepted; `topicId` may be an ID **or** a slug.
 
-**Mode 1 — per-topic selection (recommended for sliders):**
-```json
-{
-  "topicSelections": [
-    { "topicId": "dsa-arrays", "difficulty": "easy" },
-    { "topicId": "dsa-graphs-dp", "difficulty": "medium" },
-    { "topicId": "dsa-trees", "difficulty": "hard" }
-  ]
-}
-```
-**Mode 2 — global preset:** `{ "difficulty": "medium", "topicIds": "all" }` (an explicit array of topic slugs/IDs is also accepted)
-**Mode 3 — 1-click beginner preset:** `{ "beginner": true }` (all DSA topics Easy, rating 800)
+Accepted bodies (first match wins):
+| Mode | Body |
+|---|---|
+| Beginner preset | `{ "beginner": true }` → all DSA topics at `easy` |
+| Per topic | `{ "topicSelections": [ { "topicId": "dsa-arrays", "difficulty": "easy" }, … ] }` (items may also be plain ID strings → `easy`; `level` also accepted) |
+| Dashboard alias | `{ "topicLevels": [ { "topicId": "dsa-arrays", "level": "hard" } ] }` |
+| Global | `{ "difficulty": "medium", "topicIds": "all" }` or `topicIds: [ids/slugs]`; `difficulty` alone also means all DSA topics |
 
-**`200 OK`**:
+Difficulty aliases: `beginner→easy`, `mid|intermediate→medium`, `advanced→hard`. Topics without an explicit level get the request-level `difficulty` (default `easy`).
+
+**Rating** = average of per-topic values (`easy 800`, `medium 1200`, `hard 1600`). `difficulty` = `hard` if rating ≥ 1400, `medium` if ≥ 1000, else `easy`. The stored `tier` column is **not** updated here (§21-1).
+
+Errors (`400 BAD_REQUEST`): `"Please select at least 1 topic."`, `"One or more topic IDs are invalid."`, invalid `difficulty`.
+
+**`200`**
 ```json
-{
-  "success": true,
-  "user": {
-    "id": "u-45a8-bc91-2309", "email": "student@example.com", "name": "Alex Mercer",
-    "difficulty": "medium", "rating": 1200, "onboarded": true, "preferredLanguage": "cpp",
-    "topics": [
-      {
-        "id": "ut-1", "userId": "u-45a8-bc91-2309", "topicId": "t-1", "level": "medium",
-        "topic": { "id": "t-1", "slug": "dsa-arrays", "name": "DSA - Arrays", "category": "DSA" }
-      }
-    ]
-  }
-}
+{ "success": true, "user": { "id": "…", "email": "…", "name": "…", "difficulty": "medium", "rating": 1200, "onboarded": true,
+  "preferredLanguage": "cpp", "createdAt": "…", "updatedAt": "…",
+  "topics": [ { "id": "…", "userId": "…", "topicId": "…", "level": "medium", "topic": { "id": "…", "slug": "dsa-arrays", "name": "DSA - Arrays", "category": "DSA" } } ] } }
 ```
 
 ### 9.2 `GET /api/onboarding/status`
-- **Protected**: Yes — returns the same `{ success, user }` shape as above.
+`{ success, user: { id, email, name, difficulty, rating, onboarded, preferredLanguage, topics } }`
+
+### 9.3 `PATCH /api/onboarding/language`
+Same as §7.7.
 
 ---
 
-## 10. Problems Catalogue (`/api/problems`)
+## 10. Problems (`/api/problems`)
 
-### 10.1 `GET /api/problems`
-- **Protected**: Optional (with a token, `isSolved` is computed per problem)
-- **Query**: `difficulty` (`Easy|Medium|Hard`), `topic` (slug), `search` (title or slug), `status` (`solved|unsolved`, needs auth), `page` (≥ 1, default 1), `pageSize` (1–100, default 25)
+Problem lookup (`:slug`) accepts a slug, a numeric `problemNumber`, a problem ID, or a slug with a trailing `-<n>` (e.g. `two-sum-001` → `two-sum`). Problem details are cached in memory for 60 s, the catalogue for 30 s.
+
+### 10.1 `GET /api/problems` (Optional)
+Query (all optional):
+- `difficulty`: `easy|medium|hard`, case-insensitive
+- `topic`: matches the resolved topic **name**, case-insensitive (e.g. `Array`), **not** the slug
+- `search`: substring of title, slug, number, topic, difficulty or any tag
+- `status`: `solved` | `todo` (anything else → `400 INVALID_STATUS`; without a token `solved` is empty and `todo` is everything)
+
+**No pagination**: the full filtered list is returned.
 ```json
 {
-  "success": true,
-  "count": 1,
-  "total": 161,
-  "page": 1,
-  "pageSize": 25,
-  "data": [
-    {
-      "id": "p-1", "problemNumber": 1, "slug": "two-sum", "title": "Two Sum",
-      "difficulty": "Easy", "timeLimit": 1000, "memoryLimit": 256, "solvedCount": 420,
-      "tags": ["Array", "Hash Table"], "isSolved": false,
-      "_count": { "testcases": 5, "templates": 5 }
-    }
-  ]
+  "success": true, "count": 1,
+  "data": [ {
+    "id": "…", "problemNumber": 1, "slug": "two-sum", "title": "Two Sum", "difficulty": "Easy",
+    "tags": ["Array", "Hash Table"], "solvedCount": 420, "createdAt": "…",
+    "dsaTopic": { "name": "Array", "slug": "arrays" }, "timeLimit": 1000, "memoryLimit": 256,
+    "_count": { "examples": 2, "testcases": 12, "templates": 5 },
+    "topic": "Array", "topicSlug": "arrays", "acceptanceRate": 61.5, "points": 10, "isSolved": false
+  } ]
 }
 ```
 
-### 10.2 `GET /api/problems/:slug`
-- **Protected**: No. Returns problem details with ordered `examples`, `isVisible: true` testcases (hidden ones omitted), and user starter `templates`.
+### 10.2 `GET /api/problems/:slug` (Public)
 ```json
 {
   "success": true,
   "data": {
-    "id": "p-1", "problemNumber": 1, "slug": "two-sum", "title": "Two Sum",
-    "description": "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.\n\nYou may assume that each input would have exactly one solution, and you may not use the same element twice.",
-    "difficulty": "Easy", "timeLimit": 1000, "memoryLimit": 256, "solvedCount": 420,
-    "tags": ["Array", "Hash Table"],
-    "examples": [
-      {
-        "id": "ex-1",
-        "order": 0,
-        "input": "nums = [2, 7, 11, 15], target = 9",
-        "output": "[0, 1]",
-        "explanation": "Because nums[0] + nums[1] == 9, we return [0, 1]."
-      },
-      {
-        "id": "ex-2",
-        "order": 1,
-        "input": "nums = [3, 2, 4], target = 6",
-        "output": "[1, 2]",
-        "explanation": "Because nums[1] + nums[2] == 6, we return [1, 2]."
-      }
-    ],
-    "testcases": [
-      { "testIndex": 0, "isVisible": true, "input": "4 9\n2 7 11 15", "output": "0 1", "stdinSmall": "4 9\n2 7 11 15", "expectedSmall": "0 1" },
-      { "testIndex": 1, "isVisible": true, "input": "3 6\n3 2 4", "output": "1 2", "stdinSmall": "3 6\n3 2 4", "expectedSmall": "1 2" }
-    ],
-    "templates": {
-      "cpp": "class Solution {\npublic:\n    vector<int> twoSum(vector<int>& nums, int target) {\n        // Write code here\n    }\n};",
-      "python": "class Solution:\n    def twoSum(self, nums: List[int], target: int) -> List[int]:\n        # Write code here\n        pass",
-      "javascript": "class Solution {\n    twoSum(nums, target) {\n        // Write code here\n    }\n}",
-      "java": "class Solution {\n    public int[] twoSum(int[] nums, int target) {\n        // Write code here\n    }\n}",
-      "c": "int* twoSum(int* nums, int numsSize, int target, int* returnSize) {\n    // Write code here\n}"
-    }
+    "id": "…", "problemNumber": 1, "slug": "two-sum", "title": "Two Sum", "description": "…",
+    "difficulty": "Easy", "timeLimit": 1000, "memoryLimit": 256, "solvedCount": 420, "tags": ["Array", "Hash Table"],
+    "examples": [ { "id": "…", "order": 0, "input": "nums = [2,7,11,15], target = 9", "output": "[0,1]", "explanation": "…" } ],
+    "testcases": [ { "testIndex": 0, "isVisible": true, "input": "4 9\n2 7 11 15", "output": "0 1", "stdinSmall": "4 9\n2 7 11 15", "expectedSmall": "0 1" } ],
+    "templates": { "python": "class Solution:\n    def twoSum(self, nums, target):\n        pass", "cpp": "…" },
+    "userTemplates": { "…": "same as templates" },
+    "templatesArray": [ { "id": "…", "problemId": "…", "language": "python", "code": "…", "header": "…", "footer": "…" } ]
   }
 }
 ```
+Only `isVisible: true` testcases are returned.
 
-### 10.3 `GET /api/problems/:slug/starter` · `GET /api/problems/:slug/template`
-- **Protected**: No · **Query**: `language` = `python|cpp|c|java|javascript`
-- Returns the clean starter function signature for the editor.
+### 10.3 `GET /api/problems/:slug/starter` · `GET /api/problems/:slug/template` (Public)
+- No `language` → `{ "success": true, "data": { "slug": "two-sum", "templates": { "python": "…", … } } }`
+- `?language=python` → `{ "success": true, "data": { "slug": "two-sum", "language": "python", "template": "…" } }`; `404` if that language has no template. Use exact keys (`py` is not accepted here).
 
-### 10.4 `POST /api/problems/:slug/run`
-Problem-scoped alias of the execution run endpoint (§11.2). **Protected**.
+### 10.4 `POST /api/problems/:slug/run` (**Optional** · 10/min · 2 in-flight)
+Same as §11.2 with the slug taken from the path. Works without a token (rate limits then key on IP).
 
-### 10.5 `POST /api/problems/:slug/submit`
-Problem-scoped alias of the execution submit endpoint (§11.3). **Protected**.
+### 10.5 `POST /api/problems/:slug/submit` (**Optional** · 6/min · 2 in-flight)
+Same as §11.3, but **asynchronous by default** (`202`) unless `wait: true` or `?wait=true`. Without a token there is no reward, and the submission **cannot be polled** (polling is owner-only), so anonymous callers must use `wait: true` (§21-3).
 
 ---
 
-## 11. Code Execution, Submissions & Complexity (`/api/execution`)
+## 11. Code Execution (`/api/execution`, `/api/execute`)
 
-### 11.1 `GET /api/execution/languages`
-- **Protected**: No
+`/api/execute/*` is a full mirror of `/api/execution/*` (same router).
+
+### 11.1 `GET /api/execution/languages` (Public)
+```json
+{ "success": true, "languages": [
+  { "key": "python", "label": "Python 3", "version": "Python 3.10", "judge0Id": 71, "starterAvailable": true, "monacoLanguage": "python" },
+  { "key": "javascript", "label": "JavaScript", "version": "Node.js 22", "judge0Id": 63, "starterAvailable": true, "monacoLanguage": "javascript" },
+  { "key": "cpp", "label": "C++ (GCC)", "version": "GCC 13 (C++20)", "judge0Id": 54, "starterAvailable": true, "monacoLanguage": "cpp" },
+  { "key": "c", "label": "C (GCC)", "version": "GCC 13", "judge0Id": 50, "starterAvailable": true, "monacoLanguage": "c" },
+  { "key": "java", "label": "Java (OpenJDK)", "version": "OpenJDK 17", "judge0Id": 62, "starterAvailable": true, "monacoLanguage": "java" } ] }
+```
+Run/submit accept these language aliases: `c++`→cpp, `py`/`python3`→python, `js`/`node`/`nodejs`→javascript. Default when omitted: `cpp`.
+
+### 11.2 Run sample testcases
+Routes: `POST /api/execution/run` · `/api/execution/runs` · `/api/execute/run` · `/api/execute/runs` (**Protected**) · `/api/problems/:slug/run` (Optional). Rate limit 10/min/user + max 2 in-flight.
+
+Body fields (aliases accepted):
+| Field | Aliases |
+|---|---|
+| `slug` | `problemSlug`, `problemId` (or path `:slug`) |
+| `language` | `lang`, query `?language=` |
+| `code` | `userCode`, `source_code`, `sourceCode` |
+| `stdin` | optional: custom run, used only when **no** slug is given |
+
+Checks in order: `422 UNSUPPORTED_LANGUAGE` → `400 MISSING_CODE` → `413 CODE_TOO_LARGE` (64 KB) → `404 NOT_FOUND` → `422 NO_TESTCASES` → `400 FUNCTION_ONLY_REQUIRED` → `400 NO_TESTCASES` (no visible cases) → runner errors (`503`).
+
+**`200`** (all visible cases run in one batch):
 ```json
 {
-  "success": true,
-  "languages": [
-    { "key": "python", "label": "Python 3", "version": "Python 3.10", "judge0Id": 71, "starterAvailable": true, "monacoLanguage": "python" },
-    { "key": "javascript", "label": "JavaScript", "version": "Node.js 22", "judge0Id": 63, "starterAvailable": true, "monacoLanguage": "javascript" },
-    { "key": "cpp", "label": "C++ (GCC)", "version": "GCC 13 (C++20)", "judge0Id": 54, "starterAvailable": true, "monacoLanguage": "cpp" },
-    { "key": "c", "label": "C (GCC)", "version": "GCC 13", "judge0Id": 50, "starterAvailable": true, "monacoLanguage": "c" },
-    { "key": "java", "label": "Java (OpenJDK)", "version": "OpenJDK 17", "judge0Id": 62, "starterAvailable": true, "monacoLanguage": "java" }
-  ]
+  "success": true, "verdict": "Accepted", "status": "Accepted", "passedCount": 2, "totalCount": 2,
+  "results": [ {
+    "index": 0, "testIndex": 0, "isVisible": true, "input": "4 9\n2 7 11 15", "expected": "0 1", "actual": "0 1",
+    "studentStdout": "", "status": "Accepted", "passed": true,
+    "timeMs": 42, "cpuTimeMs": 40, "wallTimeMs": 42, "memoryKb": 12840, "inputBytes": 13, "errorText": null
+  } ],
+  "complexity": { "time": { "bestEstimate": "O(n)", "confidence": "high" }, "space": { "bestEstimate": "O(n)", "confidence": "high" }, "summary": "Time: O(n), Space: …" }
 }
 ```
+`verdict` is the status of the first failing case (`"Wrong Answer"`, `"Time Limit Exceeded"`, `"Runtime Error"`, `"Compilation Error"`, …) or `"Accepted"`. `studentStdout` holds debug prints, separated from the evaluated output.
 
-### 11.2 Run Sample Testcases
-Runs code against **visible sample testcases only**. Debug output is captured via result markers without polluting evaluation.
-- **Route**: `POST /api/execution/runs` · aliases `POST /api/execution/run`, `POST /api/execute/run`, `POST /api/problems/:slug/run`
-- **Protected**: Yes · **Rate limit**: 10 runs/min/user; max 2 in-flight executions
-- **Body**:
+**Custom stdin run** (`stdin` and no slug): runs the code as-is once; output is **not** compared (`expected: ""`, verdict `"Accepted"` whenever it ran without error). Result items have `index, testIndex, input, expected, actual, studentStdout, status, passed, timeMs, memoryKb, errorText`; no `complexity`.
+
+### 11.3 Submit for full evaluation
+Routes and mode:
+| Route | Auth | Mode |
+|---|---|---|
+| `POST /api/execution/submit` | Protected | **sync** (200) |
+| `POST /api/execution/submissions` | Protected | **async** (202) unless `wait: true` / `?wait=true` |
+| `POST /api/execute/submit` | Protected | **sync** |
+| `POST /api/execute/submissions` | Protected | **sync** (§21-4) |
+| `POST /api/problems/:slug/submit` | Optional | **async** unless `wait` (§21-3) |
+
+Rate limit 6/min/user + max 2 in-flight (an async job keeps its slot until it finishes). Body: same fields as run (no `stdin`), plus optional `wait`.
+
+**Async → `202 Accepted`**
 ```json
-{
-  "slug": "two-sum",
-  "language": "python",
-  "code": "class Solution:\n    def twoSum(self, nums: List[int], target: int) -> List[int]:\n        seen = {}\n        for i, n in enumerate(nums):\n            diff = target - n\n            if diff in seen:\n                return [seen[diff], i]\n            seen[n] = i\n        return []"
-}
+{ "success": true, "submissionId": "clx…", "verdict": "QUEUED", "status": "QUEUED",
+  "pollUrl": "/api/execution/submissions/clx…", "message": "Submission received and queued for execution.",
+  "problem": { "slug": "two-sum", "title": "Two Sum" } }
 ```
-Per the v2.1 spec, a custom `stdin` may be supplied instead of a problem slug (see Appendix B-6).
-- **`200 OK`**:
+
+**Sync → `200 OK`**
 ```json
 {
-  "success": true,
-  "verdict": "Accepted",
-  "status": "Accepted",
-  "passedCount": 2,
-  "totalCount": 2,
+  "success": true, "submissionId": "clx…", "verdict": "ACCEPTED", "status": "ACCEPTED",
+  "tierReached": "Tier 3 (Optimal)", "passedCount": 12, "totalCount": 12, "time": "52ms", "memory": 13400,
   "results": [
-    {
-      "testIndex": 0, "isVisible": true, "passed": true, "status": "Accepted",
-      "input": "4 9\n2 7 11 15", "expected": "0 1", "actual": "0 1",
-      "time": 42, "memory": 12840
-    }
+    { "testIndex": 0, "isVisible": true, "passed": true, "status": "Accepted", "input": "4 9\n2 7 11 15", "expected": "0 1", "actual": "0 1",
+      "time": 42, "timeMs": 42, "cpuTimeMs": 40, "wallTimeMs": 42, "memory": 12840, "memoryKb": 12840, "inputBytes": 13, "errorText": null },
+    { "testIndex": 5, "isVisible": false, "passed": true, "status": "Accepted", "time": 48, "memory": 13400 }
   ],
-  "complexity": {
-    "time": { "bestEstimate": "O(n)", "confidence": "high" },
-    "space": { "bestEstimate": "O(n)", "confidence": "high" }
-  }
-}
-```
-
-### 11.3 Submit Solution for Full Evaluation
-Evaluates across sample + hidden testcases with true **tier short-circuiting**: if Tier 1 fails, execution halts and Tier 2/3 batches are not run.
-- **Route**: `POST /api/execution/submissions` · aliases `POST /api/execution/submit`, `POST /api/execute/submit`, `POST /api/problems/:slug/submit`
-- **Protected**: Yes · **Rate limit**: 6 submissions/min/user; max 2 in-flight executions
-- **Body**:
-```json
-{ "slug": "two-sum", "language": "python", "code": "class Solution:\n    ...", "wait": false }
-```
-
-**Mode 1 — Asynchronous** (`/submissions` with `wait: false` or omitted) → `202 Accepted`:
-```json
-{
-  "success": true,
-  "submissionId": "sub_1740001234_abc89f",
-  "verdict": "QUEUED",
-  "status": "QUEUED",
-  "pollUrl": "/api/execution/submissions/sub_1740001234_abc89f",
-  "message": "Submission received and queued for execution.",
-  "problem": { "slug": "two-sum", "title": "Two Sum" }
-}
-```
-
-**Mode 2 — Synchronous** (`wait: true`, or routes `/submit`, `/execute/submit`) → `200 OK`:
-```json
-{
-  "success": true,
-  "submissionId": "sub_1740001234_abc89f",
-  "verdict": "ACCEPTED",
-  "status": "ACCEPTED",
-  "tierReached": "Tier 3 (Optimal)",
-  "passedCount": 5,
-  "totalCount": 5,
-  "time": "52ms",
-  "memory": 13400,
-  "createdAt": "2026-11-02T22:00:00.000Z",
   "firstFailure": null,
-  "reward": {
-    "awarded": true,
-    "points": 10,
-    "scoreDelta": 100,
-    "coinsEarned": 0,
-    "stats": { "rating": 810, "tier": "Pulse II", "score": 10, "scoreUnits": 100, "coins": 100, "streak": 1, "longestStreak": 1 }
-  },
+  "complexity": { "time": { "bestEstimate": "O(n)", "confidence": "high" }, "space": { "bestEstimate": "O(n)", "confidence": "high" }, "summary": "…" },
+  "reward": { "awarded": true, "points": 10, "scoreDelta": 100, "coinsEarned": 2,
+              "stats": { "rating": 830, "tier": "Pulse II", "score": 10, "scoreUnits": 100, "coins": 103, "streak": 1, "longestStreak": 1 } },
   "rewardError": false,
-  "results": [
-    { "testIndex": 0, "isVisible": true, "passed": true, "status": "Accepted", "input": "4 9\n2 7 11 15", "expected": "0 1", "actual": "0 1" },
-    { "testIndex": 2, "isVisible": false, "passed": true, "status": "Accepted", "time": 48, "memory": 13400 }
-  ],
-  "complexity": {
-    "time": { "bestEstimate": "O(n)", "confidence": "high" },
-    "space": { "bestEstimate": "O(n)", "confidence": "high" }
-  },
+  "dailyProblemReward": { "granted": true, "coins": 2 },
   "problem": { "slug": "two-sum", "title": "Two Sum" }
 }
 ```
+- `status` values: `ACCEPTED`, `WRONG_ANSWER`, `TIME_LIMIT_EXCEEDED`, `RUNTIME_ERROR`, `COMPILATION_ERROR` (from the first failure). Background crash → `ERROR`.
+- `firstFailure` for a visible case: `{ testIndex, status, errorText, input, expected, actual, message: "Failed sample test 3: expected '…', got '…'" }`. For a hidden case: `{ testIndex, status, errorText: null, message: "Failed on hidden evaluation test case #7." }`.
+- `reward` is `null` when anonymous or not fully accepted; `awarded: false` (0 points) when the problem was already solved before. See §18.
 
-### 11.4 `GET /api/execution/submissions/:id`
-Polls status/verdict. **Protected, owner-only**; non-owners get `404 SUBMISSION_NOT_FOUND`.
-Response: `{ "success": true, "submission": SubmissionDetail }` — same fields as the synchronous body above, nested under `submission` and including `id`, `problemId`, `language`. Poll until `status` is terminal (see §4.2).
+### 11.4 Tiered judging
+All testcases (visible and hidden, ordered by `testIndex`) are split into three tiers. For `N` cases: Tier 1 = first `max(1, ⌊0.35N⌋)`; Tier 2 = up to index `max(tier1+1, ⌊0.7N⌋)`; Tier 3 = the rest. Each tier runs as one batch. If any case in a tier fails, the remaining tiers are **not executed**. `tierReached`: fail in T1 → `Tier 0 (Failed)`, fail in T2 → `Tier 1 (Brute Force)`, fail in T3 → `Tier 2 (Better)`, all pass → `Tier 3 (Optimal)`. `passedCount` only counts cases that actually ran.
 
-### 11.5 `POST /api/execution/analyze-complexity`
-Static AST/lexical complexity analysis.
-- **Protected**: Optional · **Rate limit**: 10 req/min
-- **Body**:
+### 11.5 `GET /api/execution/submissions/:id` (Protected, owner-only)
+Non-owners and unknown IDs both get `404 SUBMISSION_NOT_FOUND`.
+```json
+{ "success": true, "submission": {
+  "id": "clx…", "problemId": "…", "language": "python", "verdict": "ACCEPTED", "status": "ACCEPTED",
+  "tierReached": "Tier 3 (Optimal)", "passedCount": 12, "totalCount": 12, "time": "52ms", "memory": 13400, "createdAt": "…",
+  "firstFailure": null, "results": [ ], "complexity": { }, "reward": { }, "rewardError": false,
+  "dailyProblemReward": { "granted": true, "coins": 2 }, "problem": { "slug": "two-sum", "title": "Two Sum" } } }
+```
+While evaluating, `status` is `PROCESSING`.
+
+### 11.6 Submission detail retention
+`status`, counts, `time`, `memory` are stored in PostgreSQL. `results`, `firstFailure`, `tierReached`, `reward`, `dailyProblemReward` and `complexity` live only in an **in-process cache (30 min, 2000 entries)**. After expiry or a restart, polling returns `results: []`, `firstFailure: null`, `reward: null`, `complexity: null` and an estimated `tierReached` (§21-5).
+
+### 11.7 `POST /api/execution/analyze-complexity` (Optional · 10/min per user or IP)
+Body: `code` (or `userCode`, `source_code`), `language` (or `lang`, default `python`, not validated), `slug` (or `problemSlug`, optional).
+Returns the **full** analyzer report (not the compact form):
+```json
+{ "success": true, "complexity": {
+  "version": "3.0.1", "status": "completed", "summary": "Time: O(n^2), Space: O(1) auxiliary, O(1) output (O(1) total)",
+  "time": { "bestEstimate": "O(n^2)", "confidence": "high", "asymptoticClass": "…" },
+  "space": { "bestEstimate": "O(1)", "auxiliary": "O(1)", "output": "O(1)", "total": "O(1)", "confidence": "high" },
+  "detectedPatterns": [ "…" ], "…": "additional evidence fields" } }
+```
+On parse failure (or code > 200,000 chars) `status` is `"unknown"` with `summary: "Complexity analysis unavailable"` and a `limitations` array.
+
+---
+
+## 12. Daily Problem (`/api/daily-problem`)
+
+### 12.1 How it works
+- **Selection**: a random problem from the whole `problems` table, never the same as yesterday's when ≥ 2 problems exist. One record per IST date (`istDate` unique).
+- **Creation**: cron at `00:00 Asia/Kolkata`, a check on server boot, and lazy creation on first request; concurrent requests are de-duplicated.
+- **Reward**: on the first fully accepted submission (authenticated) whose problem is today's daily problem: **+2 coins** (`DAILY_PROBLEM` transaction) and streak advance (§18.4). Once per user per IST day; idempotent via `DailyProblemCompletion` + transaction check.
+
+### 12.2 `GET /api/daily-problem` · alias `GET /api/coins/daily-problem` (Optional)
 ```json
 {
-  "code": "def twoSum(nums, target):\n    for i in range(len(nums)):\n        for j in range(i + 1, len(nums)):\n            if nums[i] + nums[j] == target:\n                return [i, j]",
-  "language": "python",
-  "problemSlug": "two-sum"
+  "success": true, "istDate": "2026-11-18",
+  "problem": { "id": "…", "slug": "two-sum", "title": "Two Sum", "difficulty": "Easy", "description": "…", "tags": ["Array"], "solvedCount": 42 },
+  "reward": { "coins": 2, "description": "+2 coins and +1 streak for your first ACCEPTED submission on today's challenge" },
+  "completed": false, "solvedToday": false, "rewardClaimed": false, "completedAt": null,
+  "streak": 3, "longestStreak": 5,
+  "nextRefreshMs": 67123000, "nextRefreshTime": "12:00 AM IST"
 }
 ```
-- **`200 OK`**:
+Without a token, `completed`/`rewardClaimed` are `false` and streaks are `0`. Errors: `404 DAILY_PROBLEM_NOT_FOUND`, `503 NO_ELIGIBLE_PROBLEMS`.
+
+### 12.3 `GET /api/daily-problem/history` · alias `GET /api/coins/daily-problem/history` (Optional)
+Query `page` (≥ 1, default 1), `limit` (1–100, default 30). Newest first.
 ```json
-{
-  "success": true,
-  "complexity": {
-    "time": { "bestEstimate": "O(n^2)", "confidence": "high" },
-    "space": { "bestEstimate": "O(1)", "confidence": "high" },
-    "summary": "Nested loops over the input."
-  }
-}
+{ "success": true, "count": 1, "total": 35, "page": 1, "totalPages": 2,
+  "history": [ { "id": "clx…", "istDate": "2026-11-18", "createdAt": "…", "completed": true,
+                 "problem": { "id": "…", "slug": "two-sum", "title": "Two Sum", "difficulty": "Easy", "tags": ["Array"], "solvedCount": 42 } } ] }
+```
+`completed` is always `false` without a token.
+
+---
+
+## 13. Coins (`/api/coins`)
+
+### 13.1 `GET /api/coins/balance` (Protected)
+```json
+{ "success": true, "coins": 103, "streak": 1, "longestStreak": 1, "lastLoginISTDate": "2026-11-18" }
+```
+
+### 13.2 `GET /api/coins/history` (Protected)
+Query `limit` (1–50, default 20), `offset` (≥ 0, default 0). Newest first. No total count.
+```json
+{ "success": true, "transactions": [
+  { "id": "…", "amount": 2, "type": "DAILY_PROBLEM", "referenceId": "clx…", "istDate": "2026-11-18", "balanceAfter": 103, "createdAt": "…" },
+  { "id": "…", "amount": -350, "type": "THEME_PURCHASE", "referenceId": "<themeId>", "istDate": "2026-11-17", "balanceAfter": 101, "createdAt": "…" } ] }
 ```
 
 ---
 
-## 12. Daily Problem of the Day (`/api/daily-problem`)
+## 14. Theme Store (`/api/themes`)
 
-### 12.1 Architecture & Selection
-- **Rotation**: automatically at exactly `12:00 AM IST` (`Asia/Kolkata`) daily.
-- **Selection (FR-01)**: random problem from the existing `problems` table; avoids repeating yesterday's when ≥ 2 problems exist; no separate banks or cycles.
-- **Recovery & concurrency (FR-02)**: startup check recovers from restarts; **lazy generation** — if today's record is missing when requested, it is generated on demand; in-flight Promise locking plus DB uniqueness `@@unique([istDate])` prevents duplicates.
-- **Completion & rewards (FR-03, FR-04, FR-06)**: `DailyProblemCompletion` (composite key `@@id([userId, dailyProblemId])`); on the first ACCEPTED solve grants **+2 coins** (`CoinTransaction type: "DAILY_PROBLEM"`) and **+1 streak** (consecutive days increment; a missed day resets to 1 on the next solve); `longestStreak = max(longestStreak, streak)`. Fully idempotent.
-- **Daily login reward (FR-05)**: first login of an IST day grants **+1 coin** (`type: "DAILY_LOGIN"`); independent of, and does not alter, the streak.
+All Protected. Catalogue (seeded automatically from `src/data/storeThemes.js`):
 
-### 12.2 `GET /api/daily-problem` · alias `GET /api/coins/daily-problem`
-- **Protected**: Optional
+| slug | name | price |
+|---|---|---|
+| `default` | Default | 0 (always owned) |
+| `mono` | Monochrome | 350 |
+| `pearl` | Pearl | 350 |
+| `frost` | Frost | 400 |
+| `editorial` | Editorial | 400 |
+| `orbit` | Orbit | 450 |
+| `anime` | Sakura Manga | 700 |
+| `comic` | Hero Comic | 700 |
+| `storybook` | Storybook Kingdom | 700 |
+| `arcade` | Arcade | 800 |
+| `racer` | Racer | 800 |
+
+### 14.1 `GET /api/themes`
+Sorted by price ascending.
 ```json
-{
-  "success": true,
-  "istDate": "2026-11-09",
-  "problem": {
-    "id": "two-sum", "slug": "two-sum", "title": "Two Sum", "difficulty": "Easy",
-    "description": "Given an array of integers nums and an integer target...",
-    "tags": ["Array", "Hash Table"], "solvedCount": 42
-  },
-  "reward": { "coins": 2, "streak": 1, "description": "+2 coins and +1 streak for your first ACCEPTED submission on today's challenge" },
-  "completed": false,
-  "solvedToday": false,
-  "rewardClaimed": false,
-  "completedAt": null,
-  "streak": 3,
-  "longestStreak": 5,
-  "nextRefreshMs": 67123000,
-  "nextRefreshTime": "12:00 AM IST"
-}
+{ "success": true, "coins": 100, "themes": [
+  { "id": "…", "slug": "default", "name": "Default", "price": 0, "previewColor": "#2F7BFF", "isDefault": true, "owned": true, "applied": true, "canAfford": true },
+  { "id": "…", "slug": "mono", "name": "Monochrome", "price": 350, "previewColor": "#161616", "isDefault": false, "owned": false, "applied": false, "canAfford": false } ] }
 ```
 
-### 12.3 `GET /api/daily-problem/history` · alias `GET /api/coins/daily-problem/history`
-- **Protected**: Optional · **Query**: `page` (default 1), `limit` (default 30, max 100). Ordered by `istDate` descending.
+### 14.2 `GET /api/themes/me`
 ```json
-{
-  "success": true, "count": 30, "total": 35, "page": 1, "totalPages": 2,
-  "history": [
-    {
-      "id": "dp_2026-11-09", "istDate": "2026-11-09", "createdAt": "2026-11-09T00:00:00.000Z", "completed": true,
-      "problem": { "id": "two-sum", "slug": "two-sum", "title": "Two Sum", "difficulty": "Easy", "tags": ["Array", "Hash Table"], "solvedCount": 42 }
-    }
-  ]
-}
+{ "success": true, "coins": 100, "activeTheme": "default", "ownedThemes": [] }
 ```
+`ownedThemes` lists purchased slugs only (the default theme is not included unless bought).
+
+### 14.3 `POST /api/themes/:slug/buy`
+Atomically debits coins, records ownership and a `THEME_PURCHASE` transaction, and **applies the theme**.
+```json
+{ "success": true, "message": "Bought Monochrome", "theme": { "slug": "mono", "applied": true, "owned": true }, "coins": 50,
+  "stats": { "rating": 800, "tier": "Pulse II", "score": 0, "scoreUnits": 0, "coins": 50, "streak": 0, "longestStreak": 0 } }
+```
+Errors: `404 NOT_FOUND` (unknown slug), `400 ALREADY_OWNED` (`details: { owned: true }`), `400 INSUFFICIENT_COINS` (`details: { required, have }`).
+
+### 14.4 `PUT /api/themes/apply`
+Body `{ "slug": "mono" }` → `{ "success": true, "activeTheme": "mono", "message": "Monochrome applied" }`.
+Errors: `400 BAD_REQUEST` (no slug), `404 NOT_FOUND`, `403 FORBIDDEN` (not owned and not default).
 
 ---
 
-## 13. Coins & Theme Store (`/api/coins`, `/api/themes`)
+## 15. Rankings (`/api/rankings`)
 
-### 13.1 `GET /api/coins/balance`
-- **Protected**: Yes — coin balance, current streak, longest streak, last login date.
-
-### 13.2 `GET /api/coins/history`
-- **Protected**: Yes · **Query**: `limit` (default 20), `offset` (default 0)
-- Paginated audit log of `CoinTransaction` rows.
-
-### 13.3 `GET /api/themes`
-- **Protected**: Yes — all themes with `owned`, `applied`, `canAfford` computed for the user.
+### `GET /api/rankings` (Public)
+Sorted by `score` (raw units) descending. Query:
+- `scope`: `college|batch|state|country`. The filter applies **only if the matching value is also given** (e.g. `scope=college&college=AKGEC`, exact, case-sensitive). No scope, `global`, or a missing value means everyone.
+- `limit`: 1–100, default 50. **No offset/skip**, and no `rank` or `total` field.
 ```json
-{
-  "success": true,
-  "themes": [
-    { "id": "th-default", "slug": "default", "name": "Calibr8 Dark", "price": 0, "previewColor": "#0b0f19", "isDefault": true, "owned": true, "applied": true, "canAfford": true },
-    { "id": "th-orbit", "slug": "orbit", "name": "Orbit", "price": 50, "previewColor": "#1e1b4b", "isDefault": false, "owned": false, "applied": false, "canAfford": true }
-  ]
-}
+{ "success": true, "count": 1, "data": [
+  { "id": "…", "name": "Riya Verma", "score": 48210, "rating": 1790, "streak": 132, "strictPercent": 88, "tier": "Zenith II",
+    "college": "AKGEC", "branch": "CSE", "batch": "2026", "state": "UP", "country": "India", "createdAt": "…" } ] }
 ```
-
-### 13.4 `GET /api/themes/me`
-- **Protected**: Yes — active theme, owned themes, coin balance.
-```json
-{
-  "success": true, "coins": 100, "activeTheme": "default", "ownedThemes": ["default"],
-  "stats": { "rating": 800, "tier": "Pulse II", "score": 0, "scoreUnits": 0, "coins": 100, "streak": 0, "longestStreak": 0 }
-}
-```
-
-### 13.5 `POST /api/themes/:slug/buy`
-Atomically deducts coins and grants ownership (audit row written). Slugs: `orbit`, `frost`, `editorial`, `mono`, `racer`, `arcade`, …
-- **Protected**: Yes · Errors: `INSUFFICIENT_COINS`, `ALREADY_OWNED`, `NOT_FOUND`
-```json
-{
-  "success": true,
-  "message": "Bought Orbit",
-  "theme": { "slug": "orbit", "applied": true, "owned": true },
-  "coins": 50,
-  "stats": { "rating": 800, "tier": "Pulse II", "score": 0, "scoreUnits": 0, "coins": 50, "streak": 0, "longestStreak": 0 }
-}
-```
-
-### 13.6 `PUT /api/themes/apply`
-Applies an owned/default theme. Unowned → `403 FORBIDDEN`.
-- **Body**: `{ "slug": "orbit" }` → `{ "success": true, "activeTheme": "orbit", "message": "Orbit applied" }`
+`tier` is the stored column (§21-1). Compute from `rating` (§18.3) for consistent display.
 
 ---
 
-## 14. Rankings & Leaderboard (`/api/rankings`)
+## 16. Study Material (`/api/study`)
 
-### `GET /api/rankings`
-- **Protected**: No. Sorted by `score` descending. Sensitive fields (`passwordHash`) are never returned.
-- **Query**: `scope` (`global|college|batch|state|country`), `college`, `batch`, `state`, `country`, `limit` (1–100, default 50), `skip` (default 0)
+Reads are Public and return **bare** JSON (no `success` wrapper).
+
+### 16.1 `GET /api/study/subjects`
 ```json
-{
-  "success": true,
-  "count": 2,
-  "data": [
-    {
-      "id": "u-rank-1", "name": "Riya Verma", "score": 48210, "rating": 1790, "streak": 132,
-      "strictPercent": 88, "tier": "Zenith II", "college": "AKGEC", "branch": "CSE",
-      "batch": "2026", "state": "UP", "country": "India", "createdAt": "2026-08-15T10:00:00.000Z"
-    },
-    {
-      "id": "u-rank-2", "name": "Kabir Singh", "score": 46950, "rating": 1690, "streak": 97,
-      "strictPercent": 74, "tier": "Zenith II", "college": "AKGEC", "branch": "CSE",
-      "batch": "2026", "state": "UP", "country": "India", "createdAt": "2026-08-20T10:00:00.000Z"
-    }
-  ]
-}
+[ { "id": "…", "slug": "cn", "name": "Computer Networks", "description": "…", "icon": null, "order": 1, "createdAt": "…", "_count": { "chapters": 13 } } ]
 ```
-> The v2.1 spec shows the list under a `rankings` key with `rank` and `total` fields; see Appendix B-3.
+Subjects: `cn`, `dbms`, `os`, `oops`, `system-design`.
+
+### 16.2 `GET /api/study/subjects/:subjectSlug` · alias `…/:subjectSlug/chapters`
+```json
+{ "id": "…", "slug": "cn", "name": "Computer Networks", "description": "…", "icon": null, "order": 1, "createdAt": "…",
+  "chapters": [ { "id": "…", "slug": "01-networking-fundamentals", "name": "…", "subjectId": "…", "order": 1, "_count": { "topics": 1 } } ] }
+```
+`404 NOT_FOUND` for an unknown subject.
+
+### 16.3 `GET /api/study/chapters/:chapterId/topics`
+`[ { "id": "…", "slug": "01-networking-foundations-and-switching", "name": "…", "order": 1 } ]`. An unknown chapter returns `[]`.
+
+### 16.4 `GET /api/study/topics/:topicSlug`
+```json
+{ "id": "…", "slug": "…", "name": "…", "chapterId": "…", "order": 1, "content": "# Markdown…", "isPublished": true, "createdAt": "…",
+  "mcqs": [ { "id": "…", "question": "…", "options": ["A", "B", "C", "D"], "difficulty": "Easy", "order": 1, "explanation": "…" } ],
+  "chapter": { "id": "…", "slug": "…", "name": "…", "subjectId": "…", "order": 1, "subject": { "id": "…", "slug": "cn", "name": "Computer Networks", "…": "…" } } }
+```
+`correctIndex` is withheld, but **`explanation` is returned before submission** (§21-6). Topic slugs are only unique per chapter; the first match is returned.
+
+### 16.5 `POST /api/study/topics/:topicSlug/submit` (Protected)
+Body: **map of MCQ id → selected option index (number)**:
+```json
+{ "answers": { "clx_mcq_1": 1, "clx_mcq_2": 0 } }
+```
+```json
+{ "success": true, "userId": "…", "topicSlug": "…", "score": 1, "total": 2,
+  "result": [ { "mcqId": "clx_mcq_1", "isCorrect": true, "correctIndex": 1, "explanation": "…" },
+              { "mcqId": "clx_mcq_2", "isCorrect": false, "correctIndex": 3, "explanation": "…" } ] }
+```
+Comparison is strict (`"1"` ≠ `1`). Unanswered questions count as wrong. **Nothing is persisted** (§21-7).
 
 ---
 
-## 15. CS Curriculum & Study Material (`/api/study`)
+## 17. Social / GitHub OAuth (`/api/social`)
 
-### 15.1 `GET /api/study/subjects` — Public
-```json
-{
-  "success": true, "count": 5,
-  "subjects": [
-    { "id": "subj-1", "slug": "cn", "name": "Computer Networks", "description": "Foundations of modern networking, OSI/TCP-IP models, protocols, and cloud routing.", "order": 1, "_count": { "chapters": 13 } },
-    { "id": "subj-2", "slug": "dbms", "name": "Database Management Systems", "description": "Relational algebra, normalization, transaction processing, and PostgreSQL internals.", "order": 2, "_count": { "chapters": 16 } },
-    { "id": "subj-3", "slug": "os", "name": "Operating Systems", "description": "Process scheduling, virtual memory, paging, and kernel synchronization primitives.", "order": 3, "_count": { "chapters": 16 } },
-    { "id": "subj-4", "slug": "oops", "name": "Object-Oriented Programming", "description": "Core paradigms, SOLID design principles, and GoF design patterns.", "order": 4, "_count": { "chapters": 14 } },
-    { "id": "subj-5", "slug": "system-design", "name": "System Design", "description": "Distributed architectures, microservices, caching topologies, and high-availability patterns.", "order": 5, "_count": { "chapters": 16 } }
-  ]
-}
-```
+Only `github` is supported.
 
-### 15.2 `GET /api/study/subjects/:subjectSlug` · alias `.../chapters` — Public
-`:subjectSlug` ∈ `cn`, `dbms`, `os`, `oops`, `system-design`.
-```json
-{
-  "success": true,
-  "subject": {
-    "id": "subj-1", "slug": "cn", "name": "Computer Networks",
-    "chapters": [ { "id": "chap-1", "slug": "01-networking-fundamentals", "name": "Networking Foundations & Switching", "order": 1, "_count": { "topics": 1 } } ]
-  }
-}
-```
+### 17.1 `GET /api/social/:provider/link-url` (Protected)
+**Bare** `{ "url": "https://github.com/login/oauth/authorize?client_id=…&redirect_uri=<BACKEND_URL>/api/social/github/callback&scope=read%3Auser+user%3Aemail&state=…" }`
+`state` is a JWT `{ userId, provider }` signed with `OAUTH_STATE_SECRET` (must differ from `JWT_SECRET`), valid **10 minutes**. Other providers → `404 UNKNOWN_PROVIDER`.
 
-### 15.3 `GET /api/study/chapters/:chapterId/topics` — Public
-```json
-{ "success": true, "topics": [ { "id": "top-1", "slug": "01-networking-foundations-and-switching", "name": "Networking Foundations and Switching", "order": 1 } ] }
-```
+### 17.2 `GET /api/social/:provider/callback` (Public)
+Query: `code`, `state` (and GitHub's `error`). Always responds with a **302 redirect** to the frontend:
+- success: `<frontend>/?linked=github`
+- failure: `<frontend>/?link_error=<CODE>` with `CANCELLED` (missing code/state or user denied), `EXPIRED` (bad/expired state), `UNKNOWN_PROVIDER`, `CONFIGURATION` (GitHub client id/secret missing), `AUTH_FAILED`, `ALREADY_LINKED` (GitHub account linked to another user), `SERVER_ERROR`.
 
-### 15.4 `GET /api/study/topics/:topicSlug` — Public
-Markdown article plus practice MCQs. `correctIndex` and `explanation` are hidden until submission.
-```json
-{
-  "success": true,
-  "topic": {
-    "id": "st-1", "slug": "01-networking-foundations-and-switching", "name": "Networking Foundations and Switching", "order": 1,
-    "content": "# Networking Foundations and Switching\n\nComputer networks interconnect computing nodes...",
-    "isPublished": true,
-    "chapter": { "id": "chap-1", "slug": "01-networking-fundamentals", "name": "Networking Foundations & Switching", "subject": { "slug": "cn", "name": "Computer Networks" } },
-    "mcqs": [
-      { "id": "mcq-1", "question": "Which layer in the OSI model is responsible for end-to-end reliability and flow control?", "options": ["Network Layer", "Transport Layer", "Data Link Layer", "Session Layer"], "difficulty": "Easy", "order": 1 }
-    ]
-  }
-}
-```
+`<frontend>` is the origin of query `redirect_uri` if it is in the allow-list (`FRONTEND_URL` entries + `http://localhost:5173`, `http://127.0.0.1:5173`), else the first `FRONTEND_URL` entry. Paths are dropped, only the origin is used.
 
-### 15.5 `POST /api/study/topics/:topicSlug/submit` — Protected
-Grades answers, returns correct answers and explanations, and saves quiz performance.
-- **Body**: `{ "answers": [ { "mcqId": "mcq-1", "selectedOption": 1 } ] }`
-- **`200 OK`**:
-```json
-{
-  "success": true, "totalQuestions": 1, "score": 1, "percentage": 100,
-  "results": [
-    { "mcqId": "mcq-1", "correct": true, "userAnswer": 1, "correctIndex": 1, "explanation": "The Transport Layer (Layer 4) provides transparent transfer of data between end users, providing reliable data transfer services including flow and error control." }
-  ]
-}
-```
+### 17.3 `DELETE /api/social/:provider` (Protected)
+`{ "success": true, "count": { "count": 1 } }`. `count` is a nested object; `0` when nothing was linked. No `404`.
 
 ---
 
-## 16. Social & GitHub OAuth Linking (`/api/social`)
+## 18. Gamification: Points, Rating, Tiers, Streaks
 
-### 16.1 `GET /api/social/:provider/link-url` — Protected
-Returns a GitHub OAuth URL with HMAC-SHA256-signed `state` (contains userId and redirect). `:provider` = `github`. Optional query `redirectUri`.
-```json
-{ "success": true, "url": "https://github.com/login/oauth/authorize?client_id=...&scope=read:user%20user:email&state=..." }
-```
-
-### 16.2 `GET /api/social/:provider/callback` — Public
-Query: `code`, `state`. Exchanges the code for a token, fetches the profile, attaches the account, then redirects to `FRONTEND_URL` with short success/error codes (e.g. `CANCELLED`, `EXPIRED`, `UNKNOWN_PROVIDER`). Open-redirect defenses are enforced. Already-linked-elsewhere → `SOCIAL_ALREADY_LINKED`.
-
-### 16.3 `DELETE /api/social/:provider` — Protected
-`{ "success": true, "message": "GitHub account unlinked successfully." }`
-
----
-
-## 17. Gamification: Scoring, Streaks & Tiers
-
-### 17.1 Problem-Solved Reward Matrix
-On an accepted submission passing 100% of testcases:
-
-| Difficulty | Points | Score units (×10) | Coins |
-| :--- | :--- | :--- | :--- |
+### 18.1 Points (first accepted solve of each problem)
+| Difficulty | Points | Score units (`User.score`) | Coins |
+|---|---|---|---|
 | Easy | 10 | +100 | 0 |
 | Medium | 25 | +250 | 0 |
 | Hard | 50 | +500 | 0 |
 
-- Normal problem solves award **no coins**. Only today's Daily Problem awards **+2 coins** (via `coinService` / `dailyProblemService`), once per user per IST day. The daily login awards **+1 coin**.
-- **Idempotency**: points/score are awarded **once per problem per user** (tracked in `user_problem_progress`). Re-submitting a solved problem returns `awarded: false`, `points: 0`, `coinsEarned: 0`, but the daily streak is still refreshed if it is the first solve of the day.
+"Accepted" = all testcases passed. Awarded once per user per problem (`UserProblemProgress`). Re-solves return `awarded: false, points: 0`. `stats.score = floor(User.score / 10)`.
 
-### 17.2 Streak Mechanics (IST)
-1. **Day boundary**: IST date `YYYY-MM-DD` (`Asia/Kolkata`).
-2. **First solve of the day**:
-   - `lastStreakDate` = yesterday → `streak += 1`
-   - `lastStreakDate` = today → unchanged
-   - gap ≥ 2 days → `streak = 1`
-3. `longestStreak = max(longestStreak, streak)`.
+### 18.2 Rating
+- **Onboarding** sets the starting rating (§9.1).
+- **Each first accepted solve** applies an Elo update: problem rating Easy 800 / Medium 1200 / Hard 1600; `expected = 1 / (1 + 10^((problemRating − rating) / 400))`; `K = 60` for the first 10 solved problems, then 32; `rating = round(rating + K × (1 − expected))` (min 0). The stored `tier` is updated at the same time.
 
-### 17.3 Rating Bands & Tiers
+### 18.3 Tiers (from `src/utils/userHeaderStats.js`)
+Six 200-point bands starting at 700, each split into three divisions of ~66.7 points:
 
-| Rating | Tier | Divisions |
-| :--- | :--- | :--- |
-| 700–899 | **Pulse** | I: 700–766 · II: 767–833 · III: 834–899 |
-| 900–1099 | **Prism** | I: 900–966 · II: 967–1033 · III: 1034–1099 |
-| 1100–1299 | **Aurora** | I: 1100–1166 · II: 1167–1233 · III: 1234–1299 |
-| 1300–1499 | **Eclipse** | I: 1300–1366 · II: 1367–1433 · III: 1434–1499 |
-| 1500+ | **Zenith** | I: 1500–1599 · II: 1600+ |
-
-Examples: rating 800 → **Pulse II** (default for new users); 850 → Pulse III; 1200 → Aurora II; 1690 → Zenith II.
-
----
-
-## 18. Rate Limits, Quotas & Security
-
-### 18.1 Rate Limits
-| Scope | Limit |
-| :--- | :--- |
-| `/api/auth/register`, `/api/auth/login` | 30 requests / 15 min / IP |
-| `/api/onboarding` | 20 requests / min / user |
-| Sample runs (`/api/execution/runs`) | 10 / min / user |
-| Submissions (`/api/execution/submissions`) | 6 / min / user |
-| `/api/execution/analyze-complexity` | 10 / min |
-| In-flight executions | max 2 concurrent per user |
-
-Exceeding the in-flight cap returns `429` with message `"Another execution is already running. Please wait."` (code: see Appendix B-1).
-
-### 18.2 Security Headers & Limits
-- `Content-Security-Policy` (scripts, styles, fonts, frame ancestors), `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`. CORS uses an origin allow-list.
-- **Code size**: max 64 KB → `413 CODE_TOO_LARGE`. Code containing `main()` → `400 FUNCTION_ONLY_REQUIRED`.
-
----
-
-## 19. PostgreSQL / Neon Database Architecture
-
-```
-Incoming API request
-        |
-        v
-Auth middleware (JWT validation)
-        |
-        v
-  PrismaClient (src/config/db.js)
-   ├── neon.tech URL -> @prisma/adapter-neon
-   └── standard PG   -> @prisma/adapter-pg
-        |
-        v
-PostgreSQL / Neon Database
- (Problems, Examples, Testcases, CodeTemplates, Users, Submissions, Study)
-```
-
-All API endpoints and seeding scripts (`scripts/upload-problem.js`, `scripts/reset-and-upload.js`, `scripts/bulk-push.js`, `scripts/seedProblems.js`) read and write directly against PostgreSQL / Neon via Prisma. If `DATABASE_URL` is missing or the database is unreachable, requests fail cleanly with `503 DATABASE_UNAVAILABLE`.
-
----
-
-## 20. Automated Test Suite
-
-38 test suites run with the Node native test runner (`node --test`).
-```bash
-npm test                  # all suites
-npm run test:unit         # utilities, algorithms, calculators
-npm run test:integration  # HTTP + business logic
-npm run test:coverage     # experimental coverage
-```
-
-| Suite | Type | Verifies |
-|---|---|---|
-| `authLifecycle` | Integration | Register, password limits (8–72), duplicate 409, login, refresh, logout revocation |
-| `userManagement` | Integration | Profile, academic info, overview, activity, problem list with status |
-| `topicsCatalog` | Integration | Topics, categories, counts, beginner preset |
-| `problemEndpoints` | Integration | Listing, filters, templates, problem-scoped run/submit |
-| `executionVerdicts` | Integration | Multi-tier judging, short-circuiting, all verdicts, testcase privacy |
-| `executionBatch` | Integration | 20-case batch chunking, runner headers, large sets |
-| `executionLanguage` | Unit | Languages, Judge0 IDs, normalization |
-| `executionOptimization` | Integration | Submission cache, polling, non-owner 404 |
-| `complexityAnalyzer` | Unit | 19 AST regression tests |
-| `automatedDailyProblem` | Integration | IST rotation, streak and history |
-| `dailyLoginReward` | Integration | IST day boundary +1 login coin, duplicate suppression |
-| `dailyProblemReward` | Integration | +2 coins, +1 streak on first ACCEPTED |
-| `coinServiceAndHistory` | Integration | Balance, audit pagination (`limit`, `offset`), fallback defaults |
-| `coinReward.integration` | Integration | Atomic coin ledger integrity |
-| `themeStoreLifecycle` | Integration | Catalogue, deduction, double-purchase rejection, activation |
-| `rankingsLeaderboard` | Integration | Score-desc order, scope filters, limit clamping |
-| `studyModule` | Integration | Subjects → topics, MCQ grading, explanations |
-| `socialAuth` | Integration | HMAC state signing, error redirects, open-redirect defense, unlink |
-| `securityAndMiddleware` | Integration | Health/ping, headers, rate limiting, in-flight limiter, error format |
-| `unitUtilities` | Unit | `ApiError`, `outputComparator`, `codeBuilder`, `userHeaderStats`, jwt, bcrypt, activity |
-| `cors` | Integration | Origin allow-list, preflight, rejection |
-| `problemSecurity` | Integration | Hidden testcase redaction, 503 fallback when runner unreachable |
-| `streakService` | Unit | IST boundaries, increment, missed-day reset |
-
-Unit tests (`npm run test:unit`) execute without a database connection; database-backed integration tests require a valid `DATABASE_URL` configured in `.env`.
-
----
-
-## Appendix A — Merge Changelog (what was fixed or removed)
-
-**Wrong or contradictory content corrected**
-1. **Default tier**: the first doc said new users (rating 800) are "Prism I", but its own tier table puts 800 in Pulse II. Fixed everywhere to **Pulse II**.
-2. **Other mismatched tiers in examples** (rating vs tier did not agree with the table): rating 1200 "Prism II" → Aurora II; rating 810 "Prism I" → Pulse II; rating 1690 "Eclipse III" → Zenith II; rating 1820 "Zenith I" → Zenith II.
-3. **Streak timezone**: the first doc said UTC in the streak section but IST in the Daily Problem section. Unified to **IST**.
-4. **Reward payload**: the second doc showed `reward: { coinsEarned: 10, pointsEarned: 15 }`, which contradicts the reward matrix (Easy = 10 points, 0 coins). Replaced with the matrix-consistent payload (`awarded`, `points`, `scoreDelta`, `coinsEarned`, `stats`).
-5. **`RunResponse` type** declared `cases` while every example used `results`. Type now uses `results`.
-6. **Onboarding `topicIds`**: the second doc used `["arrays","two-pointers"]`, which don't match seeded slugs (`dsa-arrays`, …). Uses the first doc's slugs.
-7. **Table of contents** listed 18 sections while the document had 20; rebuilt.
-8. **Truncated examples** whose `count` didn't match the list (e.g. `count: 9` with 3 items; history `totalPages: 4`) were corrected or marked as truncated.
-9. **Stale "default balance" examples**: reward example showed `coins: 130` with `coinsEarned: 0`; set to a consistent value.
-10. **Login response**: added the `rewards` object (from the second doc); the first doc omitted the daily login coin from its login example.
-
-**Duplicates merged into one place**: health/ping/root, all auth endpoints, error schema, IST rules, themes, study, social, daily problem, rankings, execution languages, complexity analysis.
-
-**Dropped as lower-quality duplicates**: generic error codes `BAD_REQUEST` / `CONFLICT` (replaced by the granular codes), and the vague "Public / Protected" access note on categories (set to Public).
-
-**Added from the second doc (not in the first)**: business rules (never-block, single coin authority), `/api/coins/balance` and `/history`, `GET /api/topics/dsa` and `/:identifier`, `/api/problems/:slug/starter|template`, `/api/problems/:slug/submit`, `PUT /api/users/me`, rankings `skip` and `scope=global`.
-
----
-
-## Appendix B — Open Items to Verify Against Code
-
-These could not be resolved from the two documents alone; the version chosen is stated.
-
-| # | Item | Doc 1 says | Doc 2 says | Chosen |
+| Rating | Tier | I | II | III |
 |---|---|---|---|---|
-| 1 | In-flight limit error code | `IN_FLIGHT_LIMIT_EXCEEDED` (error table) but `RATE_LIMITED` (limits section) | — | `RATE_LIMITED` |
-| 2 | Run result field names | `time`/`memory` (example) vs `timeMs`/`memoryKb`/`index` (type) | `timeMs`/`memoryKb`/`index` | Example shape; both optional in type |
-| 3 | Rankings response key | `data` | `rankings` (+ `rank`, `total`) | `data`; `rank`/`total` optional |
-| 4 | Study quiz submit format | Array `[{mcqId, selectedOption}]`; response `totalQuestions/percentage/results` | Map `{mcq-1: 1}`; response `total/passed/feedback` | Doc 1 |
-| 5 | Pagination param on problems | `pageSize` (default 25) | `limit` (default 20) | `pageSize` |
-| 6 | Run with custom `stdin`, no slug | not mentioned | supported | Mentioned as v2.1 behavior |
-| 7 | Streak semantics | One `streak` (any first solve of the day) and a separate "Daily Problem streak" | one `streak` | Unclear whether they are the same field; confirm |
-| 8 | Manifest `features`/`apiGroups` | no `daily-problem`/`coins` | uses those routes | Added them to `apiGroups` |
-| 9 | Rating below 700 | tier undefined | — | Confirm the floor/clamp |
-| 10 | Test count | "38 suites" but only 23 listed | — | Table lists key suites only |
+| < 900 | **Pulse** (clamps below 700) | < 767 | 767–833 | 834–899 |
+| 900–1099 | **Flux** | 900–966 | 967–1033 | 1034–1099 |
+| 1100–1299 | **Prism** | 1100–1166 | 1167–1233 | 1234–1299 |
+| 1300–1499 | **Aurora** | 1300–1366 | 1367–1433 | 1434–1499 |
+| 1500–1699 | **Eclipse** | 1500–1566 | 1567–1633 | 1634–1699 |
+| ≥ 1700 | **Zenith** | 1700–1766 | 1767–1833 | ≥ 1834 |
+
+Examples: 800 → Pulse II (new users) · 850 → Pulse III · 1200 → Prism II · 1600 → Eclipse II · 1790 → Zenith II.
+
+### 18.4 Streaks (daily problem only, IST)
+On a daily-problem reward, using `lastStreakDate` (converted to IST date):
+- never set → `streak = 1`
+- yesterday → `streak + 1`
+- today → unchanged (cannot happen twice; reward is once per day)
+- older → `streak = 1`
+
+`longestStreak = max(longestStreak, streak)`. Logging in and solving other problems never change the streak. A missed day is only reflected when the next daily problem is solved. Until then the old value is still shown.
+
+### 18.5 Coins summary
+| Event | Coins | Type |
+|---|---|---|
+| First login of an IST day | +1 | `DAILY_LOGIN` |
+| First accepted solve of today's daily problem | +2 | `DAILY_PROBLEM` |
+| Theme purchase | −price | `THEME_PURCHASE` |
+
+---
+
+## 19. Rate Limits & Security
+
+### 19.1 Limits (in-memory, per server process)
+| Scope | Limit | Key |
+|---|---|---|
+| `POST /api/auth/register`, `/login` | 30 / 15 min | IP (`AUTH_RATE_LIMITED`) |
+| Run routes (§11.2, §10.4) | 10 / min | user id, else IP |
+| Submit routes (§11.3, §10.5) | 6 / min | user id, else IP |
+| `POST /api/execution/analyze-complexity` | 10 / min (**shares the run bucket**) | user id, else IP |
+| Concurrent run/submit executions | max 2 | user id, else IP. Message `"Maximum 2 code execution jobs in flight simultaneously."` |
+| Code size (run/submit) | 64 KB | → `413 CODE_TOO_LARGE` |
+| Request body | 1 MB | JSON and urlencoded |
+
+There is **no** onboarding rate limit.
+
+### 19.2 Security
+- Headers: `Content-Security-Policy` (incl. `frame-ancestors 'self' https://*.run.app https://*.google.com …`), `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`. (No `X-Frame-Options`; framing is controlled by CSP.)
+- CORS: origins from `FRONTEND_URL` (comma-separated) plus `http://localhost:5173` / `http://127.0.0.1:5173` outside production; requests with no `Origin` are allowed; `credentials: true`.
+- `trust proxy`: `TRUST_PROXY` env (hop count / `true` / `false`), default `1` in production, so per-IP limits see the real client.
+- Tokens: every JWT carries a `jti`; logout/refresh store it in a revocation table until expiry. `protect` also rejects tokens whose user no longer exists.
+- Secrets: `JWT_SECRET` and `OAUTH_STATE_SECRET` must be ≥ 32 chars in production (otherwise an ephemeral random secret is used, which logs everyone out on restart).
+- Logging: only failed requests (status ≥ 400) are logged, without bodies.
+
+---
+
+## 20. Database & Test Suite
+
+### 20.1 Database
+Prisma → PostgreSQL/Neon. Main tables: `users`, `topics`, user topics, `social_accounts`, problems / examples / testcases / templates, `submissions`, `user_problem_progress`, `themes` / user themes, `coin_transactions`, `daily_problems`, daily problem completions, revoked tokens, and the study tables (subjects → chapters → topics → MCQs). Seed and upload scripts live in `scripts/` (`upload-problem.js`, `reset-and-upload.js`, `bulk-push.js`, `seedProblems.js`, `seedDailyProblems.js`, `upload-study.js`, …).
+
+### 20.2 Tests
+**33** test files under `tests/`, run with the Node test runner:
+```bash
+npm test                  # all files (sequential)
+npm run test:unit         # unitUtilities, complexityAnalyzer, streakService, testcaseResults, problemSolvedCount, acceptedSubmissionReward
+npm run test:integration  # the remaining 27 files
+npm run test:coverage
+```
+Files: `acceptedSubmissionReward`, `authLifecycle`, `automatedDailyProblem`, `codeboxBatchExecution`, `coinReward.integration`, `coinServiceAndHistory`, `complexityAnalyzer`, `cors`, `dailyLoginReward`, `dailyProblemReward`, `executionBatch`, `executionLanguages`, `executionOptimization`, `executionVerdicts`, `onboarding`, `problemEndpoints`, `problemSolvedCount`, `problemsCatalog`, `problemsecurity`, `profileApi`, `rankingsLeaderboard`, `securityAndMiddleware`, `socialAuth`, `streakService`, `studyModule`, `testcaseResults`, `themeCatalog`, `themeStoreLifecycle`, `themesPurchase`, `topicsCatalog`, `unitUtilities`, `userActivity`, `userManagement`. Integration tests need `DATABASE_URL`.
+
+---
+
+## 21. Known Issues Found in Review
+
+The review found these behaviours in the code. They are documented as-is above. Most are worth fixing.
+
+| # | Severity | Issue | Where |
+|---|---|---|---|
+| 1 | Medium | **Stored `tier` disagrees with computed tier.** `User.tier` defaults to `"Prism I"` (schema) and onboarding doesn't update it, while `stats.tier` for rating 800 is `"Pulse II"`. `/api/users/me`, rankings and register/login `user.tier` show the stale value until the first accepted solve. | `prisma/schema.prisma`, `onboarding.controller.js` |
+| 2 | Low | `GET /api/users/me`, `/me/overview`, `PUT`/`PATCH /me` don't select `longestStreak`. | `user.controller.js` |
+| 3 | Medium | `POST /api/problems/:slug/submit` is async by default (the sync check uses `req.path === "/submit"`, which is `/:slug/submit` here), unlike `/api/execution/submit`. Because the route is Optional-auth and polling is owner-only, **anonymous async submissions can never be read**. | `execution.controller.js` `isDirectExecuteRoute` |
+| 4 | Low | `POST /api/execute/submissions` is synchronous (substring match on `/execute/submit`), while `/api/execution/submissions` is async. | same |
+| 5 | Medium | Per-case results, `firstFailure`, `reward` and `complexity` of a submission are kept only in an in-process 30-min cache. After a restart, expiry, or on another instance, polling returns empty results and an *estimated* tier. | `execution.controller.js` |
+| 6 | Medium | `GET /api/study/topics/:topicSlug` returns each MCQ's `explanation` before the quiz is submitted, which often gives away the answer. | `study.controller.js` |
+| 7 | Low | Quiz submit says it "records user study progress" but persists nothing. String answers (`"1"`) are always marked wrong. | `study.controller.js` |
+| 8 | Low | `DELETE /api/social/:provider` returns `count: { count: n }` (raw Prisma result) and doesn't validate the provider. | `social.controller.js` |
+| 9 | Low | `GET /api/topics/dsa/categories` is Protected while its alias `/api/topics/categories` is Public, for the same data. | `topic.router.js` |
+| 10 | Low | The JSON manifest at `GET /` has an outdated `endpoints` list (e.g. marks `/api/execution/languages` Protected, omits `/run`, `/submit`, `/analyze-complexity`, coins and daily-problem routes) and `apiGroups` lacks `coins`/`daily-problem`. | `index.router.js` |
+| 11 | Low | `change-password` doesn't revoke other sessions, and returns `400` (not `401`) for a wrong old password. | `auth.controller.js` |
+| 12 | Low | Onboarding stores per-topic levels as sent (e.g. `"mid"`, `"beginner"`) instead of normalizing them to `easy/medium/hard`. The rating math does normalize them. | `onboarding.controller.js` |
+| 13 | Low | `GET /api/problems?topic=` matches the topic **name**, while most other APIs use slugs. | `problemResolver.js` |
+| 14 | Low | `GET /api/problems/:slug` returns `templatesArray` (raw DB template rows, including driver `header`/`footer` code). Not secret test data, but more than the editor needs. | `problem.controller.js` |
+| 15 | Info | Rate limiters, the in-flight counter, the submission cache and the problem cache are all in memory. Limits are per instance and reset on restart. | middlewares, controllers |
+| 16 | Info | `analyze-complexity` shares the run limiter bucket, has no 64 KB code cap (only the 1 MB body limit / 200k-char analyzer cap), and doesn't validate `language`. | `execution.router.js` |
+| 17 | Info | Activity heatmap groups by UTC day while all gamification uses IST, so solves between 00:00 and 05:30 IST land on the previous day. | `user.controller.js` |
+
+---
+
+## 22. Endpoint Index
+
+69 routes (aliases counted). **P** = Protected, **O** = Optional, **–** = Public.
+
+| Method | Path | Auth | § |
+|---|---|---|---|
+| GET | `/` | – | 5.1 |
+| GET | `/health`, `/api/health` | – | 5.2 |
+| GET | `/ping`, `/api/ping` | – | 5.3 |
+| POST | `/api/auth/register` | – | 6.1 |
+| POST | `/api/auth/login` | – | 6.2 |
+| GET | `/api/auth/me`, `/api/auth/verify` | P | 6.3 |
+| POST | `/api/auth/refresh` | P | 6.4 |
+| POST | `/api/auth/change-password` | P | 6.5 |
+| POST | `/api/auth/logout` | P | 6.6 |
+| GET | `/api/users/me`, `/api/users` | P | 7.1 |
+| GET | `/api/users/me/overview` | P | 7.2 |
+| GET | `/api/users/me/activity` | P | 7.3 |
+| PUT | `/api/users/me`, `/api/users` | P | 7.4 |
+| PATCH | `/api/users/me` | P | 7.5 |
+| PATCH | `/api/users/me/academic`, `/api/users/academic` | P | 7.6 |
+| PATCH | `/api/users/me/language`, `/api/users/language` | P | 7.7 |
+| GET | `/api/users/all` | P | 7.8 |
+| GET | `/api/topics` | – | 8.1 |
+| GET | `/api/topics/dsa` | – | 8.2 |
+| GET | `/api/topics/categories` | – | 8.3 |
+| GET | `/api/topics/dsa/categories` | P | 8.3 |
+| GET | `/api/topics/dsa/:slug/problems` | – | 8.4 |
+| GET | `/api/topics/:identifier` | P | 8.5 |
+| POST | `/api/onboarding` | P | 9.1 |
+| PUT | `/api/onboarding/levels` | P | 9.1 |
+| GET | `/api/onboarding/status` | P | 9.2 |
+| PATCH | `/api/onboarding/language` | P | 9.3 |
+| GET | `/api/problems` | O | 10.1 |
+| GET | `/api/problems/:slug` | – | 10.2 |
+| GET | `/api/problems/:slug/starter`, `/template` | – | 10.3 |
+| POST | `/api/problems/:slug/run` | O | 10.4 |
+| POST | `/api/problems/:slug/submit` | O | 10.5 |
+| GET | `/api/execution/languages` (+ `/api/execute/…`) | – | 11.1 |
+| POST | `/api/execution/run`, `/runs` (+ `/api/execute/…`) | P | 11.2 |
+| POST | `/api/execution/submit`, `/submissions` (+ `/api/execute/…`) | P | 11.3 |
+| GET | `/api/execution/submissions/:id` (+ `/api/execute/…`) | P | 11.5 |
+| POST | `/api/execution/analyze-complexity` (+ `/api/execute/…`) | O | 11.7 |
+| GET | `/api/daily-problem`, `/api/coins/daily-problem` | O | 12.2 |
+| GET | `/api/daily-problem/history`, `/api/coins/daily-problem/history` | O | 12.3 |
+| GET | `/api/coins/balance` | P | 13.1 |
+| GET | `/api/coins/history` | P | 13.2 |
+| GET | `/api/themes` | P | 14.1 |
+| GET | `/api/themes/me` | P | 14.2 |
+| POST | `/api/themes/:slug/buy` | P | 14.3 |
+| PUT | `/api/themes/apply` | P | 14.4 |
+| GET | `/api/rankings` | – | 15 |
+| GET | `/api/study/subjects` | – | 16.1 |
+| GET | `/api/study/subjects/:subjectSlug`, `…/chapters` | – | 16.2 |
+| GET | `/api/study/chapters/:chapterId/topics` | – | 16.3 |
+| GET | `/api/study/topics/:topicSlug` | – | 16.4 |
+| POST | `/api/study/topics/:topicSlug/submit` | P | 16.5 |
+| GET | `/api/social/:provider/link-url` | P | 17.1 |
+| GET | `/api/social/:provider/callback` | – | 17.2 |
+| DELETE | `/api/social/:provider` | P | 17.3 |
+
+The developer console (`public/index.html`, "All APIs Console") lists the same 69 routes with ready-to-send sample requests.
+
+---
+
+## Appendix A — Changes from v2.1
+
+Corrections made after checking the code (v2.1 was wrong on these):
+
+1. **Tier table**: there are six tiers including **Flux** (900–1099); bands are 200 wide up to Zenith at 1700+. 1200 is **Prism II** (was "Aurora II").
+2. **Streak**: advances only through the daily problem, not on any first solve of the day.
+3. **change-password** body is `oldPassword`/`newPassword`; wrong old password is `400`; success message is `"Password updated successfully."`.
+4. **register/login** responses have no `message`, include `stats`, and return the full user row; login `rewards` also has `streak`/`longestStreak`.
+5. **refresh** also returns `user` and `stats`, and revokes the old token. **logout** message is `"Logged out successfully."`.
+6. **GET /api/problems** has no pagination (`page`/`pageSize`/`total` don't exist); `status` is `solved|todo`; item fields updated (`topic`, `topicSlug`, `acceptanceRate`, `points`, `dsaTopic`, `createdAt`).
+7. **Problem-scoped run/submit** are Optional-auth, and problem-scoped submit is async by default.
+8. **Run result** fields are `timeMs`/`memoryKb` (+ `index`, `cpuTimeMs`, `wallTimeMs`, `inputBytes`), not `time`/`memory`; custom `stdin` runs are supported.
+9. **Submit** responses include `dailyProblemReward`; sync responses have no `createdAt`; `/api/execution/submit` is sync. Polling shows `PROCESSING`, not `QUEUED`.
+10. **analyze-complexity** body key is `slug`/`problemSlug` and the response is the full analyzer report.
+11. **GET /api/topics** has no `dsaTopics`/`coreTopics`; `/api/topics/dsa/categories` is Protected.
+12. **Daily problem** `reward` has no `streak` field; history `id` is a cuid.
+13. **Coins history** returns `{ transactions }`, limit capped at 50.
+14. **Themes**: real catalogue and prices (Orbit is 450, not 50); `/themes/me` has no `stats`; buying also applies the theme.
+15. **Rankings**: no `skip`; scope filters need the matching value.
+16. **Study**: responses are bare arrays/objects; quiz `answers` is a map and the response is `{ score, total, result[{ isCorrect, … }] }`; explanations are visible before submission.
+17. **Social**: `link-url` returns bare `{ url }`; state is a 10-min JWT; no `redirectUri` query; callback error codes listed; unlink returns `count`.
+18. **Errors**: added `MISSING_CREDENTIALS`, `MISSING_FIELDS`, `INVALID_TOKEN`, `INVALID_STATUS`, `AUTH_RATE_LIMITED`, `UNKNOWN_PROVIDER`, `EXECUTION_AUTH_FAILED`, `NO_ELIGIBLE_PROBLEMS`, `DAILY_PROBLEM_NOT_FOUND`, `CONFLICT`; removed `SOCIAL_ALREADY_LINKED` (it's a redirect code `ALREADY_LINKED`).
+19. **Security**: no `X-Frame-Options` header; no onboarding rate limit; in-flight limit is per user (IP only when anonymous); analyze shares the run bucket.
+20. **Tests**: 33 files (not 38).
+21. Removed v2.1's Appendix B. Every open item it listed is now settled against the code.

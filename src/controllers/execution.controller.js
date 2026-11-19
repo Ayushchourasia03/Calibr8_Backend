@@ -7,7 +7,10 @@ import {
   normalizeLanguage,
   SUPPORTED_LANGUAGES,
 } from "../utils/codeBuilder.js";
-import { resolveProblem } from "../utils/problemResolver.js";
+import {
+  invalidateProblemCache,
+  resolveProblem,
+} from "../utils/problemResolver.js";
 import { ApiError } from "../utils/ApiError.js";
 import { syncProblemSolvedCount } from "../utils/problemSolvedCount.js";
 import { applyAcceptedSubmissionReward } from "../utils/acceptedSubmissionReward.js";
@@ -15,7 +18,40 @@ import { publicTestResults } from "../utils/testcaseResults.js";
 import { analyzeComplexity } from "../services/complexityAnalyzer.service.js";
 import { grantDailyProblemReward } from "../services/coinService.js";
 
-const submissionCache = new Map();
+// Holds per-testcase results/complexity that are not persisted, so polling
+// clients can read them. Bounded by TTL and size so it cannot grow forever.
+const SUBMISSION_CACHE_TTL_MS = 30 * 60 * 1000;
+const SUBMISSION_CACHE_MAX_ENTRIES = 2000;
+const submissionCacheEntries = new Map(); // id -> { value, expiresAt }
+const submissionCache = {
+  get(id) {
+    const entry = submissionCacheEntries.get(id);
+    if (!entry) return undefined;
+    if (entry.expiresAt <= Date.now()) {
+      submissionCacheEntries.delete(id);
+      return undefined;
+    }
+    return entry.value;
+  },
+  set(id, value) {
+    submissionCacheEntries.delete(id);
+    if (submissionCacheEntries.size >= SUBMISSION_CACHE_MAX_ENTRIES) {
+      // Map preserves insertion order: evict the oldest entry.
+      submissionCacheEntries.delete(submissionCacheEntries.keys().next().value);
+    }
+    submissionCacheEntries.set(id, {
+      value,
+      expiresAt: Date.now() + SUBMISSION_CACHE_TTL_MS,
+    });
+  },
+};
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, entry] of submissionCacheEntries) {
+    if (entry.expiresAt <= now) submissionCacheEntries.delete(id);
+  }
+}, 5 * 60 * 1000).unref?.();
+
 const MAX_CASES_PER_BATCH = 20;
 const BATCH_POLL_INITIAL_INTERVAL_MS = 250;
 const BATCH_POLL_MAX_INTERVAL_MS = 800;
@@ -353,11 +389,15 @@ async function executeCodeboxBatchOnce({
 
     if (terminalStatuses.has(normalizedStatus)) break;
     if (Date.now() >= deadline) {
-      throw new ApiError(
+      const timeoutErr = new ApiError(
         503,
         "Code execution service timed out.",
         "EXECUTION_UNAVAILABLE",
       );
+      // The batch API exists but is slow: retrying on the legacy path would
+      // just double the user's wait, so callers must not fall back.
+      timeoutErr.isBatchTimeout = true;
+      throw timeoutErr;
     }
 
     await new Promise((resolve) => setTimeout(resolve, currentInterval));
@@ -493,7 +533,11 @@ export async function executeCodeBatch({
         memoryLimit,
       });
     } catch (err) {
-      if (err instanceof ApiError && err.code === "EXECUTION_UNAVAILABLE") {
+      if (
+        err instanceof ApiError &&
+        err.code === "EXECUTION_UNAVAILABLE" &&
+        !err.isBatchTimeout
+      ) {
         // Fall back to the legacy codepath if the batch API is not available.
       } else {
         throw err;
@@ -507,15 +551,35 @@ export async function executeCodeBatch({
   const languageId = LANGUAGE_IDS[language] || 54;
   const cpuTimeLimit = Math.max(1, Math.ceil(timeLimit / 1000));
   const headers = { "Content-Type": "application/json" };
-  const results = [];
 
-  // Slices testcases into batches of at most MAX_CASES_PER_BATCH (20)
+  // Slices testcases into chunks of at most MAX_CASES_PER_BATCH (20).
+  const chunks = [];
   for (
     let offset = 0;
     offset < testcases.length;
     offset += MAX_CASES_PER_BATCH
   ) {
-    const cases = testcases.slice(offset, offset + MAX_CASES_PER_BATCH);
+    chunks.push(testcases.slice(offset, offset + MAX_CASES_PER_BATCH));
+  }
+
+  // Run up to MAX_CONCURRENT_BATCHES chunks at once instead of strictly one
+  // after another; results keep their original order.
+  const chunkResults = new Array(chunks.length);
+  let nextChunk = 0;
+  const worker = async () => {
+    while (nextChunk < chunks.length) {
+      const chunkIndex = nextChunk++;
+      chunkResults[chunkIndex] = await runLegacyChunk(chunks[chunkIndex]);
+    }
+  };
+  const workerCount = Math.max(
+    1,
+    Math.min(MAX_CONCURRENT_BATCHES, chunks.length),
+  );
+  await Promise.all(Array.from({ length: workerCount }, worker));
+  return chunkResults.flat();
+
+  async function runLegacyChunk(cases) {
     const created = await fetchCodeboxJson(
       new URL("/submissions/batch?base64_encoded=false", runnerUrl),
       {
@@ -603,17 +667,14 @@ export async function executeCodeBatch({
       );
     }
 
-    const batchResults = completedSubmissions.map((sub, i) => {
+    return completedSubmissions.map((sub, i) => {
       const normalized = normalizeRunnerResult(sub);
       const originalCase = cases[i];
       const stdinStr = String(originalCase?.stdin ?? "");
       normalized.inputBytes = Buffer.byteLength(stdinStr, "utf-8");
       return normalized;
     });
-    results.push(...batchResults);
   }
-
-  return results;
 }
 
 /** Builds the driver source and runs a single custom-input testcase. */
@@ -1056,6 +1117,15 @@ export const submitSolution = async (req, res, next) => {
       throw new ApiError(404, `Problem '${slug}' not found.`, "NOT_FOUND");
     }
 
+    // Reject up front rather than storing a submission that can only error out.
+    if (!problem.testcases?.length) {
+      throw new ApiError(
+        422,
+        "This problem has no testcases and cannot be accepted.",
+        "NO_TESTCASES",
+      );
+    }
+
     // Validate function-only submission and build executable source upfront
     const fullCode = buildFinalCode(problem, studentCode, normLang);
 
@@ -1222,6 +1292,7 @@ export const submitSolution = async (req, res, next) => {
         ) {
           try {
             await syncProblemSolvedCount(prisma, problem.id);
+            invalidateProblemCache(problem.id);
           } catch (syncError) {
             console.error(
               `[Problem solved count] Failed to update problem ${problem.id}:`,

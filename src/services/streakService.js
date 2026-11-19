@@ -4,18 +4,27 @@
  * Day boundary starts at 00:00 IST.
  */
 
+// Constructing Intl.DateTimeFormat is expensive; build it once and reuse.
+let istDateFormatter = null;
+function getISTDateFormatter() {
+  if (!istDateFormatter) {
+    istDateFormatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+  }
+  return istDateFormatter;
+}
+
 export function getISTDateString(date = new Date()) {
   try {
     let d = date;
     if (d === null || d === undefined || d === "") d = new Date();
     else if (typeof d === "string" || typeof d === "number") d = new Date(d);
     if (!(d instanceof Date) || isNaN(d.getTime())) d = new Date();
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Kolkata",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(d);
+    return getISTDateFormatter().format(d);
   } catch {
     // Fallback: manual offset UTC+5:30
     const now = new Date();

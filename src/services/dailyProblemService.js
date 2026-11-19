@@ -36,16 +36,9 @@ export function getMillisecondsUntilNextMidnightIST(date = new Date()) {
 export async function selectDailyProblemForDate(targetISTDate = getAuthoritativeISTDate()) {
   let eligibleProblems = [];
   try {
+    // Only ids are needed to pick; avoid loading every problem description.
     eligibleProblems = await prisma.problem.findMany({
-      select: {
-        id: true,
-        slug: true,
-        title: true,
-        difficulty: true,
-        description: true,
-        tags: true,
-        dsaTopicId: true,
-      },
+      select: { id: true },
     });
   } catch (err) {
     console.warn("[DailyProblemService] Problem query warning:", err.message);
@@ -191,24 +184,25 @@ export async function getDailyProblemWithUserStatus(
   let longestStreak = 0;
 
   if (userId) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { streak: true, longestStreak: true },
-    });
+    const [user, completion] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { streak: true, longestStreak: true },
+      }),
+      // Single source of truth: check DailyProblemCompletion table
+      prisma.dailyProblemCompletion.findUnique({
+        where: {
+          userId_dailyProblemId: {
+            userId,
+            dailyProblemId: daily.id,
+          },
+        },
+      }),
+    ]);
     if (user) {
       currentStreak = user.streak || 0;
       longestStreak = user.longestStreak || 0;
     }
-
-    // Single source of truth: check DailyProblemCompletion table
-    const completion = await prisma.dailyProblemCompletion.findUnique({
-      where: {
-        userId_dailyProblemId: {
-          userId,
-          dailyProblemId: daily.id,
-        },
-      },
-    });
 
     if (completion) {
       completed = true;
@@ -272,8 +266,9 @@ export async function getDailyProblemHistory({
   const safeLimit = Math.min(100, Math.max(1, Number(limit) || 30));
   const skip = (safePage - 1) * safeLimit;
 
-  const total = await prisma.dailyProblem.count();
-  const records = await prisma.dailyProblem.findMany({
+  const [total, records] = await Promise.all([
+    prisma.dailyProblem.count(),
+    prisma.dailyProblem.findMany({
     orderBy: { istDate: "desc" },
     skip,
     take: safeLimit,
@@ -289,7 +284,8 @@ export async function getDailyProblemHistory({
         },
       },
     },
-  });
+    }),
+  ]);
 
   let userCompletionsSet = new Set();
   if (userId && records.length > 0) {
@@ -351,7 +347,7 @@ export async function completeDailyProblemSubmission({
 
   let todayDaily = await prisma.dailyProblem.findUnique({
     where: { istDate: targetISTDate },
-    include: { problem: true },
+    include: { problem: { select: { id: true, slug: true } } },
   });
   if (!todayDaily && targetISTDate === getAuthoritativeISTDate()) {
     todayDaily = await ensureDailyProblem(targetISTDate);
@@ -424,8 +420,6 @@ export async function completeDailyProblemSubmission({
       );
       const newStreak = streakCalc.newStreak;
       const newLongestStreak = Math.max(user.longestStreak || 0, newStreak);
-      const currentCoins = Number(user.coins) || 100;
-      const newBalance = currentCoins + 2;
 
       // 4. Create DailyProblemCompletion record (composite PK [userId, dailyProblemId])
       await tx.dailyProblemCompletion.create({
@@ -436,16 +430,20 @@ export async function completeDailyProblemSubmission({
         },
       });
 
-      // 5. Update user streak, longestStreak, lastStreakDate, and coins atomically (FR-04, FR-06)
-      await tx.user.update({
+      // 5. Update user streak, longestStreak, lastStreakDate, and coins (FR-04, FR-06).
+      // Coins use an atomic increment so concurrent coin writes (login reward,
+      // theme purchase) are never overwritten by a stale read.
+      const updatedUser = await tx.user.update({
         where: { id: userId },
         data: {
-          coins: newBalance,
+          coins: { increment: 2 },
           streak: newStreak,
           longestStreak: newLongestStreak,
           lastStreakDate: new Date(),
         },
+        select: { coins: true },
       });
+      const newBalance = updatedUser.coins;
 
       // 6. Record coin transaction audit (+2 coins)
       await tx.coinTransaction.create({

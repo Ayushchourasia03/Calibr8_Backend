@@ -9,15 +9,49 @@ const __dirname = path.dirname(__filename);
 const problemsDir = path.resolve(__dirname, "../../problems");
 const pendingProblemLoads = new Map();
 
+// Resolved problems (with all testcases/templates) are read-only after load and
+// requested on every detail/run/submit call, so keep them briefly in memory.
+const PROBLEM_CACHE_TTL_MS = Number(process.env.PROBLEM_CACHE_TTL_MS ?? 60_000);
+const PROBLEM_CACHE_MAX_ENTRIES = 300;
+const problemCache = new Map(); // key -> { value, expiresAt }
+
+// Global catalog rows + acceptance stats (user-independent).
+const CATALOG_CACHE_TTL_MS = Number(process.env.CATALOG_CACHE_TTL_MS ?? 30_000);
+let catalogCache = null; // { value, expiresAt }
+let pendingCatalogLoad = null;
+
+// Bundled problem JSON files never change at runtime; read each one once.
+const bundledTopicCache = new Map();
+
 function readBundledProblemTopic(slug) {
   if (!slug) return null;
+  if (bundledTopicCache.has(slug)) return bundledTopicCache.get(slug);
+  let topic = null;
   try {
     const filePath = path.join(problemsDir, `${slug}.json`);
-    if (!fs.existsSync(filePath)) return null;
-    const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    return raw.topic || (Array.isArray(raw.tags) ? raw.tags[0] : null) || null;
+    if (fs.existsSync(filePath)) {
+      const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+      topic = raw.topic || (Array.isArray(raw.tags) ? raw.tags[0] : null) || null;
+    }
   } catch {
-    return null;
+    topic = null;
+  }
+  bundledTopicCache.set(slug, topic);
+  return topic;
+}
+
+/**
+ * Drops cached problem data so the next read hits the database.
+ * Call after mutating a problem (e.g. solvedCount sync).
+ */
+export function invalidateProblemCache(problemId = null) {
+  catalogCache = null;
+  if (!problemId) {
+    problemCache.clear();
+    return;
+  }
+  for (const [key, entry] of problemCache) {
+    if (entry.value?.id === problemId) problemCache.delete(key);
   }
 }
 
@@ -28,13 +62,30 @@ export async function resolveProblem(slugOrId) {
   if (!slugOrId) return null;
   const key = String(slugOrId).trim().toLowerCase();
 
+  if (PROBLEM_CACHE_TTL_MS > 0) {
+    const cached = problemCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    if (cached) problemCache.delete(key);
+  }
+
   const pending = pendingProblemLoads.get(key);
   if (pending) return pending;
 
   const load = resolveProblemUncached(slugOrId);
   pendingProblemLoads.set(key, load);
   try {
-    return await load;
+    const problem = await load;
+    // Only cache hits; a miss may be a problem that is about to be uploaded.
+    if (problem && PROBLEM_CACHE_TTL_MS > 0) {
+      if (problemCache.size >= PROBLEM_CACHE_MAX_ENTRIES) {
+        problemCache.delete(problemCache.keys().next().value);
+      }
+      problemCache.set(key, {
+        value: problem,
+        expiresAt: Date.now() + PROBLEM_CACHE_TTL_MS,
+      });
+    }
+    return problem;
   } finally {
     pendingProblemLoads.delete(key);
   }
@@ -130,13 +181,58 @@ export async function listAllProblems({
   status,
   userId,
 } = {}) {
-  const where = {};
+  const [catalog, solvedProblemIds] = await Promise.all([
+    loadCatalog(),
+    userId ? loadSolvedProblemIds(userId) : Promise.resolve(new Set()),
+  ]);
+
+  let problems = catalog.map((problem) => ({
+    ...problem,
+    isSolved: solvedProblemIds.has(problem.id),
+  }));
+
   if (difficulty) {
-    where.difficulty = { equals: difficulty, mode: "insensitive" };
+    const wanted = String(difficulty).trim().toLowerCase();
+    problems = problems.filter(
+      (p) => String(p.difficulty || "").toLowerCase() === wanted,
+    );
   }
 
-  let problems = await prisma.problem.findMany({
-    where,
+  return filterCatalog(problems, { search, topic, status });
+}
+
+async function loadSolvedProblemIds(userId) {
+  // Statuses are always written upper-case; an exact match lets PostgreSQL use
+  // the (userId, status) index instead of a case-insensitive scan.
+  const solved = await prisma.submission.findMany({
+    where: { userId, status: "ACCEPTED", totalCount: { gt: 0 } },
+    distinct: ["problemId"],
+    select: { problemId: true },
+  });
+  return new Set(solved.map(({ problemId }) => problemId));
+}
+
+async function loadCatalog() {
+  if (CATALOG_CACHE_TTL_MS > 0 && catalogCache && catalogCache.expiresAt > Date.now()) {
+    return catalogCache.value;
+  }
+  if (pendingCatalogLoad) return pendingCatalogLoad;
+
+  pendingCatalogLoad = loadCatalogUncached()
+    .then((value) => {
+      if (CATALOG_CACHE_TTL_MS > 0) {
+        catalogCache = { value, expiresAt: Date.now() + CATALOG_CACHE_TTL_MS };
+      }
+      return value;
+    })
+    .finally(() => {
+      pendingCatalogLoad = null;
+    });
+  return pendingCatalogLoad;
+}
+
+async function loadCatalogUncached() {
+  const problems = await prisma.problem.findMany({
     orderBy: { problemNumber: "asc" },
     select: {
       id: true,
@@ -155,29 +251,13 @@ export async function listAllProblems({
   });
 
   const submissionsByProblem = new Map();
-  let solvedProblemIds = new Set();
-  const problemIds = problems.map(({ id }) => id);
 
-  if (problemIds.length > 0) {
-    const [submissionGroups, solvedSubmissions] = await Promise.all([
-      prisma.submission.groupBy({
-        by: ["problemId", "status"],
-        where: { problemId: { in: problemIds } },
-        _count: { _all: true },
-      }),
-      userId
-        ? prisma.submission.groupBy({
-            by: ["problemId"],
-            where: {
-              userId,
-              problemId: { in: problemIds },
-              status: { equals: "ACCEPTED", mode: "insensitive" },
-              totalCount: { gt: 0 },
-            },
-            _count: { _all: true },
-          })
-        : Promise.resolve([]),
-    ]);
+  if (problems.length > 0) {
+    // All problems are included, so no IN (...) list is needed.
+    const submissionGroups = await prisma.submission.groupBy({
+      by: ["problemId", "status"],
+      _count: { _all: true },
+    });
 
     for (const group of submissionGroups) {
       const current = submissionsByProblem.get(group.problemId) || {
@@ -190,15 +270,9 @@ export async function listAllProblems({
       }
       submissionsByProblem.set(group.problemId, current);
     }
-
-    if (userId) {
-      solvedProblemIds = new Set(
-        solvedSubmissions.map(({ problemId }) => problemId),
-      );
-    }
   }
 
-  problems = problems.map((problem) => {
+  return problems.map((problem) => {
     const stats = submissionsByProblem.get(problem.id);
     const resolvedTopic =
       problem.dsaTopic?.name ||
@@ -222,7 +296,6 @@ export async function listAllProblems({
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-|-$/g, ""),
       tags,
-      isSolved: solvedProblemIds.has(problem.id),
       acceptanceRate:
         stats?.total > 0
           ? Math.round((stats.accepted / stats.total) * 1000) / 10
@@ -230,8 +303,10 @@ export async function listAllProblems({
       points: pointsForDifficulty(problem.difficulty),
     };
   });
+}
 
-  if (search && search.trim()) {
+function filterCatalog(problems, { search, topic, status }) {
+  if (typeof search === "string" && search.trim()) {
     const q = search.trim().toLowerCase();
     problems = problems.filter(
       (p) =>

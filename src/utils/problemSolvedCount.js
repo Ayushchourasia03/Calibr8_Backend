@@ -22,7 +22,36 @@ export function getSolvedUserCounts(submissions) {
   );
 }
 
+async function countSolvedUsersSql(prisma, problemId) {
+  if (typeof prisma.$queryRaw !== "function") return null;
+  try {
+    const [row] = await prisma.$queryRaw`
+      SELECT COUNT(DISTINCT "userId")::int AS count
+      FROM "submissions"
+      WHERE "problemId" = ${problemId}
+        AND UPPER("status") = 'ACCEPTED'
+        AND "userId" IS NOT NULL
+        AND "totalCount" > 0
+        AND "passedCount" = "totalCount"
+    `;
+    return Number(row?.count) || 0;
+  } catch {
+    return null;
+  }
+}
+
 export async function syncProblemSolvedCount(prisma, problemId) {
+  // Fast path: aggregate in PostgreSQL instead of loading every accepted
+  // submission for the problem into memory on each accepted submit.
+  const sqlCount = await countSolvedUsersSql(prisma, problemId);
+  if (sqlCount !== null) {
+    await prisma.problem.update({
+      where: { id: problemId },
+      data: { solvedCount: sqlCount },
+    });
+    return sqlCount;
+  }
+
   const submissions = await prisma.submission.findMany({
     where: {
       problemId,

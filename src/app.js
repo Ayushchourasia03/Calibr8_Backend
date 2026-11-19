@@ -12,6 +12,19 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
+// Behind a reverse proxy / load balancer (Cloud Run, Render, Nginx...) req.ip
+// is the proxy's address unless we trust X-Forwarded-For. Without this every
+// client shares one IP-based rate-limit bucket. TRUST_PROXY accepts a hop
+// count, "true"/"false", or an Express trust-proxy string.
+function resolveTrustProxy() {
+  const raw = process.env.TRUST_PROXY?.trim();
+  if (!raw) return process.env.NODE_ENV === "production" ? 1 : false;
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  return /^\d+$/.test(raw) ? Number(raw) : raw;
+}
+app.set("trust proxy", resolveTrustProxy());
+
 // 1. Security headers
 app.use((req, res, next) => {
   res.setHeader(

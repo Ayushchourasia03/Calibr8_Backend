@@ -20,21 +20,20 @@ export const getAllThemes = async (req, res, next) => {
   try {
     await ensureThemeCatalog();
 
-    const themes = await prisma.theme.findMany({ 
-      orderBy: [{ price: "asc" }] 
-    });
-    
-    const owned = await prisma.userTheme.findMany({
-      where: { userId: req.user.id },
-    });
-
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      include: { activeTheme: true },
-    });
+    const [themes, owned, user] = await Promise.all([
+      prisma.theme.findMany({ orderBy: [{ price: "asc" }] }),
+      prisma.userTheme.findMany({
+        where: { userId: req.user.id },
+        select: { themeId: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { coins: true, activeThemeId: true },
+      }),
+    ]);
 
     const ownedSet = new Set(owned.map((o) => o.themeId));
-    const activeId = user?.activeTheme?.id || null;
+    const activeId = user?.activeThemeId || null;
 
     res.json({
       success: true,

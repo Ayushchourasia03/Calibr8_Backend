@@ -108,31 +108,34 @@ export const onboard = async (req, res, next) => {
       ]),
     );
 
-    // Calculate rating and difficulty
-    let rating = 800;
-    let normalizedDifficulty = "easy";
-
-    if (levelByTopicId.size > 0) {
-      let totalScore = 0;
-      for (const [, level] of levelByTopicId.entries()) {
-        const norm = difficultyNormalize[String(level).toLowerCase()] || "easy";
-        totalScore += ratingMap[norm] || 800;
-      }
-      rating = Math.round(totalScore / levelByTopicId.size);
-      if (rating >= 1400) normalizedDifficulty = "hard";
-      else if (rating >= 1000) normalizedDifficulty = "medium";
-      else normalizedDifficulty = "easy";
-    } else {
-      const rawDifficulty = (difficulty || "easy").toLowerCase();
-      normalizedDifficulty = difficultyNormalize[rawDifficulty];
-      if (!normalizedDifficulty) {
-        throw new ApiError(
-          400,
-          "difficulty must be one of: easy (beginner), medium (mid), hard (advanced).",
-        );
-      }
-      rating = ratingMap[normalizedDifficulty] || 800;
+    // Topics without an explicit level inherit the request-level difficulty.
+    // (Previously they were counted as "easy", so { difficulty: "hard",
+    // topicIds: [...] } silently produced an 800 rating.)
+    const baseDifficulty =
+      difficultyNormalize[String(difficulty || "easy").toLowerCase()];
+    if (!baseDifficulty) {
+      throw new ApiError(
+        400,
+        "difficulty must be one of: easy (beginner), medium (mid), hard (advanced).",
+      );
     }
+    for (const topicId of resolvedTopicIds) {
+      if (!levelByTopicId.get(topicId)) {
+        levelByTopicId.set(topicId, baseDifficulty);
+      }
+    }
+
+    // Calculate rating (average of per-topic levels) and overall difficulty
+    let totalScore = 0;
+    for (const level of levelByTopicId.values()) {
+      const norm = difficultyNormalize[String(level).toLowerCase()] || "easy";
+      totalScore += ratingMap[norm] || 800;
+    }
+    const rating = Math.round(totalScore / levelByTopicId.size);
+    let normalizedDifficulty;
+    if (rating >= 1400) normalizedDifficulty = "hard";
+    else if (rating >= 1000) normalizedDifficulty = "medium";
+    else normalizedDifficulty = "easy";
 
     // Persist changes in a single database transaction
     const updatedUser = await prisma.$transaction(async (tx) => {

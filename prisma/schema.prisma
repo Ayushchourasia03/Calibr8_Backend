@@ -49,6 +49,7 @@ model User {
   @@index([batch, score])
   @@index([state, score])
   @@index([country, score])
+  @@index([score])
   @@map("users")
 }
 
@@ -273,6 +274,7 @@ model StudyTopic {
   chapter     StudyChapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
 
   @@unique([chapterId, slug])
+  @@index([slug])
 }
 
 model StudyMCQ {
@@ -301,6 +303,16 @@ model CoinTransaction {
   @@index([userId, createdAt])
   @@index([userId, type, istDate])
   @@map("coin_transactions")
+}
+
+model RevokedToken {
+  jti       String   @id
+  userId    String?  @map("userId")
+  expiresAt DateTime @map("expiresAt")
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+  @@map("revoked_tokens")
 }
 
 model DailyProblem {

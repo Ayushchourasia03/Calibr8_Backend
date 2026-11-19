@@ -61,6 +61,18 @@ const baseUrl = `http://127.0.0.1:${server.address().port}/api`;
 const token = signToken({ id: "user-exec-1", userId: "user-exec-1", email: "runner@calibr8.test" });
 
 try {
+  // Auth requires the token's user to exist (deleted/unknown users get 401).
+  await prisma.user.upsert({
+    where: { id: "user-exec-1" },
+    update: {},
+    create: {
+      id: "user-exec-1",
+      email: "runner@calibr8.test",
+      passwordHash: "test-only-not-a-real-hash",
+      name: "Execution Verdicts Test",
+    },
+  });
+
   console.log("=== Running Execution Verdicts & Multi-Tier Test Suite ===");
 
   // 1. GET /api/execution/languages

@@ -103,6 +103,21 @@ async function runOptimizationTests() {
   const userToken = signToken(testUser);
   const otherUserToken = signToken(otherUser);
 
+  // Auth requires the token's user to exist (deleted/unknown users get 401).
+  for (const u of [testUser, otherUser]) {
+    await prisma.user.upsert({
+      where: { id: u.id },
+      update: {},
+      create: {
+        id: u.id,
+        email: u.email,
+        passwordHash: "test-only-not-a-real-hash",
+        name: "Execution Optimization Test",
+        coins: u.coins,
+      },
+    });
+  }
+
   const server = app.listen(0);
   const port = server.address().port;
   const baseUrl = `http://localhost:${port}`;

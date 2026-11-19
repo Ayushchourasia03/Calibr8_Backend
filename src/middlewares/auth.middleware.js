@@ -3,6 +3,32 @@ import { ApiError } from '../utils/ApiError.js';
 import { isTokenBlacklisted } from '../utils/tokenBlacklist.js';
 import prisma from '../config/db.js';
 
+// Lean projection loaded on every authenticated request. Handlers that need
+// relations (topics, social accounts) load them explicitly, so we avoid two
+// extra relation queries per request here.
+const AUTH_USER_SELECT = {
+  id: true,
+  email: true,
+  name: true,
+  difficulty: true,
+  rating: true,
+  score: true,
+  streak: true,
+  longestStreak: true,
+  tier: true,
+  coins: true,
+  onboarded: true,
+  preferredLanguage: true,
+  createdAt: true,
+  updatedAt: true,
+};
+
+function extractBearerToken(req) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  return authHeader.slice(7).trim() || null;
+}
+
 /**
  * Middleware to protect routes.
  * Expects: Authorization: Bearer <token>
@@ -10,13 +36,7 @@ import prisma from '../config/db.js';
  */
 export const protect = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new ApiError(401, 'No token provided. Please log in.', 'UNAUTHORIZED');
-    }
-
-    const token = authHeader.split(' ')[1];
+    const token = extractBearerToken(req);
     if (!token) {
       throw new ApiError(401, 'No token provided. Please log in.', 'UNAUTHORIZED');
     }
@@ -28,102 +48,16 @@ export const protect = async (req, res, next) => {
       throw new ApiError(401, 'Token has been revoked. Please log in again.', 'TOKEN_REVOKED');
     }
 
-    let user = null;
-    try {
-      user = await prisma.user.findUnique({
-        where: { id: decoded.id },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          difficulty: true,
-          rating: true,
-          score: true,
-          streak: true,
-          longestStreak: true,
-          tier: true,
-          coins: true,
-          onboarded: true,
-          preferredLanguage: true,
-          createdAt: true,
-          updatedAt: true,
-          socialAccounts: true,
-          topics: {
-            include: {
-              topic: true,
-            },
-          },
-        },
-      });
-    } catch (dbErr) {
-      user = null;
-    }
+    // DB errors propagate to the error handler (503) instead of being masked.
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: AUTH_USER_SELECT,
+    });
 
+    // A valid signature is not enough: the account must still exist. Never
+    // recreate a deleted account from token claims.
     if (!user) {
-      // The token is cryptographically verified by verifyToken().
-      // If user record was dropped (e.g. server restart, container reset, or migration),
-      // seamlessly restore/upsert the user record so the developer/student is never blocked.
-      try {
-        user = await prisma.user.upsert({
-          where: { id: decoded.id },
-          update: {},
-          create: {
-            id: decoded.id,
-            email: decoded.email || `${decoded.id}@calibr8.dev`,
-            passwordHash: 'jwt-restored-account',
-            name: decoded.name || 'Calibr8 Developer',
-            difficulty: 'easy',
-            rating: 800,
-            longestStreak: 0,
-            coins: 100,
-            score: 0,
-            streak: 0,
-            strictPercent: 0,
-            tier: 'Prism I',
-            onboarded: false,
-            preferredLanguage: 'cpp',
-          },
-          select: {
-            id: true,
-            email: true,
-            name: true,
-            difficulty: true,
-            rating: true,
-            score: true,
-            streak: true,
-            longestStreak: true,
-            tier: true,
-            coins: true,
-            onboarded: true,
-            preferredLanguage: true,
-            createdAt: true,
-            updatedAt: true,
-            socialAccounts: true,
-            topics: {
-              include: {
-                topic: true,
-              },
-            },
-          },
-        });
-      } catch (upsertErr) {
-        user = {
-          id: decoded.id,
-          email: decoded.email || `${decoded.id}@calibr8.dev`,
-          name: decoded.name || 'Calibr8 Developer',
-          coins: 100,
-          rating: 800,
-          score: 0,
-          streak: 0,
-          longestStreak: 0,
-          tier: 'Prism I',
-          difficulty: 'easy',
-          onboarded: false,
-          preferredLanguage: 'cpp',
-          socialAccounts: [],
-          topics: [],
-        };
-      }
+      throw new ApiError(401, 'Account no longer exists. Please log in again.', 'UNAUTHORIZED');
     }
 
     req.token = token;
@@ -133,7 +67,7 @@ export const protect = async (req, res, next) => {
     if (err.name === 'TokenExpiredError') {
       return next(new ApiError(401, 'Token expired. Please log in again.', 'TOKEN_EXPIRED'));
     }
-    if (err.name === 'JsonWebTokenError') {
+    if (err.name === 'JsonWebTokenError' || err.name === 'NotBeforeError') {
       return next(new ApiError(401, 'Invalid token. Please log in again.', 'INVALID_TOKEN'));
     }
     next(err);
@@ -146,35 +80,23 @@ export const protect = async (req, res, next) => {
  */
 export const optionalAuth = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return next();
-    }
-
-    const token = authHeader.split(' ')[1];
+    const token = extractBearerToken(req);
     if (!token) return next();
 
     const decoded = verifyToken(token);
     const revoked = await isTokenBlacklisted(token, decoded);
     if (revoked) return next();
 
-    let user = null;
-    try {
-      user = await prisma.user.findUnique({
-        where: { id: decoded.id },
-      });
-    } catch (_) {}
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: AUTH_USER_SELECT,
+    });
 
-    if (!user) {
-      user = {
-        id: decoded.id,
-        email: decoded.email || `${decoded.id}@calibr8.dev`,
-        name: decoded.name || 'Calibr8 User',
-      };
+    // Unknown users are treated as anonymous rather than trusted from claims.
+    if (user) {
+      req.token = token;
+      req.user = user;
     }
-
-    req.token = token;
-    req.user = user;
     next();
   } catch (_) {
     next();

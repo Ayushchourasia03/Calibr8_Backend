@@ -6,10 +6,12 @@ import {
   startDailyProblemScheduler,
   stopDailyProblemScheduler,
 } from "./services/dailyProblemService.js";
+import { purgeExpiredRevokedTokens } from "./utils/tokenBlacklist.js";
 
 const PORT = Number(process.env.PORT) || 3000;
 
 let server;
+let purgeTimer;
 let shuttingDown = false;
 
 // Codebox engine check
@@ -65,6 +67,10 @@ async function startServer() {
   server = app.listen(PORT, "0.0.0.0", async () => {
     console.log(`🚀 Server running at http://0.0.0.0:${PORT}`);
     startDailyProblemScheduler();
+    purgeTimer = setInterval(() => {
+      purgeExpiredRevokedTokens().catch(() => {});
+    }, 60 * 60 * 1000);
+    purgeTimer.unref?.();
     await checkCodeboxEngine();
   });
 
@@ -85,9 +91,15 @@ async function shutdown(signal) {
   console.log(`\n⚠ ${signal} received. Shutting down gracefully...`);
 
   stopDailyProblemScheduler();
+  if (purgeTimer) clearInterval(purgeTimer);
 
+  // Stop accepting connections and let in-flight requests finish (bounded)
+  // before tearing down the DB pool underneath them.
   if (server?.listening) {
-    server.close();
+    await Promise.race([
+      new Promise((resolve) => server.close(resolve)),
+      new Promise((resolve) => setTimeout(resolve, 10_000).unref()),
+    ]);
   }
 
   try {

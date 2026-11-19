@@ -93,13 +93,12 @@ export async function grantDailyLoginReward(userId) {
         };
       }
 
-      const currentCoins = safeNumber(user.coins, 100);
-      const newBalance = currentCoins + 1;
-
+      // Atomic increment: never overwrite a concurrent coin change with a stale read.
       const updatedUser = await tx.user.update({
         where: { id: userId },
-        data: { coins: newBalance },
+        data: { coins: { increment: 1 } },
       });
+      const newBalance = updatedUser.coins;
 
       await tx.coinTransaction.create({
         data: {
@@ -244,10 +243,12 @@ export async function getCoinsEarnedToday(
   istDate = getISTDateString(),
 ) {
   try {
-    const txs = await prisma.coinTransaction.findMany({
-      where: { userId, istDate },
+    // Only positive amounts count as "earned" (theme purchases are debits).
+    const result = await prisma.coinTransaction.aggregate({
+      where: { userId, istDate, amount: { gt: 0 } },
+      _sum: { amount: true },
     });
-    return txs.reduce((sum, t) => sum + (t.amount || 0), 0);
+    return result?._sum?.amount || 0;
   } catch {
     return 0;
   }

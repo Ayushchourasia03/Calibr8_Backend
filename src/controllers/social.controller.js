@@ -3,6 +3,9 @@ import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
 import { OAUTH_STATE_SECRET } from "../config/jwt.js";
 
+// Bound every outbound GitHub call so a slow upstream cannot hang the callback.
+const GITHUB_TIMEOUT_MS = 10_000;
+
 /**
  * Validates frontend redirect URL against an allow-list to prevent open redirect vulnerabilities.
  */
@@ -129,6 +132,7 @@ export const handleCallback = async (req, res, next) => {
         "https://github.com/login/oauth/access_token",
         {
           method: "POST",
+          signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
           headers: {
             Accept: "application/json",
             "Content-Type": "application/json",
@@ -153,7 +157,7 @@ export const handleCallback = async (req, res, next) => {
       };
 
       const gh = await (
-        await fetch("https://api.github.com/user", { headers })
+        await fetch("https://api.github.com/user", { headers, signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS) })
       ).json();
       if (!gh.id) {
         return res.redirect(`${safeFrontend}/?link_error=AUTH_FAILED`);
@@ -162,7 +166,7 @@ export const handleCallback = async (req, res, next) => {
       let email = gh.email;
       if (!email) {
         const emails = await (
-          await fetch("https://api.github.com/user/emails", { headers })
+          await fetch("https://api.github.com/user/emails", { headers, signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS) })
         ).json();
         email = Array.isArray(emails)
           ? emails.find((e) => e.primary && e.verified)?.email

@@ -260,8 +260,9 @@ export const updateLanguage = async (req, res, next) => {
 export const getAllProblems = async (req, res, next) => {
   try {
     const userId = req.user?.id || null;
-    const totalUsers = await prisma.user.count();
-    const problems = await prisma.problem.findMany({
+    const [totalUsers, problems] = await Promise.all([
+      prisma.user.count(),
+      prisma.problem.findMany({
       orderBy: { problemNumber: "asc" },
       select: {
         slug: true,
@@ -279,7 +280,8 @@ export const getAllProblems = async (req, res, next) => {
             }
           : false,
       },
-    });
+      }),
+    ]);
 
     const data = problems.map((p) => ({
       name: p.title,

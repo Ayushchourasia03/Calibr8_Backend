@@ -209,8 +209,31 @@ export const logout = async (req, res, next) => {
  */
 export const refreshToken = async (req, res, next) => {
   try {
-    const user = req.user;
     const oldToken = req.token;
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        difficulty: true,
+        rating: true,
+        score: true,
+        streak: true,
+        longestStreak: true,
+        tier: true,
+        coins: true,
+        onboarded: true,
+        preferredLanguage: true,
+        createdAt: true,
+        updatedAt: true,
+        socialAccounts: true,
+        topics: { include: { topic: true } },
+      },
+    });
+    if (!user) {
+      throw new ApiError(401, "Account no longer exists. Please log in again.", "UNAUTHORIZED");
+    }
 
     // Issue fresh 1-day token
     const newToken = signToken({ id: user.id, email: user.email });
@@ -238,7 +261,10 @@ export const refreshToken = async (req, res, next) => {
  */
 export const verifyAuth = async (req, res, next) => {
   try {
-    const user = await prisma.user.findUnique({
+    const todayISTDate = getISTDateString();
+    // getCoinsEarnedToday never throws, so both queries can run concurrently.
+    const [user, coinsEarnedToday] = await Promise.all([
+      prisma.user.findUnique({
       where: { id: req.user.id },
       select: {
         id: true,
@@ -264,17 +290,13 @@ export const verifyAuth = async (req, res, next) => {
           },
         },
       },
-    });
+      }),
+      getCoinsEarnedToday(req.user.id, todayISTDate),
+    ]);
 
     if (!user) {
       throw new ApiError(404, "User not found.", "NOT_FOUND");
     }
-
-    const todayISTDate = getISTDateString();
-    let coinsEarnedToday = 0;
-    try {
-      coinsEarnedToday = await getCoinsEarnedToday(user.id, todayISTDate);
-    } catch {}
 
     const enrichedUser = {
       ...user,
