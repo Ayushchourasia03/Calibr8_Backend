@@ -56,6 +56,2976 @@
       "isVisible": false,
       "input": "5 13\n-1 2 5 11 15",
       "output": "1 3"
+    },
+    {
+      "testIndex": 5,
+      "isVisible": false,
+      "input": "2 0\n0 0",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 6,
+      "isVisible": false,
+      "input": "2 0\n-3 3",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 7,
+      "isVisible": false,
+      "input": "2 -3\n-1 -2",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 8,
+      "isVisible": false,
+      "input": "2 -14\n-7 -7",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 9,
+      "isVisible": false,
+      "input": "2 3\n1 2",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 10,
+      "isVisible": false,
+      "input": "2 1000000000\n500000000 500000000",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 11,
+      "isVisible": false,
+      "input": "2 0\n1000000000 -1000000000",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 12,
+      "isVisible": false,
+      "input": "2 1000000000\n1000000000 0",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 13,
+      "isVisible": false,
+      "input": "2 -1000000000\n-1000000000 0",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 14,
+      "isVisible": false,
+      "input": "4 0\n0 4 3 0",
+      "output": "0 3"
+    },
+    {
+      "testIndex": 15,
+      "isVisible": false,
+      "input": "5 -8\n-1 -2 -3 -4 -5",
+      "output": "2 4"
+    },
+    {
+      "testIndex": 16,
+      "isVisible": false,
+      "input": "4 10\n2 5 5 11",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 17,
+      "isVisible": false,
+      "input": "4 6\n1 3 4 2",
+      "output": "2 3"
+    },
+    {
+      "testIndex": 18,
+      "isVisible": false,
+      "input": "3 10\n5 1 9",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 19,
+      "isVisible": false,
+      "input": "3 8\n4 2 6",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 20,
+      "isVisible": false,
+      "input": "4 8\n4 1 7 3",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 21,
+      "isVisible": false,
+      "input": "4 10\n1 5 7 9",
+      "output": "0 3"
+    },
+    {
+      "testIndex": 22,
+      "isVisible": false,
+      "input": "4 15\n11 4 20 30",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 23,
+      "isVisible": false,
+      "input": "6 300\n1 2 3 4 100 200",
+      "output": "4 5"
+    },
+    {
+      "testIndex": 24,
+      "isVisible": false,
+      "input": "5 10\n5 1 2 3 5",
+      "output": "0 4"
+    },
+    {
+      "testIndex": 25,
+      "isVisible": false,
+      "input": "5 14\n2 2 2 5 9",
+      "output": "3 4"
+    },
+    {
+      "testIndex": 26,
+      "isVisible": false,
+      "input": "6 3\n7 7 7 7 1 2",
+      "output": "4 5"
+    },
+    {
+      "testIndex": 27,
+      "isVisible": false,
+      "input": "4 9\n-10 7 19 15",
+      "output": "0 2"
+    },
+    {
+      "testIndex": 28,
+      "isVisible": false,
+      "input": "5 0\n-5 -3 0 2 3",
+      "output": "1 4"
+    },
+    {
+      "testIndex": 29,
+      "isVisible": false,
+      "input": "4 -14\n-8 -6 -4 -1",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 30,
+      "isVisible": false,
+      "input": "4 2\n-1000000000 -1 1000000000 3",
+      "output": "1 3"
+    },
+    {
+      "testIndex": 31,
+      "isVisible": false,
+      "input": "4 1\n1000000000 -999999999 7 -1000000000",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 32,
+      "isVisible": false,
+      "input": "10 1\n9 8 7 6 5 4 3 2 1 0",
+      "output": "8 9"
+    },
+    {
+      "testIndex": 33,
+      "isVisible": false,
+      "input": "10 17\n0 1 2 3 4 5 6 7 8 9",
+      "output": "8 9"
+    },
+    {
+      "testIndex": 34,
+      "isVisible": false,
+      "input": "10 1\n0 1 2 3 4 5 6 7 8 9",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 35,
+      "isVisible": false,
+      "input": "3 6\n3 3 1",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 36,
+      "isVisible": false,
+      "input": "3 6\n1 3 3",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 37,
+      "isVisible": false,
+      "input": "4 -4\n-2 1 -2 8",
+      "output": "0 2"
+    },
+    {
+      "testIndex": 38,
+      "isVisible": false,
+      "input": "3 0\n0 -1 1",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 39,
+      "isVisible": false,
+      "input": "3 1000000000\n123456789 876543211 5",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 40,
+      "isVisible": false,
+      "input": "3 -1000000000\n-123456789 -876543211 5",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 41,
+      "isVisible": false,
+      "input": "10 3\n4 4 4 4 4 4 4 4 1 2",
+      "output": "8 9"
+    },
+    {
+      "testIndex": 42,
+      "isVisible": false,
+      "input": "2 -7\n-6 -1",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 43,
+      "isVisible": false,
+      "input": "2 1761\n926 835",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 44,
+      "isVisible": false,
+      "input": "2 1221\n574 647",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 45,
+      "isVisible": false,
+      "input": "2 -5\n1 -6",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 46,
+      "isVisible": false,
+      "input": "2 -114015\n-99626 -14389",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 47,
+      "isVisible": false,
+      "input": "2 -1441\n-969 -472",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 48,
+      "isVisible": false,
+      "input": "2 -87\n-73 -14",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 49,
+      "isVisible": false,
+      "input": "2 -5\n4 -9",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 50,
+      "isVisible": false,
+      "input": "2 1256\n766 490",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 51,
+      "isVisible": false,
+      "input": "2 972\n91 881",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 52,
+      "isVisible": false,
+      "input": "2 102261\n62733 39528",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 53,
+      "isVisible": false,
+      "input": "2 -182950\n-99193 -83757",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 54,
+      "isVisible": false,
+      "input": "2 -1356\n-879 -477",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 55,
+      "isVisible": false,
+      "input": "2 -171248\n-96236 -75012",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 56,
+      "isVisible": false,
+      "input": "3 -180\n-92 -88 36",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 57,
+      "isVisible": false,
+      "input": "2 -143\n-87 -56",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 58,
+      "isVisible": false,
+      "input": "2 17\n7 10",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 59,
+      "isVisible": false,
+      "input": "2 40\n12 28",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 60,
+      "isVisible": false,
+      "input": "3 102\n-342 444 789",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 61,
+      "isVisible": false,
+      "input": "2 -1073\n-820 -253",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 62,
+      "isVisible": false,
+      "input": "3 -119621\n-50734 -32597 -87024",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 63,
+      "isVisible": false,
+      "input": "2 -2\n5 -7",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 64,
+      "isVisible": false,
+      "input": "3 4\n2 2 7",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 65,
+      "isVisible": false,
+      "input": "3 10\n-6 5 5",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 66,
+      "isVisible": false,
+      "input": "2 63\n76 -13",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 67,
+      "isVisible": false,
+      "input": "3 1388\n489 289 899",
+      "output": "0 2"
+    },
+    {
+      "testIndex": 68,
+      "isVisible": false,
+      "input": "3 -545249719\n-334305411 -210944308 -288395065",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 69,
+      "isVisible": false,
+      "input": "3 -351077029\n895523118 -29338975 -321738054",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 70,
+      "isVisible": false,
+      "input": "3 834545734\n-356799302 417272867 417272867",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 71,
+      "isVisible": false,
+      "input": "3 -11\n-6 -5 -7",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 72,
+      "isVisible": false,
+      "input": "3 744\n627 110 634",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 73,
+      "isVisible": false,
+      "input": "3 -828\n-861 -5 33",
+      "output": "0 2"
+    },
+    {
+      "testIndex": 74,
+      "isVisible": false,
+      "input": "3 -11\n-10 -7 -1",
+      "output": "0 2"
+    },
+    {
+      "testIndex": 75,
+      "isVisible": false,
+      "input": "3 -575705581\n-883274698 -223862518 -351843063",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 76,
+      "isVisible": false,
+      "input": "3 1\n96 -55 56",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 77,
+      "isVisible": false,
+      "input": "4 18\n0 8 10 5",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 78,
+      "isVisible": false,
+      "input": "3 -51\n-79 -44 -7",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 79,
+      "isVisible": false,
+      "input": "3 5\n0 5 3",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 80,
+      "isVisible": false,
+      "input": "4 393783237\n22452692 371330545 256076869 776646676",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 81,
+      "isVisible": false,
+      "input": "3 72\n13 59 -22",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 82,
+      "isVisible": false,
+      "input": "3 8\n1 7 5",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 83,
+      "isVisible": false,
+      "input": "4 38657603\n16904778 21752825 333330145 473748133",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 84,
+      "isVisible": false,
+      "input": "4 143\n60 95 48 32",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 85,
+      "isVisible": false,
+      "input": "3 47473\n76054 42365 5108",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 86,
+      "isVisible": false,
+      "input": "4 1916\n-458 957 924 992",
+      "output": "2 3"
+    },
+    {
+      "testIndex": 87,
+      "isVisible": false,
+      "input": "4 29045670\n-875710105 904755775 234128336 479935831",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 88,
+      "isVisible": false,
+      "input": "4 19392225\n891007590 451618216 -188470638 -432225991",
+      "output": "1 3"
+    },
+    {
+      "testIndex": 89,
+      "isVisible": false,
+      "input": "4 52\n26 26 -2 -2",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 90,
+      "isVisible": false,
+      "input": "4 114\n76 34 80 76",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 91,
+      "isVisible": false,
+      "input": "4 -879195294\n-500959662 -378235632 253989183 -857330933",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 92,
+      "isVisible": false,
+      "input": "4 -823\n-277 -424 -399 -2",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 93,
+      "isVisible": false,
+      "input": "4 -160\n-100 -100 -69 -91",
+      "output": "2 3"
+    },
+    {
+      "testIndex": 94,
+      "isVisible": false,
+      "input": "4 -75\n-32 -43 -5 -77",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 95,
+      "isVisible": false,
+      "input": "4 75124\n92998 58788 35193 16336",
+      "output": "1 3"
+    },
+    {
+      "testIndex": 96,
+      "isVisible": false,
+      "input": "4 -334431321\n313321883 -491235901 -647753204 -474962366",
+      "output": "0 2"
+    },
+    {
+      "testIndex": 97,
+      "isVisible": false,
+      "input": "4 148397247\n258260 148138987 693509055 43185328",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 98,
+      "isVisible": false,
+      "input": "5 -5\n2 1 -1 -6 -8",
+      "output": "1 3"
+    },
+    {
+      "testIndex": 99,
+      "isVisible": false,
+      "input": "4 54633\n-35666 90299 7891 -32023",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 100,
+      "isVisible": false,
+      "input": "5 12\n7 10 4 0 5",
+      "output": "0 4"
+    },
+    {
+      "testIndex": 101,
+      "isVisible": false,
+      "input": "4 313876399\n-217082906 847952673 822575307 530959305",
+      "output": "0 3"
+    },
+    {
+      "testIndex": 102,
+      "isVisible": false,
+      "input": "5 -1354\n-818 -818 -818 -526 -828",
+      "output": "3 4"
+    },
+    {
+      "testIndex": 103,
+      "isVisible": false,
+      "input": "4 -28921\n-13816 -1154 -6417 -22504",
+      "output": "2 3"
+    },
+    {
+      "testIndex": 104,
+      "isVisible": false,
+      "input": "4 -10\n-4 -5 -5 -10",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 105,
+      "isVisible": false,
+      "input": "5 66\n23 23 83 -17 -68",
+      "output": "2 3"
+    },
+    {
+      "testIndex": 106,
+      "isVisible": false,
+      "input": "5 -109898\n-7464 -45622 -54949 -54949 -70697",
+      "output": "2 3"
+    },
+    {
+      "testIndex": 107,
+      "isVisible": false,
+      "input": "5 -113\n-89 -33 -80 -89 -7",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 108,
+      "isVisible": false,
+      "input": "5 -12\n-96 -64 -73 -74 62",
+      "output": "3 4"
+    },
+    {
+      "testIndex": 109,
+      "isVisible": false,
+      "input": "5 -32210770\n738609783 129647398 608626902 -685044454 652833684",
+      "output": "3 4"
+    },
+    {
+      "testIndex": 110,
+      "isVisible": false,
+      "input": "5 819082792\n644565750 487761051 409541396 409541396 212350381",
+      "output": "2 3"
+    },
+    {
+      "testIndex": 111,
+      "isVisible": false,
+      "input": "6 -64546\n-98167 -46749 -22269 -56098 -8733 -55813",
+      "output": "4 5"
+    },
+    {
+      "testIndex": 112,
+      "isVisible": false,
+      "input": "6 2\n3 1 -1 -8 -4 2",
+      "output": "0 2"
+    },
+    {
+      "testIndex": 113,
+      "isVisible": false,
+      "input": "5 -163\n-5 -63 -65 -68 -95",
+      "output": "3 4"
+    },
+    {
+      "testIndex": 114,
+      "isVisible": false,
+      "input": "6 190\n-27 -27 98 92 51 -27",
+      "output": "2 3"
+    },
+    {
+      "testIndex": 115,
+      "isVisible": false,
+      "input": "5 1332\n369 963 -705 376 765",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 116,
+      "isVisible": false,
+      "input": "6 175540\n-71060 -98132 50129 41571 76253 99287",
+      "output": "4 5"
+    },
+    {
+      "testIndex": 117,
+      "isVisible": false,
+      "input": "6 -80411\n75204 44876 -72275 -8136 -34908 54152",
+      "output": "2 3"
+    },
+    {
+      "testIndex": 118,
+      "isVisible": false,
+      "input": "6 14\n3 8 5 6 7 5",
+      "output": "1 3"
+    },
+    {
+      "testIndex": 119,
+      "isVisible": false,
+      "input": "6 69\n91 91 -93 89 50 19",
+      "output": "4 5"
+    },
+    {
+      "testIndex": 120,
+      "isVisible": false,
+      "input": "6 1455\n-939 -299 625 587 464 991",
+      "output": "4 5"
+    },
+    {
+      "testIndex": 121,
+      "isVisible": false,
+      "input": "6 -15\n-5 -10 -1 5 -9 1",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 122,
+      "isVisible": false,
+      "input": "6 163494925\n666707264 -924561673 -891794228 244493868 -80998943 -267424609",
+      "output": "3 4"
+    },
+    {
+      "testIndex": 123,
+      "isVisible": false,
+      "input": "7 1934\n580 967 967 -689 228 -332 -136",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 124,
+      "isVisible": false,
+      "input": "7 154683\n57267 97416 -56786 34614 9777 -19147 25956",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 125,
+      "isVisible": false,
+      "input": "7 66867\n40935 83789 71858 14272 21852 51220 15647",
+      "output": "5 6"
+    },
+    {
+      "testIndex": 126,
+      "isVisible": false,
+      "input": "7 1641\n53 172 525 665 778 863 892",
+      "output": "4 5"
+    },
+    {
+      "testIndex": 127,
+      "isVisible": false,
+      "input": "7 103\n-100 89 55 48 11 11 11",
+      "output": "2 3"
+    },
+    {
+      "testIndex": 128,
+      "isVisible": false,
+      "input": "7 340\n-21543 2325 -32446 -13315 -10515 10928 10855",
+      "output": "4 6"
+    },
+    {
+      "testIndex": 129,
+      "isVisible": false,
+      "input": "6 15\n-8 -8 1 4 7 8",
+      "output": "4 5"
+    },
+    {
+      "testIndex": 130,
+      "isVisible": false,
+      "input": "7 66925\n3587 6677 92819 6315 34464 9258 57667",
+      "output": "5 6"
+    },
+    {
+      "testIndex": 131,
+      "isVisible": false,
+      "input": "6 204\n-570 774 -669 598 -51 420",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 132,
+      "isVisible": false,
+      "input": "7 -1939\n-195 -336 -715 -838 -963 -972 -976",
+      "output": "4 6"
+    },
+    {
+      "testIndex": 133,
+      "isVisible": false,
+      "input": "6 -2855\n-35208 -53558 -12698 -12698 -670 -2185",
+      "output": "4 5"
+    },
+    {
+      "testIndex": 134,
+      "isVisible": false,
+      "input": "7 7161\n-54508 61669 48361 -83072 63960 48361 48361",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 135,
+      "isVisible": false,
+      "input": "7 210\n-669 452 96 -165 879 -599 -561",
+      "output": "0 4"
+    },
+    {
+      "testIndex": 136,
+      "isVisible": false,
+      "input": "8 1566\n-506 -358 -62 69 437 503 758 808",
+      "output": "6 7"
+    },
+    {
+      "testIndex": 137,
+      "isVisible": false,
+      "input": "8 -17\n-3 -10 -10 -10 -8 -9 4 -10",
+      "output": "4 5"
+    },
+    {
+      "testIndex": 138,
+      "isVisible": false,
+      "input": "7 -75592523\n-1286565 -63136419 -74305958 -171614465 -330863983 -465450588 -813655778",
+      "output": "0 2"
+    },
+    {
+      "testIndex": 139,
+      "isVisible": false,
+      "input": "7 -166951\n-47391 -50384 -69793 -46293 -89873 79637 -97158",
+      "output": "2 6"
+    },
+    {
+      "testIndex": 140,
+      "isVisible": false,
+      "input": "8 1800\n901 356 346 18 13 899 615 18",
+      "output": "0 5"
+    },
+    {
+      "testIndex": 141,
+      "isVisible": false,
+      "input": "9 14\n10 9 7 0 2 0 10 7 1",
+      "output": "2 7"
+    },
+    {
+      "testIndex": 142,
+      "isVisible": false,
+      "input": "7 -21112\n-48132 -80156 29868 91953 81531 59656 -80768",
+      "output": "5 6"
+    },
+    {
+      "testIndex": 143,
+      "isVisible": false,
+      "input": "8 -93148\n-57190 -9772 -80636 -28793 -12819 -86964 -60671 -32477",
+      "output": "6 7"
+    },
+    {
+      "testIndex": 144,
+      "isVisible": false,
+      "input": "7 -485\n-958 -673 -587 -374 -264 -221 -209",
+      "output": "4 5"
+    },
+    {
+      "testIndex": 145,
+      "isVisible": false,
+      "input": "7 -11\n-4 3 6 -6 8 -5 6",
+      "output": "3 5"
+    },
+    {
+      "testIndex": 146,
+      "isVisible": false,
+      "input": "8 1038\n430 401 840 637 43 -93 -338 846",
+      "output": "1 3"
+    },
+    {
+      "testIndex": 147,
+      "isVisible": false,
+      "input": "8 -94423\n-88573 -55808 -87949 -87949 -28915 -38615 -87949 -76493",
+      "output": "1 5"
+    },
+    {
+      "testIndex": 148,
+      "isVisible": false,
+      "input": "9 -192\n-38 -57 -38 -57 -84 -95 -57 -48 -97",
+      "output": "5 8"
+    },
+    {
+      "testIndex": 149,
+      "isVisible": false,
+      "input": "9 831\n26 -422 -221 -253 -858 -653 498 333 -221",
+      "output": "6 7"
+    },
+    {
+      "testIndex": 150,
+      "isVisible": false,
+      "input": "8 -184028\n-536 -35221 -52169 -59340 -60677 -85322 -98706 -99827",
+      "output": "5 6"
+    },
+    {
+      "testIndex": 151,
+      "isVisible": false,
+      "input": "10 -88\n-95 -44 -44 -34 -13 -13 34 48 95 100",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 152,
+      "isVisible": false,
+      "input": "8 684546613\n347422600 659229174 999325561 723234738 729115502 729115502 723234738 337124013",
+      "output": "0 7"
+    },
+    {
+      "testIndex": 153,
+      "isVisible": false,
+      "input": "8 56707\n-56167 53370 -76032 -56167 -91036 26992 29715 -4168",
+      "output": "5 6"
+    },
+    {
+      "testIndex": 154,
+      "isVisible": false,
+      "input": "10 74\n-20 -75 -86 82 37 37 -75 -20 70 -86",
+      "output": "4 5"
+    },
+    {
+      "testIndex": 155,
+      "isVisible": false,
+      "input": "8 632320770\n97349715 590301954 393061631 144499018 -240781840 486863366 316160385 316160385",
+      "output": "6 7"
+    },
+    {
+      "testIndex": 156,
+      "isVisible": false,
+      "input": "11 -1514\n-417 -910 -412 -774 -403 -753 -142 -778 -306 -587 -927",
+      "output": "9 10"
+    },
+    {
+      "testIndex": 157,
+      "isVisible": false,
+      "input": "8 1639\n58 895 58 -43 -27 770 694 945",
+      "output": "6 7"
+    },
+    {
+      "testIndex": 158,
+      "isVisible": false,
+      "input": "10 -825106793\n582486639 -155445306 767777269 -915705831 -678539870 35180269 -146566923 -39935013 714743242 -879112995",
+      "output": "4 6"
+    },
+    {
+      "testIndex": 159,
+      "isVisible": false,
+      "input": "10 162125\n70020 98568 75664 1774 85177 92105 98883 21948 9488 29747",
+      "output": "0 5"
+    },
+    {
+      "testIndex": 160,
+      "isVisible": false,
+      "input": "11 49629\n-31682 81311 11283 28143 -29491 64859 35479 17672 12956 45654 1732",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 161,
+      "isVisible": false,
+      "input": "11 -197220\n-99121 -98099 57543 72998 -80989 36673 74229 33243 -87592 -55805 63756",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 162,
+      "isVisible": false,
+      "input": "11 -1049\n-512 -537 946 -881 -531 -938 -541 -581 57 946 680",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 163,
+      "isVisible": false,
+      "input": "12 16\n1 5 1 4 10 3 5 0 7 9 8 1",
+      "output": "8 9"
+    },
+    {
+      "testIndex": 164,
+      "isVisible": false,
+      "input": "11 -176284\n-91193 -83508 -69608 -95774 -97767 -55450 -39292 -75007 -67565 -8028 -85091",
+      "output": "0 10"
+    },
+    {
+      "testIndex": 165,
+      "isVisible": false,
+      "input": "12 -1542\n160 424 -918 250 740 -965 -149 -162 -903 740 706 -639",
+      "output": "8 11"
+    },
+    {
+      "testIndex": 166,
+      "isVisible": false,
+      "input": "10 47700\n46241 43252 1459 -2042 -15899 -41090 -41090 -41090 -95826 -98697",
+      "output": "0 2"
+    },
+    {
+      "testIndex": 167,
+      "isVisible": false,
+      "input": "9 578\n850 675 665 585 570 507 356 129 71",
+      "output": "5 8"
+    },
+    {
+      "testIndex": 168,
+      "isVisible": false,
+      "input": "12 16\n0 5 7 -10 -4 9 -4 -4 -2 1 -1 -10",
+      "output": "2 5"
+    },
+    {
+      "testIndex": 169,
+      "isVisible": false,
+      "input": "12 -2\n-5 -5 -7 -7 -3 -5 -9 -7 -1 -7 -3 -1",
+      "output": "8 11"
+    },
+    {
+      "testIndex": 170,
+      "isVisible": false,
+      "input": "10 1058\n989 783 472 69 -293 -364 -495 -538 -788 -948",
+      "output": "0 3"
+    },
+    {
+      "testIndex": 171,
+      "isVisible": false,
+      "input": "11 1707\n-444 828 -56 15 569 685 -527 -367 -449 879 -903",
+      "output": "1 9"
+    },
+    {
+      "testIndex": 172,
+      "isVisible": false,
+      "input": "12 -24\n18 -44 -44 -82 18 -97 75 30 1 40 39 -63",
+      "output": "10 11"
+    },
+    {
+      "testIndex": 173,
+      "isVisible": false,
+      "input": "11 -852\n585 329 270 14 -5 -204 -304 -363 -462 -474 -648",
+      "output": "5 10"
+    },
+    {
+      "testIndex": 174,
+      "isVisible": false,
+      "input": "11 866\n185 6 963 80 320 737 563 302 634 431 681",
+      "output": "0 10"
+    },
+    {
+      "testIndex": 175,
+      "isVisible": false,
+      "input": "13 -347890395\n685354269 788420141 685354269 688798992 -543562694 -358461743 10571348 767665385 711172387 -664453057 767665385 984127402 -278295452",
+      "output": "5 6"
+    },
+    {
+      "testIndex": 176,
+      "isVisible": false,
+      "input": "13 -11169\n-9965 -1204 -6000 -4793 -7921 1634 -111 8184 -7933 -7448 1634 -6000 -4793",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 177,
+      "isVisible": false,
+      "input": "11 -109768675\n-211288786 -194244036 283694770 -624095064 -37066196 477217377 -703358676 242789840 -675571910 -833339858 101520111",
+      "output": "0 10"
+    },
+    {
+      "testIndex": 178,
+      "isVisible": false,
+      "input": "11 -1169793\n-39389 -487089 -82957 -191387 -783723 -508634 -59659 -978406 -76054 -1979 -961687",
+      "output": "3 7"
+    },
+    {
+      "testIndex": 179,
+      "isVisible": false,
+      "input": "12 -923901190\n-846962172 -529919970 592970108 548716687 -76939018 -96705117 699225563 -31056976 -172583590 -729287714 -815731159 -343408925",
+      "output": "0 4"
+    },
+    {
+      "testIndex": 180,
+      "isVisible": false,
+      "input": "12 443799690\n-323069647 -147826513 751517845 -295542415 907631068 -458546174 -323069647 902345864 327157325 336782822 -544622796 608997307",
+      "output": "5 7"
+    },
+    {
+      "testIndex": 181,
+      "isVisible": false,
+      "input": "11 -444131\n329695 439524 -44609 -399522 613062 976749 501328 397334 501328 329695 -547386",
+      "output": "2 3"
+    },
+    {
+      "testIndex": 182,
+      "isVisible": false,
+      "input": "14 162\n35 87 -96 89 73 0 0 21 15 66 15 63 35 -62",
+      "output": "3 4"
+    },
+    {
+      "testIndex": 183,
+      "isVisible": false,
+      "input": "11 1178134\n653558 945719 -418326 15834 -422456 -418326 -864674 -462421 232415 222373 45283",
+      "output": "1 8"
+    },
+    {
+      "testIndex": 184,
+      "isVisible": false,
+      "input": "12 788402\n13328 210685 324936 338374 394446 439239 463466 463638 595197 673602 700177 860918",
+      "output": "2 6"
+    },
+    {
+      "testIndex": 185,
+      "isVisible": false,
+      "input": "14 7329\n149 149 2272 554 5916 2272 5937 258 149 6865 2272 7071 5937 3011",
+      "output": "7 11"
+    },
+    {
+      "testIndex": 186,
+      "isVisible": false,
+      "input": "14 14862\n-7520 -7063 -1633 -1633 -1633 -1633 -1633 -1633 -528 1059 7374 7488 8317 9109",
+      "output": "10 11"
+    },
+    {
+      "testIndex": 187,
+      "isVisible": false,
+      "input": "12 242687084\n371376877 490581311 961208584 371376877 78571166 879666129 59865126 651283197 270457582 234043643 121343542 121343542",
+      "output": "10 11"
+    },
+    {
+      "testIndex": 188,
+      "isVisible": false,
+      "input": "11 156\n94 91 91 91 85 71 59 52 24 13 10",
+      "output": "4 5"
+    },
+    {
+      "testIndex": 189,
+      "isVisible": false,
+      "input": "12 1153\n717 884 334 -513 386 -678 -666 988 767 -816 360 -354",
+      "output": "4 8"
+    },
+    {
+      "testIndex": 190,
+      "isVisible": false,
+      "input": "14 -13310\n7424 -9492 -71 7503 -6629 4146 2088 -291 -4620 -5706 7503 -7599 -8974 -4336",
+      "output": "12 13"
+    },
+    {
+      "testIndex": 191,
+      "isVisible": false,
+      "input": "14 122\n3 82 82 82 13 12 52 63 13 30 99 23 29 47",
+      "output": "10 11"
+    },
+    {
+      "testIndex": 192,
+      "isVisible": false,
+      "input": "12 715855996\n39430842 578894046 189460033 526395963 39430842 680104482 979195567 663170245 88342508 964251185 2563248 39430842",
+      "output": "2 3"
+    },
+    {
+      "testIndex": 193,
+      "isVisible": false,
+      "input": "12 1452279\n-572554 301557 917486 903058 337397 534793 -458412 944049 69909 47417 -930546 -46056",
+      "output": "2 5"
+    },
+    {
+      "testIndex": 194,
+      "isVisible": false,
+      "input": "14 1410\n-340 665 883 651 -464 -707 472 171 262 630 -369 -280 438 972",
+      "output": "12 13"
+    },
+    {
+      "testIndex": 195,
+      "isVisible": false,
+      "input": "13 9149\n3811 3331 -1871 -4289 -2833 -4289 1147 3418 -1871 -3008 3811 5689 3460",
+      "output": "11 12"
+    },
+    {
+      "testIndex": 196,
+      "isVisible": false,
+      "input": "13 -1880\n394 965 -342 94 -926 -954 -512 169 77 143 839 588 94",
+      "output": "4 5"
+    },
+    {
+      "testIndex": 197,
+      "isVisible": false,
+      "input": "13 79\n-68 55 98 -72 -8 72 35 98 48 87 -86 -68 -20",
+      "output": "4 9"
+    },
+    {
+      "testIndex": 198,
+      "isVisible": false,
+      "input": "15 981483504\n978407670 968447667 909598699 909598699 904022550 858102019 513041211 468442293 415314407 415314407 254480693 -2275824 -306261300 -515348902 -515348902",
+      "output": "6 7"
+    },
+    {
+      "testIndex": 199,
+      "isVisible": false,
+      "input": "13 -78\n-91 40 -91 90 -95 -57 -93 40 -91 -91 -15 -39 -39",
+      "output": "11 12"
+    },
+    {
+      "testIndex": 200,
+      "isVisible": false,
+      "input": "15 149\n99 98 87 72 61 61 61 50 46 46 45 19 11 10 -70",
+      "output": "0 7"
+    },
+    {
+      "testIndex": 201,
+      "isVisible": false,
+      "input": "13 -69\n-37 -37 -37 -37 -95 -37 83 -44 63 -25 -59 8 -59",
+      "output": "7 9"
+    },
+    {
+      "testIndex": 202,
+      "isVisible": false,
+      "input": "15 1458748\n728160 886906 686075 898091 229482 222391 640930 69434 446093 820679 716126 222372 445593 729374 729374",
+      "output": "13 14"
+    },
+    {
+      "testIndex": 203,
+      "isVisible": false,
+      "input": "13 -2505\n3555 4816 165 -1231 -5059 5165 38 -3461 956 -402 -2877 -8876 1264",
+      "output": "7 8"
+    },
+    {
+      "testIndex": 204,
+      "isVisible": false,
+      "input": "17 182\n-23 60 -25 90 89 93 -69 -25 88 45 -65 -24 -69 12 88 88 5",
+      "output": "4 5"
+    },
+    {
+      "testIndex": 205,
+      "isVisible": false,
+      "input": "15 -134\n-97 -94 -80 -73 -67 -56 -56 -56 -37 -16 -12 -7 0 59 59",
+      "output": "0 8"
+    },
+    {
+      "testIndex": 206,
+      "isVisible": false,
+      "input": "17 -9280\n-6597 -2056 9324 9260 -2319 7042 6377 2953 -2319 -9759 -6397 -4629 6377 -4117 -8532 -7710 -2683",
+      "output": "0 16"
+    },
+    {
+      "testIndex": 207,
+      "isVisible": false,
+      "input": "15 -1780268\n-643448 -863331 -156111 -754871 -156111 -974590 -974590 -284018 -66721 -974590 -90022 -974590 -916937 -910143 -270390",
+      "output": "1 12"
+    },
+    {
+      "testIndex": 208,
+      "isVisible": false,
+      "input": "16 -541\n-652 131 28 224 -603 889 224 -124 -226 -569 224 889 -124 190 35 351",
+      "output": "2 9"
+    },
+    {
+      "testIndex": 209,
+      "isVisible": false,
+      "input": "17 1744\n979 918 826 614 584 253 253 194 58 -131 -250 -505 -573 -597 -669 -747 -906",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 210,
+      "isVisible": false,
+      "input": "14 1673\n375 924 470 734 964 20 111 76 626 785 709 421 264 883",
+      "output": "4 10"
+    },
+    {
+      "testIndex": 211,
+      "isVisible": false,
+      "input": "15 -1659387\n-134445 -139752 -194082 -393379 -409310 -458508 -464729 -524324 -657933 -734978 -754476 -792483 -866904 -947188 -947905",
+      "output": "11 12"
+    },
+    {
+      "testIndex": 212,
+      "isVisible": false,
+      "input": "16 -216300\n892157 727590 649203 641514 482378 365281 280098 142713 29858 -90322 -194623 -234044 -510907 -609182 -698678 -977712",
+      "output": "4 14"
+    },
+    {
+      "testIndex": 213,
+      "isVisible": false,
+      "input": "15 -1898119\n281222 -954843 490624 424734 -943276 541962 193642 347891 374777 -738326 365478 -215161 757651 -379145 -725710",
+      "output": "1 4"
+    },
+    {
+      "testIndex": 214,
+      "isVisible": false,
+      "input": "16 -11903\n-3048 6371 5618 -2823 3482 -2823 -3048 3482 -3048 4340 8000 9181 9181 -7484 -9344 -2559",
+      "output": "14 15"
+    },
+    {
+      "testIndex": 215,
+      "isVisible": false,
+      "input": "17 695417200\n114816136 394975508 -772269705 716585802 -682612918 -243005057 -75848059 -682612918 216578297 -847064445 -205149795 -259626839 771265259 114816136 995554795 -415381989 -767114607",
+      "output": "6 12"
+    },
+    {
+      "testIndex": 216,
+      "isVisible": false,
+      "input": "17 -704\n999 -834 790 581 790 -309 201 319 -657 999 -955 -1 234 692 -21 -636 -68",
+      "output": "15 16"
+    },
+    {
+      "testIndex": 217,
+      "isVisible": false,
+      "input": "17 91\n-98 -92 -71 -50 -50 -50 -25 -15 -15 10 10 10 11 43 43 80 92",
+      "output": "12 15"
+    },
+    {
+      "testIndex": 218,
+      "isVisible": false,
+      "input": "18 3812\n2956 3772 4256 5454 3860 5931 1107 3138 4243 4552 7234 4213 6350 8697 1963 2306 8790 1506",
+      "output": "15 17"
+    },
+    {
+      "testIndex": 219,
+      "isVisible": false,
+      "input": "17 -15268\n-9615 -3744 -5270 -4516 600 -3194 -2123 -7160 -5835 -4312 -1692 -4845 7749 -2405 -3488 -6237 -9031",
+      "output": "15 16"
+    },
+    {
+      "testIndex": 220,
+      "isVisible": false,
+      "input": "17 543781777\n859416230 -411503152 149237648 -71462338 605819431 -688190928 -980678073 -460401860 -868487401 279997380 -562384659 496456581 -11887978 406381990 -460401860 620534499 -315634453",
+      "output": "0 16"
+    },
+    {
+      "testIndex": 221,
+      "isVisible": false,
+      "input": "17 -19695\n-6062 -6456 -4912 -6845 -73 -4768 -5677 -4037 -965 -124 -3181 -7851 -4630 -3164 -9730 -9965 -5751",
+      "output": "14 15"
+    },
+    {
+      "testIndex": 222,
+      "isVisible": false,
+      "input": "15 -151\n-64 -84 63 -72 -50 -72 -20 43 -82 -52 -11 -62 4 74 -87",
+      "output": "0 14"
+    },
+    {
+      "testIndex": 223,
+      "isVisible": false,
+      "input": "20 -640\n-320 -255 -382 -798 -780 -711 -711 -800 -622 -887 -819 -62 -105 -711 -771 -650 -771 -209 -887 -320",
+      "output": "0 19"
+    },
+    {
+      "testIndex": 224,
+      "isVisible": false,
+      "input": "16 490919\n396201 198075 84578 842361 896114 276904 480865 218777 704241 616187 730836 981587 497374 194783 172658 318261",
+      "output": "14 15"
+    },
+    {
+      "testIndex": 225,
+      "isVisible": false,
+      "input": "15 -49\n-83 -72 -60 -53 -41 -29 -17 -13 -8 -4 -3 41 44 63 83",
+      "output": "4 8"
+    },
+    {
+      "testIndex": 226,
+      "isVisible": false,
+      "input": "20 347308\n224217 16766 735891 739186 594412 999537 735891 95247 999537 257489 95247 735891 739186 28977 16766 999537 17662 17662 126675 123091",
+      "output": "0 19"
+    },
+    {
+      "testIndex": 227,
+      "isVisible": false,
+      "input": "17 176\n5 5 11 16 18 29 32 35 45 69 77 81 87 94 94 94 99",
+      "output": "10 16"
+    },
+    {
+      "testIndex": 228,
+      "isVisible": false,
+      "input": "18 7232\n6624 608 9400 7791 4999 9402 9496 787 1891 1543 3122 5880 6887 4002 5621 581 1677 5054",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 229,
+      "isVisible": false,
+      "input": "19 2970\n2162 6617 37 5260 2104 7914 8900 5352 7184 934 484 8900 6470 5260 1274 5914 5827 808 4908",
+      "output": "0 17"
+    },
+    {
+      "testIndex": 230,
+      "isVisible": false,
+      "input": "16 1057974\n528987 528987 522960 434845 552762 -96388 106271 -115766 -504668 -28432 70569 -206041 595324 -57293 864754 -862513",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 231,
+      "isVisible": false,
+      "input": "18 65\n-86 10 31 -42 -42 65 -64 -24 -64 -42 95 -30 -24 79 79 -1 -48 83",
+      "output": "10 11"
+    },
+    {
+      "testIndex": 232,
+      "isVisible": false,
+      "input": "17 904688\n925689 28867 579829 463092 471593 579829 6547 493934 596099 104392 800296 446994 267884 100808 297713 246074 446994",
+      "output": "9 10"
+    },
+    {
+      "testIndex": 233,
+      "isVisible": false,
+      "input": "21 1070\n677 776 847 270 189 882 321 96 515 354 350 272 232 406 147 311 197 594 11 664 642",
+      "output": "13 19"
+    },
+    {
+      "testIndex": 234,
+      "isVisible": false,
+      "input": "20 -635\n-719 -18 -140 -106 -489 -980 944 426 -678 570 -3 64 15 -645 -712 -46 36 -343 -599 -699",
+      "output": "11 19"
+    },
+    {
+      "testIndex": 235,
+      "isVisible": false,
+      "input": "16 64\n100 -36 69 -30 -14 81 -68 -30 -68 -15 51 51 -72 -72 -75 -50",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 236,
+      "isVisible": false,
+      "input": "18 -875916896\n-263300527 -45072718 -429913978 -687304158 -364398834 -399653173 -921570472 -96736724 -114278962 -290850303 -866994039 -11706763 -29876361 -250120661 -408464388 -372432922 -799873331 -76043565",
+      "output": "16 17"
+    },
+    {
+      "testIndex": 237,
+      "isVisible": false,
+      "input": "21 849\n460 -120 405 538 190 365 -287 -727 -513 -934 220 -681 525 712 845 467 -538 -444 -529 239 389",
+      "output": "0 20"
+    },
+    {
+      "testIndex": 238,
+      "isVisible": false,
+      "input": "19 -126\n-80 -22 -80 -80 -3 -75 -22 -28 -11 -10 -22 -80 -80 -90 -68 -33 -62 -34 -92",
+      "output": "17 18"
+    },
+    {
+      "testIndex": 239,
+      "isVisible": false,
+      "input": "17 75\n-67 73 -2 95 15 -67 -94 -62 78 2 83 -10 -62 -41 -41 -33 -10",
+      "output": "1 9"
+    },
+    {
+      "testIndex": 240,
+      "isVisible": false,
+      "input": "22 9641\n5178 4463 5197 122 6817 2197 1039 4026 7308 1261 8907 3897 573 8633 3811 5862 329 5644 1061 8902 3718 2006",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 241,
+      "isVisible": false,
+      "input": "22 -1204096\n497773 -728143 696356 497773 71910 107812 -868895 -604343 -876649 374084 -604343 -42322 -363516 -432578 -404763 -876649 -475953 696356 427110 71910 -876649 -868895",
+      "output": "1 16"
+    },
+    {
+      "testIndex": 242,
+      "isVisible": false,
+      "input": "21 6635\n6534 101 3684 6682 979 8064 9376 1605 4741 6907 9172 2462 8334 6117 1785 1131 3827 5431 7125 2458 488",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 243,
+      "isVisible": false,
+      "input": "18 175\n97 65 22 10 97 10 97 31 27 31 22 97 2 40 22 97 89 86",
+      "output": "16 17"
+    },
+    {
+      "testIndex": 244,
+      "isVisible": false,
+      "input": "21 -13209\n1669 382 -2331 -9907 -1008 8618 -8025 -1008 -2331 -2250 8618 -8180 8618 -4100 -3798 -387 -7584 1534 6821 -6642 -9109",
+      "output": "13 20"
+    },
+    {
+      "testIndex": 245,
+      "isVisible": false,
+      "input": "18 1335007\n579640 405024 278205 929198 205165 17468 67509 405024 652399 682608 150611 604371 150611 74005 152705 412782 984060 84154",
+      "output": "8 9"
+    },
+    {
+      "testIndex": 246,
+      "isVisible": false,
+      "input": "20 -6276\n-1243 -9738 -5618 -4126 -1462 -4629 -41 -3685 -1450 -2220 -1596 -1364 -1364 -4126 -1364 -641 -5635 -6976 -4625 -4763",
+      "output": "15 16"
+    },
+    {
+      "testIndex": 247,
+      "isVisible": false,
+      "input": "23 183\n-94 -93 -75 -61 -61 -61 -61 -61 -61 -54 -11 -9 3 17 24 39 58 72 72 72 87 91 92",
+      "output": "21 22"
+    },
+    {
+      "testIndex": 248,
+      "isVisible": false,
+      "input": "23 -89\n-22 -15 -15 -75 -75 -24 -59 -40 -57 -54 -15 -50 -46 -68 -61 -90 -75 -42 -15 -42 -57 -44 -45",
+      "output": "21 22"
+    },
+    {
+      "testIndex": 249,
+      "isVisible": false,
+      "input": "18 -651426\n-930583 -905523 -886799 -817974 -809915 -745185 -736394 -446548 -431103 -394679 -370894 -339535 -333343 -298147 -220323 -153771 -39483 -30178",
+      "output": "8 14"
+    },
+    {
+      "testIndex": 250,
+      "isVisible": false,
+      "input": "21 197\n651 507 457 793 276 578 84 853 469 240 45 121 497 178 754 827 551 76 462 782 762",
+      "output": "11 17"
+    },
+    {
+      "testIndex": 251,
+      "isVisible": false,
+      "input": "19 644785\n663957 -19172 -822418 670174 159942 -63298 346536 -265815 669270 -249516 580985 121801 121801 94156 670174 446511 -249516 751144 86917",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 252,
+      "isVisible": false,
+      "input": "20 10288\n5377 5678 2723 802 9419 6660 591 5212 591 3092 591 8208 894 1362 6903 8508 5562 1052 1064 9224",
+      "output": "18 19"
+    },
+    {
+      "testIndex": 253,
+      "isVisible": false,
+      "input": "24 1579603\n189690 -298871 -271540 -504124 -879412 -949257 129694 793662 189690 132934 -803476 543543 657862 738924 -573799 -439850 564852 694555 118125 798345 781258 -246383 189690 977827",
+      "output": "19 20"
+    },
+    {
+      "testIndex": 254,
+      "isVisible": false,
+      "input": "21 817\n633 184 48 404 332 190 724 786 879 404 415 332 332 138 138 332 332 406 472 264 731",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 255,
+      "isVisible": false,
+      "input": "19 -1578826\n-704332 454978 928816 53253 -535430 119249 -614095 54846 -623966 -954860 -535430 616568 -338618 53253 -662131 119249 295758 128242 82883",
+      "output": "8 9"
+    },
+    {
+      "testIndex": 256,
+      "isVisible": false,
+      "input": "22 1729257\n-606191 72474 65262 461802 854204 -710571 -100827 -710571 875126 417641 360729 850210 879047 875126 -456694 898611 -865059 -72128 916091 916091 72474 -409793",
+      "output": "11 12"
+    },
+    {
+      "testIndex": 257,
+      "isVisible": false,
+      "input": "24 -848822\n960973 900819 884049 868801 704944 438543 418150 332568 289386 250185 186478 122117 111288 38487 -6873 -26886 -157711 -174896 -313467 -566072 -636116 -641038 -805677 -821936",
+      "output": "15 23"
+    },
+    {
+      "testIndex": 258,
+      "isVisible": false,
+      "input": "21 10610\n4336 -951 -1021 -2231 -4979 -4979 -7019 -2231 6102 -951 -9450 3078 9767 3697 8477 -4188 -4979 -2477 6102 -1904 6274",
+      "output": "0 20"
+    },
+    {
+      "testIndex": 259,
+      "isVisible": false,
+      "input": "20 -735185524\n-232045932 -825137906 118837096 149505321 -748581096 -818554542 15999285 744761222 -437114777 89952382 774053806 136214368 -769163531 989959901 776498294 92581777 878764431 324060263 -729422257 427223417",
+      "output": "1 9"
+    },
+    {
+      "testIndex": 260,
+      "isVisible": false,
+      "input": "22 -1620278\n-994077 -927730 -912676 -843706 -707974 -707602 -553716 -380231 -324872 -295176 -255934 -191093 111619 357294 357294 410428 674933 735153 803337 857467 902504 908248",
+      "output": "2 5"
+    },
+    {
+      "testIndex": 261,
+      "isVisible": false,
+      "input": "21 1102\n250 148 823 279 1000 233 142 950 522 62 951 133 507 531 113 615 353 536 856 491 181",
+      "output": "2 3"
+    },
+    {
+      "testIndex": 262,
+      "isVisible": false,
+      "input": "22 -14\n-39 -14 -5 -14 -15 -90 -15 -27 -97 -44 -27 -90 -14 -14 -27 -5 -90 -90 -13 -90 -100 -1",
+      "output": "18 21"
+    },
+    {
+      "testIndex": 263,
+      "isVisible": false,
+      "input": "20 -927067021\n-26914933 -486544583 -727890742 -196213112 -771438709 -514064975 -817110472 -515441687 -466918496 -564968906 -990590989 -104684679 -247929373 -435447349 -926357459 -361569637 -298712730 -310085608 -616981413 -188852058",
+      "output": "17 18"
+    },
+    {
+      "testIndex": 264,
+      "isVisible": false,
+      "input": "27 -330\n-2 -31 -40 -401 -710 -589 -281 -182 -373 -62 -320 -318 -332 -551 -576 -185 -25 -305 -864 -640 -617 -172 -907 -830 -743 -576 -598",
+      "output": "16 17"
+    },
+    {
+      "testIndex": 265,
+      "isVisible": false,
+      "input": "25 -1817447\n-991405 -826042 -62785 908247 875861 -773662 -468459 230895 -761528 -649017 -532596 -430694 105095 -735015 803269 -186320 402823 -603237 1698 -226194 283560 396927 563424 -148116 -472665",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 266,
+      "isVisible": false,
+      "input": "22 -1171599\n899728 899728 452175 318818 316811 300610 227856 213751 5054 -77704 -77704 -128849 -128849 -207147 -440291 -580109 -580676 -586198 -590923 -715293 -880141 -973998",
+      "output": "16 18"
+    },
+    {
+      "testIndex": 267,
+      "isVisible": false,
+      "input": "22 1\n-94 95 -11 97 -52 -60 97 -6 -20 -87 -6 91 97 -11 -70 45 63 -71 -80 -68 -25 96",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 268,
+      "isVisible": false,
+      "input": "24 -1449012\n868799 -187795 17872 -945892 -776217 -785583 -148312 93346 -294901 562616 630586 857971 392050 -48337 673931 470844 13235 -549756 590462 -22387 -328696 -672795 -409054 463414",
+      "output": "4 21"
+    },
+    {
+      "testIndex": 269,
+      "isVisible": false,
+      "input": "23 -520867484\n-96331017 -98049018 -166853182 -235677628 -288462916 -424536467 -446527131 -451962391 -484296319 -502195564 -502195564 -578303515 -669047754 -669047754 -688470272 -688470272 -746795980 -787987556 -845549373 -871985484 -891391638 -925389953 -969135631",
+      "output": "0 5"
+    },
+    {
+      "testIndex": 270,
+      "isVisible": false,
+      "input": "21 159\n73 -44 51 -78 -38 -86 -47 80 18 -6 -86 6 -47 18 -96 -38 -86 -5 18 -7 86",
+      "output": "0 20"
+    },
+    {
+      "testIndex": 271,
+      "isVisible": false,
+      "input": "26 -1752\n-973 -415 -827 -396 -752 -457 -975 -561 -975 -334 -905 -317 -638 -672 -457 -394 -154 -975 -154 -154 -766 -488 -891 -861 -618 -154",
+      "output": "22 23"
+    },
+    {
+      "testIndex": 272,
+      "isVisible": false,
+      "input": "23 1177\n700 -789 -662 -462 81 -505 15 -356 514 -653 -592 -615 -457 704 -80 451 659 -931 -293 512 32 943 234",
+      "output": "21 22"
+    },
+    {
+      "testIndex": 273,
+      "isVisible": false,
+      "input": "28 -795606850\n860602304 -396115897 207777779 -732537490 -175951634 -154293328 207777779 789367039 -911263324 533866354 -745754532 28386165 -657183511 -22807214 886276564 987430437 -214152236 -657183511 860602304 -160570029 528523337 660293246 556196569 -914363087 -657183511 -342259534 -362016883 -433589967",
+      "output": "26 27"
+    },
+    {
+      "testIndex": 274,
+      "isVisible": false,
+      "input": "27 -500521712\n-983894654 -250260856 592883629 11915685 -465851839 92840179 733418938 623241649 11915685 563939297 -250260856 836227294 -715172286 -764905646 -385918075 937385186 -715172286 -960704053 -295011316 -987859323 -475326049 -568086339 -802721935 205062118 -692474326 774590954 993075991",
+      "output": "1 10"
+    },
+    {
+      "testIndex": 275,
+      "isVisible": false,
+      "input": "26 -15773\n449 7554 9374 459 -8939 7651 -5892 -8514 -8319 -6895 -802 3715 -2936 8915 7133 -35 -8999 -6774 398 -180 4992 9301 8866 -1818 1248 -9379",
+      "output": "16 17"
+    },
+    {
+      "testIndex": 276,
+      "isVisible": false,
+      "input": "26 -1415895\n-517601 -898294 -613151 -317929 -467821 -229172 -665491 -484428 -459801 -329387 -864285 -229172 -242198 -541913 -766865 -317929 -621253 -739742 -229172 -924155 -326556 -341651 -488832 -665491 -42196 -634169",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 277,
+      "isVisible": false,
+      "input": "23 -43\n-28 90 95 14 95 41 14 -28 37 79 -44 -97 37 95 -82 -1 95 -51 41 95 8 95 95",
+      "output": "17 20"
+    },
+    {
+      "testIndex": 278,
+      "isVisible": false,
+      "input": "25 -135600844\n873824085 849816120 841639521 585173540 467735165 422830702 369108494 321819364 178783052 172671727 128685472 68177933 50141451 -12025656 -20076904 -31889342 -66532190 -329594105 -508405394 -645129764 -720774384 -734786028 -810719839 -861761626 -993335268",
+      "output": "3 20"
+    },
+    {
+      "testIndex": 279,
+      "isVisible": false,
+      "input": "27 -864\n-23 -38 -116 -162 -199 -200 -253 -292 -313 -443 -462 -472 -515 -560 -571 -629 -630 -643 -680 -702 -709 -737 -824 -844 -855 -941 -998",
+      "output": "3 19"
+    },
+    {
+      "testIndex": 280,
+      "isVisible": false,
+      "input": "26 2179\n2192 5320 6561 7019 8369 7019 7019 1956 4075 1540 7019 5320 6940 5320 1767 1166 1048 4075 8709 9754 508 1767 7273 2713 1561 618",
+      "output": "24 25"
+    },
+    {
+      "testIndex": 281,
+      "isVisible": false,
+      "input": "27 4830\n4330 303 3418 8723 4138 3929 1713 5043 2931 3678 5751 1648 8942 6458 6397 1082 4655 4916 1736 7656 9012 8633 9772 5571 9227 1412 3580",
+      "output": "2 25"
+    },
+    {
+      "testIndex": 282,
+      "isVisible": false,
+      "input": "24 6439\n5985 114 7758 9610 1555 5576 3396 1416 1976 1933 5128 6515 4417 1238 2454 7905 9988 7272 2968 1584 1117 8177 1805 4634",
+      "output": "22 23"
+    },
+    {
+      "testIndex": 283,
+      "isVisible": false,
+      "input": "29 -77\n-88 -80 -78 -73 -65 -65 -65 -63 -57 -54 -50 -50 -17 -11 -11 -4 10 10 32 32 40 44 59 68 69 69 74 74 89",
+      "output": "3 15"
+    },
+    {
+      "testIndex": 284,
+      "isVisible": false,
+      "input": "24 -597704247\n-905131640 -882681502 -810600460 -595118995 -452913491 -182453052 -158460165 -47409839 28114829 47180940 75195300 119893815 198617768 284977255 323796041 340231998 340647161 401373903 428711704 572129463 601715150 688892210 759374209 920124192",
+      "output": "1 13"
+    },
+    {
+      "testIndex": 285,
+      "isVisible": false,
+      "input": "28 -159\n-19 -71 -29 -48 -39 -76 -100 -14 -66 -35 -48 -51 -2 -59 -48 -80 -64 -5 -73 -65 -10 -47 -51 -29 -70 -2 -5 -57",
+      "output": "6 13"
+    },
+    {
+      "testIndex": 286,
+      "isVisible": false,
+      "input": "26 -173\n-74 -74 -59 21 -96 20 -72 -12 6 -72 -74 -96 -62 100 3 -26 -42 -72 -96 -72 53 6 -90 -12 -97 -76",
+      "output": "24 25"
+    },
+    {
+      "testIndex": 287,
+      "isVisible": false,
+      "input": "28 -767318\n-283265 -402840 -322833 -812463 -868116 -583455 -797398 -574172 -415951 -417972 -292306 -447529 -383322 -203815 -407188 -863875 -569539 -650020 -555301 -739588 -124558 -385357 -397066 -357384 -88161 -418217 -269175 -498143",
+      "output": "26 27"
+    },
+    {
+      "testIndex": 288,
+      "isVisible": false,
+      "input": "28 -187\n-81 -75 -75 -26 -24 -84 -35 -80 -19 -84 -93 -88 -24 -75 -11 -62 -72 -84 -81 -24 -29 -11 -94 -75 -5 -28 -63 -75",
+      "output": "10 22"
+    },
+    {
+      "testIndex": 289,
+      "isVisible": false,
+      "input": "25 -431\n-981 -360 -380 629 97 263 65 78 -897 324 443 498 -109 322 946 -657 -946 315 801 649 -731 227 447 431 -862",
+      "output": "23 24"
+    },
+    {
+      "testIndex": 290,
+      "isVisible": false,
+      "input": "26 12519\n-6935 -4640 8412 -8024 4310 -5741 4749 -7348 -6545 -5351 -5181 5381 6764 6949 -2632 -299 -578 5609 4344 4191 -8651 8418 -8733 4101 -6503 -7925",
+      "output": "21 23"
+    },
+    {
+      "testIndex": 291,
+      "isVisible": false,
+      "input": "27 -1314928\n-622733 -58517 671837 -447524 496855 732751 -484600 -330491 671837 671837 -447524 569484 -970481 -614995 155577 723397 -566667 466122 267235 -23122 -605130 671837 -984437 -852031 -58517 882698 810700",
+      "output": "7 22"
+    },
+    {
+      "testIndex": 292,
+      "isVisible": false,
+      "input": "29 -4459\n9759 -538 7365 6589 6589 -8573 5668 4506 1131 8938 -6019 9191 4785 5798 -6205 -2734 5809 -5953 -538 2822 7016 -6019 3212 -112 592 -1111 -2734 -2356 1746",
+      "output": "14 28"
+    },
+    {
+      "testIndex": 293,
+      "isVisible": false,
+      "input": "34 186\n76 92 4 62 62 82 4 76 4 68 90 74 56 94 82 85 85 35 59 86 26 10 33 45 5 68 82 53 37 14 82 6 86 86",
+      "output": "1 13"
+    },
+    {
+      "testIndex": 294,
+      "isVisible": false,
+      "input": "25 -166\n3 37 -8 49 -96 -96 -96 -69 -37 70 -8 87 16 32 88 88 -87 87 18 18 -97 70 18 85 -98",
+      "output": "7 20"
+    },
+    {
+      "testIndex": 295,
+      "isVisible": false,
+      "input": "32 909205\n806714 51546 967734 351397 465728 233656 502834 985056 993085 99854 544438 451582 62219 613055 230591 260824 991833 477650 860378 889665 591199 800895 593749 635393 486714 331597 794541 119138 763634 982312 173868 735337",
+      "output": "30 31"
+    },
+    {
+      "testIndex": 296,
+      "isVisible": false,
+      "input": "28 -44\n-60 -66 -100 -17 -29 -98 -69 -17 -59 -35 -75 -39 -87 -29 -90 -39 -84 -39 -17 -19 -22 -74 -22 -74 -34 -50 -24 -39",
+      "output": "20 22"
+    },
+    {
+      "testIndex": 297,
+      "isVisible": false,
+      "input": "30 45\n34 -90 14 -58 -58 14 2 27 -37 -50 34 -19 -58 -58 -32 14 22 6 18 -58 45 -32 34 44 -72 -32 -32 47 -10 -58",
+      "output": "7 18"
+    },
+    {
+      "testIndex": 298,
+      "isVisible": false,
+      "input": "30 78168883\n-257028857 815004318 -100455963 240605184 866822801 -389199332 -270875361 887524507 851412035 868027378 763213064 -804890850 504445345 -500790336 -139374186 934779914 -919947935 -525098128 155788930 -137111483 170494578 985845195 800523546 354937597 321056801 -880199173 -693976250 115521134 -850465709 928634592",
+      "output": "28 29"
+    },
+    {
+      "testIndex": 299,
+      "isVisible": false,
+      "input": "28 -868636\n-906542 37906 512332 -921507 -783738 -154026 -113334 -201861 -914070 235790 -191010 -980190 -675595 -613186 235790 681494 2803 675080 493445 -369817 -518082 226306 -620007 189001 -620007 472482 489678 -594308",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 300,
+      "isVisible": false,
+      "input": "31 -2\n-92 -86 -83 -77 -75 -68 -61 -52 -50 -50 -43 -40 -28 -19 -10 -10 -7 -7 -7 2 10 10 31 46 50 56 96 96 96 96 96",
+      "output": "7 24"
+    },
+    {
+      "testIndex": 301,
+      "isVisible": false,
+      "input": "27 641995245\n8158789 11118936 29320676 44647284 69699346 118320097 290743030 346162820 447176338 449329563 452425043 502362582 525548905 555696545 573570790 603448329 612674569 624558841 625166039 735970268 740627937 833617607 849489387 891723960 941642106 954652626 991256485",
+      "output": "2 16"
+    },
+    {
+      "testIndex": 302,
+      "isVisible": false,
+      "input": "35 996839\n441380 -433332 -533821 387825 -469881 -312381 -746301 -665421 -541411 417871 690126 216121 226932 35976 -792372 -656417 553710 -638250 -818120 754693 986561 563401 -566122 -448502 -506048 602176 897815 -722434 -993084 349257 -438322 -448864 880217 116622 962010",
+      "output": "32 33"
+    },
+    {
+      "testIndex": 303,
+      "isVisible": false,
+      "input": "32 -1587948\n-976978 -938683 -875956 -875518 -819430 -793974 -793974 -643733 -616770 -613285 -590171 -538626 -499479 -388766 -318359 -283386 -242750 -130796 -11690 48177 60800 91863 123141 150972 381767 537943 589241 589241 608615 654004 879604 906033",
+      "output": "5 6"
+    },
+    {
+      "testIndex": 304,
+      "isVisible": false,
+      "input": "34 673947192\n580973456 190677657 -444867648 -166232116 -66540929 830265806 633323105 -68547927 -606812792 938134309 -74081014 -785718117 -191900398 601149404 -114009846 956713347 861397122 -194952132 -756087562 43987278 -525438285 117053427 -294441876 -221827576 43805431 830831227 914644927 -68547927 -478983155 -349128524 -8929778 888864660 -296290894 92973736",
+      "output": "0 33"
+    },
+    {
+      "testIndex": 305,
+      "isVisible": false,
+      "input": "36 3111\n7890 5573 2068 -2462 4924 -9033 -2910 -3086 -3086 -7405 7855 -239 7890 7809 -7405 -7405 7855 7809 7561 -473 7855 -4768 7855 -7978 7855 8658 1354 -8180 5374 4935 -2878 -1746 7751 1337 7855 7890",
+      "output": "1 3"
+    },
+    {
+      "testIndex": 306,
+      "isVisible": false,
+      "input": "29 -372373\n-280496 -961321 -878343 -151761 -92353 -93325 -124869 -362955 -903679 -948013 -628450 -31000 -289337 -765825 -903679 -892024 -824453 -142189 -370778 -794160 -139273 -35935 -403364 -370778 -390842 -766881 -980219 -142189 -91877",
+      "output": "0 28"
+    },
+    {
+      "testIndex": 307,
+      "isVisible": false,
+      "input": "34 -1725\n-856 -814 -686 -519 -636 -43 -377 -674 -79 -111 -318 -107 -105 -175 -487 -355 -518 -303 -313 -117 -145 -153 -445 -478 -399 -571 -28 -480 -515 -374 -540 -884 -869 -757",
+      "output": "0 32"
+    },
+    {
+      "testIndex": 308,
+      "isVisible": false,
+      "input": "38 15422\n4004 -6285 1135 5227 1935 8629 7259 -8986 -2535 8338 -9869 2222 5038 -2653 5392 -7458 9919 -3765 -3926 -8410 -5412 -2853 -7655 -3342 6354 9702 -6203 -1172 2477 -5224 9794 6433 8989 441 538 -5320 -5709 9722",
+      "output": "31 32"
+    },
+    {
+      "testIndex": 309,
+      "isVisible": false,
+      "input": "28 -2479\n-7405 -8323 -4087 8797 602 -7001 6032 -7710 7025 -6763 5678 -5993 5227 7647 -3828 -1362 1619 8984 -6760 -898 1619 -3684 -1361 -2506 273 2460 2588 -5067",
+      "output": "26 27"
+    },
+    {
+      "testIndex": 310,
+      "isVisible": false,
+      "input": "32 -13517\n-5743 5683 295 -9801 -9027 -4490 7257 -9501 7501 -6572 6774 -3392 -9501 3011 8929 6001 8895 -6342 -5530 2232 654 -8690 3166 -2206 -4629 -7893 -127 2259 -4629 5505 -4386 1442",
+      "output": "4 5"
+    },
+    {
+      "testIndex": 311,
+      "isVisible": false,
+      "input": "35 1548\n9878 -3865 -5876 8195 -5165 -444 6719 1003 -280 6172 345 -3419 6162 3723 7234 -245 8239 9378 -4202 6172 8635 7957 2441 -3723 1906 -983 -983 -3491 8876 774 -9276 774 -245 7957 1626",
+      "output": "29 31"
+    },
+    {
+      "testIndex": 312,
+      "isVisible": false,
+      "input": "35 515\n9561 3696 7327 5837 6293 5923 7661 1314 5454 290 225 8381 9246 4003 7070 2404 6296 7693 2720 3783 8806 9524 9286 9086 7081 4357 9518 6553 6862 8259 2345 5572 1041 6871 8492",
+      "output": "9 10"
+    },
+    {
+      "testIndex": 313,
+      "isVisible": false,
+      "input": "37 14794\n-9432 -9429 -8336 -8015 -7170 -6883 -6862 -6624 -6042 -5563 -5264 -5129 -4913 -3639 -2935 18 841 1492 1861 4253 4307 6027 6476 6893 6960 7769 7769 7769 7769 7769 7769 7769 7769 7769 7769 7901 8524",
+      "output": "23 35"
+    },
+    {
+      "testIndex": 314,
+      "isVisible": false,
+      "input": "31 779618733\n-595749089 -118266001 -17505823 -928854553 -469732847 -528333414 162390382 -872504776 -749605527 -244600699 -375422535 -369501737 459208563 -593406266 -469732847 -247023461 -728515670 648118300 393899571 -32648861 805436362 -257015017 -761269235 212527967 448103673 -749605527 -777047711 73871665 -515781805 308734613 470884120",
+      "output": "29 30"
+    },
+    {
+      "testIndex": 315,
+      "isVisible": false,
+      "input": "33 1677922\n258880 581103 819666 24284 466343 457625 918206 36330 351153 940114 858256 443563 553625 351948 648015 701694 968038 696884 609125 669865 470892 829195 73404 607299 897718 509538 100146 163057 486260 149087 470202 898706 296164",
+      "output": "2 10"
+    },
+    {
+      "testIndex": 316,
+      "isVisible": false,
+      "input": "37 -10953\n1786 7714 8590 -7918 1582 -6460 4700 -6348 6583 -332 -4973 -5190 4700 -7731 6608 -632 1632 2746 -8912 5432 -9380 8920 -6671 -3661 -332 -1337 -6581 -1337 7402 5235 -4994 8590 8590 -6366 6008 -9917 -1036",
+      "output": "35 36"
+    },
+    {
+      "testIndex": 317,
+      "isVisible": false,
+      "input": "40 -872951\n-21044 -66493 -89985 -96838 -125890 -129959 -134311 -223791 -223791 -228882 -228882 -228882 -235209 -306177 -313851 -324070 -334028 -362695 -363400 -396561 -462222 -466446 -481407 -540836 -542568 -579899 -598308 -598308 -637742 -656977 -734501 -738166 -761428 -791697 -820921 -859398 -865034 -903162 -913182 -965234",
+      "output": "12 28"
+    },
+    {
+      "testIndex": 318,
+      "isVisible": false,
+      "input": "39 -886105\n44559 -269275 -468614 -270094 -472465 -265820 -465772 -320421 777619 178953 -507353 -498931 265412 -146130 76596 -930087 -346933 -700471 184933 607517 35474 -997601 -167799 -718306 -48911 -532305 -507353 184933 178953 936643 -11709 795663 182635 625121 -894779 -936645 625121 431139 352334",
+      "output": "22 23"
+    },
+    {
+      "testIndex": 319,
+      "isVisible": false,
+      "input": "41 96\n48 92 95 50 32 -67 -52 -56 -23 66 33 57 -65 26 26 -72 -35 -26 26 -23 -26 7 32 32 52 32 67 18 47 -1 -71 -26 33 86 26 -20 62 26 -50 57 48",
+      "output": "0 40"
+    },
+    {
+      "testIndex": 320,
+      "isVisible": false,
+      "input": "41 155\n50 40 -1 -66 -35 60 -44 -69 55 -66 35 24 -64 -65 -82 75 -66 61 -92 -44 -46 -36 29 37 78 15 40 35 -16 81 40 74 -35 -85 61 66 -9 -16 -66 61 -62",
+      "output": "29 31"
+    },
+    {
+      "testIndex": 321,
+      "isVisible": false,
+      "input": "34 678768\n265851 454932 311599 339384 393183 785486 7907 642291 387589 938189 7907 5551 7907 547633 339384 938189 237907 993640 905665 977782 807849 122867 567904 543645 355907 901849 138156 265851 949927 47587 898365 547633 276432 702383",
+      "output": "3 14"
+    },
+    {
+      "testIndex": 322,
+      "isVisible": false,
+      "input": "39 1512206\n997010 980291 975192 951987 930510 917813 857128 849232 846068 837878 822247 820619 775689 773008 735496 619503 564571 561047 560219 553918 543195 536590 533932 519959 519158 512284 495055 489726 436391 406580 404918 364177 318722 282286 261203 248671 227244 137586 17424",
+      "output": "3 18"
+    },
+    {
+      "testIndex": 323,
+      "isVisible": false,
+      "input": "41 452847\n107450 17708 205789 -47371 791653 847649 -633498 259207 -10952 -383986 113459 830536 91926 220830 -769339 -278030 -480783 -392817 -144283 -14087 -820412 -987131 -477162 339388 -281494 -906152 925380 464059 -194556 84915 200217 -479861 762992 809624 -935167 367887 642341 345445 -817817 41869 607803",
+      "output": "10 23"
+    },
+    {
+      "testIndex": 324,
+      "isVisible": false,
+      "input": "35 -22969185\n-7246256 -722818357 -597725468 -832899842 -976482230 -627829838 -270402385 -769832885 -193395291 -730707143 -112265521 -551410283 -452723545 -249855954 -911061990 -111370769 -147109702 -465920329 -192438779 -235134075 -172252513 -746891185 -918606024 -287069050 -293803533 -380162877 -470584667 -745513840 -739360673 -731528525 -772647779 -564913704 -997086011 -60070071 -15722929",
+      "output": "0 34"
+    },
+    {
+      "testIndex": 325,
+      "isVisible": false,
+      "input": "40 1350\n28 -317 -558 78 311 531 392 -768 448 128 937 391 448 -171 -801 -749 699 -737 289 289 -517 937 -223 531 687 -935 -308 675 250 937 837 935 663 289 -646 27 -935 -447 -215 -801",
+      "output": "24 32"
+    },
+    {
+      "testIndex": 326,
+      "isVisible": false,
+      "input": "32 -11596\n-996322 -934626 -717387 -593865 -586941 -496210 -460090 -351153 -334123 -298697 -239339 -155114 -78699 29211 64919 77616 124360 242439 368293 390298 582269 602275 644508 645985 724552 741842 741842 777466 827051 861957 910786 967839",
+      "output": "3 20"
+    },
+    {
+      "testIndex": 327,
+      "isVisible": false,
+      "input": "36 133355730\n-479147791 432456079 170353292 282274421 -391443368 748863195 -893427501 993632439 -559252135 567488699 609064926 -836508662 154102159 -14469565 -956365389 786247356 -6668682 -363461460 -546598374 -629999848 462238516 -335111679 24705776 276914077 -714523273 3245100 -585721715 -707760114 -756517132 294930837 -197366582 -795738194 -539547862 -139661266 589692897 -456337167",
+      "output": "34 35"
+    },
+    {
+      "testIndex": 328,
+      "isVisible": false,
+      "input": "42 2\n1 73 65 34 23 66 78 45 23 26 94 49 23 79 79 48 48 60 84 66 28 10 66 73 49 68 24 47 23 54 70 62 42 52 34 70 46 23 23 23 93 1",
+      "output": "0 41"
+    },
+    {
+      "testIndex": 329,
+      "isVisible": false,
+      "input": "36 -1521\n-972 -821 -802 -700 -593 -537 -534 -523 -53 -50 -32 -32 -8 60 107 130 130 225 240 260 365 365 405 415 429 464 704 773 773 815 822 822 822 866 914 927",
+      "output": "1 3"
+    },
+    {
+      "testIndex": 330,
+      "isVisible": false,
+      "input": "36 -16384\n-719 -5261 -2552 -8276 -4849 -9259 -7749 -8532 -7967 -8003 -8024 -1320 -6453 -4025 -7481 -577 -3637 -306 -5287 -202 -5920 -7750 -2220 -6865 -2237 -5562 -7211 -7924 -8504 -2578 -8635 -2389 -8331 -96 -9890 -8455",
+      "output": "6 30"
+    },
+    {
+      "testIndex": 331,
+      "isVisible": false,
+      "input": "38 865\n-820 -154 -324 -334 288 -266 -510 -112 -48 -48 191 -820 191 -780 -656 305 891 -44 -48 191 -318 -39 -48 -401 904 191 891 191 897 -656 -210 -371 -292 -510 -688 277 -259 -29",
+      "output": "21 24"
+    },
+    {
+      "testIndex": 332,
+      "isVisible": false,
+      "input": "35 9472\n1781 -5780 -5022 -321 3203 6748 -3056 8262 1541 3666 -3833 2053 -1614 -9329 -2402 -3833 -4661 -6859 7572 -4857 -8717 -267 -678 9739 -8949 -5698 4526 -9075 8945 -4400 -3573 2973 -8362 -6182 -6079",
+      "output": "21 23"
+    },
+    {
+      "testIndex": 333,
+      "isVisible": false,
+      "input": "40 14957\n1322 7260 5762 9426 5896 195 580 3089 2968 8675 5058 7499 7922 3305 4621 6867 2884 5174 6300 2806 3040 8736 1833 4739 4484 1907 3688 8736 7091 3032 1322 8370 8552 8615 2157 5445 7304 5853 6753 8204",
+      "output": "38 39"
+    },
+    {
+      "testIndex": 334,
+      "isVisible": false,
+      "input": "45 18665\n3767 3944 2959 9972 2046 1553 7221 4068 1011 8834 5011 3722 4971 8874 2785 6395 8075 5471 4866 1068 8874 6919 6369 317 2959 2227 9563 3722 5373 7221 4410 9588 6248 5471 5842 1813 1009 1093 8834 1153 3394 1093 2046 9674 8991",
+      "output": "43 44"
+    },
+    {
+      "testIndex": 335,
+      "isVisible": false,
+      "input": "41 583252515\n716100599 914175244 -21553991 -588326619 -65268510 -213754810 456876432 -754453981 -209894454 964256895 -232051586 -97145842 775860124 -60283583 -547182985 -301652405 -65268510 470855857 -43640581 -132716062 121047251 749927719 585021506 872305793 -124539014 -813219145 -622005807 820784464 960636559 834702191 -699628984 382025443 333018830 -547182985 159613624 -979281235 -813993098 -45710859 -609095624 -251449676 632484480",
+      "output": "29 39"
+    },
+    {
+      "testIndex": 336,
+      "isVisible": false,
+      "input": "36 -1863871\n-745240 -546699 297211 150013 -142227 -224290 -300842 721967 78588 -811903 -327275 506966 326886 -377813 166788 497709 -485914 862041 100608 -437170 516605 -416437 997781 -909230 144758 159319 -328810 -358100 -331836 390764 -797086 415219 130983 852135 -975485 -888386",
+      "output": "34 35"
+    },
+    {
+      "testIndex": 337,
+      "isVisible": false,
+      "input": "42 1694\n827 -769 411 48 -324 162 829 -634 479 691 -152 -246 929 -815 -960 445 1000 277 -947 588 -671 -6 253 714 479 691 253 -402 -858 -769 742 889 743 139 -111 179 -249 -971 -277 939 284 867",
+      "output": "0 41"
+    },
+    {
+      "testIndex": 338,
+      "isVisible": false,
+      "input": "39 -30072755\n-834585109 -512681437 -117243083 -240487811 -521006070 -960425340 -861807279 -522909107 -546896619 -841721536 -484005786 -730271349 -960425340 -962450209 -760026392 -99452605 -484005786 -800790644 -960425340 -960425340 -913127216 -97786672 -19062111 -796981016 -117243083 -937971598 -975104357 -423218808 -618851967 -11010644 -982719277 -898542604 -400602195 -761019558 -227376858 -511332873 -202017477 -960425340 -552203002",
+      "output": "22 29"
+    },
+    {
+      "testIndex": 339,
+      "isVisible": false,
+      "input": "42 -898287045\n-716739029 -181548016 -687877980 -500701831 -641445494 -870629189 -712547981 -512790100 -6235830 -677288855 -861789536 -266055724 -714958551 -607331707 -472181777 -169683853 -712547981 -633702443 -682167728 -141094658 -920759164 -572797303 -648335958 -57938201 -466955395 -654915770 -308257443 -32492311 -819561443 -648335958 -934096855 -848939534 -870629189 -523432721 -57938201 -523432721 -912434232 -960593425 -500701831 -129752244 -762985892 -950372557",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 340,
+      "isVisible": false,
+      "input": "43 287060\n-663491 349388 -395343 -426564 326692 590837 110793 733019 446217 395958 936873 -433558 830919 -879464 -546496 313978 -257355 56986 -906929 -748716 86670 -918934 477298 345279 23761 -525051 -853245 -755235 59720 144366 -851285 -832282 -473187 467219 -494579 26050 87749 292768 227165 -197702 47372 194411 92649",
+      "output": "41 42"
+    },
+    {
+      "testIndex": 341,
+      "isVisible": false,
+      "input": "37 -1241684\n-979129 -972681 -956301 -914402 -866063 -865154 -852724 -838357 -814402 -775057 -766384 -763472 -722155 -709850 -702513 -675902 -650413 -617033 -617033 -488485 -488485 -481629 -480224 -479656 -408367 -408367 -408367 -408332 -369733 -336824 -327282 -308657 -307880 -180507 -180507 -97155 -46788",
+      "output": "3 30"
+    },
+    {
+      "testIndex": 342,
+      "isVisible": false,
+      "input": "45 -649538953\n-721766822 72227869 -123979927 196855433 -845532325 -953917924 -195582817 147455655 -931977976 -863524941 -845532325 632897839 -185553141 782102098 376176837 -288855666 -819847539 693370602 632897839 -123979927 -349039894 -528350257 525491617 -47429626 111965857 -845532325 -845532325 374914390 -273625707 395657452 -845532325 -795360713 -121687507 -153439092 -75667060 826679215 -70712860 337284476 540140699 -931977976 -845532325 -123979927 865404760 -845532325 -123979927",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 343,
+      "isVisible": false,
+      "input": "44 54\n35 0 -81 -93 -46 61 -93 -63 53 -46 -98 -81 -60 -91 -81 32 70 -93 -72 41 -9 70 70 -93 34 -18 -81 -59 97 24 -96 -93 34 -4 0 37 -93 -93 -29 -50 -93 -93 -97 19",
+      "output": "0 43"
+    },
+    {
+      "testIndex": 344,
+      "isVisible": false,
+      "input": "45 -176606373\n336940331 -583219080 -865843680 37997214 -349270665 -957252051 -276882173 175408457 -544804631 -957252051 570106244 783545452 -162033625 -606810967 -871026468 674870351 352298608 37997214 -612214351 -857069064 680462691 -987794057 729213136 -299031426 -953510858 336940331 720317196 -18968109 974898625 690330735 -705518008 431943499 -530344314 731584162 -504906088 -750145790 -972730174 122610083 431943499 -750145790 933239915 -358551519 -47962739 -933060572 902863836",
+      "output": "19 20"
+    },
+    {
+      "testIndex": 345,
+      "isVisible": false,
+      "input": "40 -1114003\n-473052 -448482 -372105 -673101 -190895 -774436 422760 829461 572642 -190895 749708 -372105 -991595 -956439 -96212 267329 -426130 422760 -588711 572642 801180 913991 -426130 621849 795578 69621 -808356 -183764 978376 572642 -450642 -562200 489553 -747624 -118150 247776 978376 -28791 139683 -640951",
+      "output": "0 39"
+    },
+    {
+      "testIndex": 346,
+      "isVisible": false,
+      "input": "38 324465399\n189564866 717687118 988663136 416675993 458639779 55298386 800951566 498654001 5241899 157805515 435083484 449999779 227100205 751423643 108691935 585101616 793665713 794324384 265607452 81216315 671414808 797574038 642971102 935833977 158297321 620072896 72706991 155960020 937640382 215773464 950460199 868804975 573691698 758519634 40244750 738942861 527307117 578775868",
+      "output": "14 29"
+    },
+    {
+      "testIndex": 347,
+      "isVisible": false,
+      "input": "45 -968673718\n-43792505 -799828989 -434865039 -948048126 -338982182 -879368769 -372130297 -531831689 -461694649 -896001283 -336796521 -361254516 -371852004 -130126523 -516580111 -872308779 -971946199 -878839978 -991123603 -562410550 -963408709 -667449086 -399967285 -359218255 -834203132 -130126523 -718343282 -461694649 -190776633 -879224293 -342890961 -359452527 -204884263 -743699051 -294436707 -856713832 -310445810 -459678527 -18410741 -474517745 -203649536 -629900520 -872468137 -813953150 -924881213",
+      "output": "0 44"
+    },
+    {
+      "testIndex": 348,
+      "isVisible": false,
+      "input": "45 -95213782\n-556789207 -298247270 -955455360 -751239566 -678300999 -72235084 -680230852 -297755575 -278519354 -429849900 -47606891 -339197132 -7291695 -112232386 -569394392 -63998409 -7291695 -499674837 -804319635 -113334637 -866262571 -477217125 -664531787 -278519354 -51436808 -824910291 -302254944 -886753981 -933548242 -845558767 -552031105 -886753981 -450259496 -769006833 -731980193 -272777688 -290178351 -628369169 -140850027 -113334637 -504861153 -128216246 -47606891 -192892968 -5631468",
+      "output": "10 42"
+    },
+    {
+      "testIndex": 349,
+      "isVisible": false,
+      "input": "45 1127894\n304601 283908 122064 59755 328251 605175 637196 179050 583648 500031 157451 970443 399582 548836 872054 258286 797067 784358 478121 730320 929418 930505 953931 592633 127155 87043 795217 559658 692306 752835 734983 186198 577068 575606 713958 952483 845158 916070 965216 795998 836495 862797 167305 832852 762790",
+      "output": "10 11"
+    },
+    {
+      "testIndex": 350,
+      "isVisible": false,
+      "input": "45 -923890943\n-50246622 -62989919 -65602128 -86849296 -91931564 -103260310 -116844469 -117006545 -142596273 -143030419 -143030419 -167788948 -190410919 -190581593 -258092963 -262805934 -289765683 -302319110 -303590060 -330475942 -332286551 -396310991 -408148387 -440615064 -452234606 -457560673 -497546774 -525880486 -568333671 -614750586 -657623946 -661934654 -676434157 -761951376 -762211775 -812368665 -825663607 -837137069 -844185728 -858288815 -908630931 -912098754 -914060211 -916885959 -972446539",
+      "output": "2 39"
+    },
+    {
+      "testIndex": 351,
+      "isVisible": false,
+      "input": "39 -188927\n-99000 -89927 -68363 -14018 -66262 -20586 -23108 -626 -56122 -3746 -97798 -18687 -49194 -92363 -3677 -90089 -79657 -78225 -11920 -40124 -30643 -32400 -42352 -94452 -1699 -5439 -20902 -83463 -8896 -52610 -43828 -68363 -98029 -71680 -6264 -61696 -61598 -1494 -3039",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 352,
+      "isVisible": false,
+      "input": "40 119706\n52847 153346 666370 218796 669204 907332 841825 496991 706487 626863 777189 862349 178073 108057 819522 452096 294471 829432 923410 984936 337787 209817 975978 78616 689518 454137 985484 827467 480785 996867 269928 975978 491773 103804 155406 723086 799538 469771 516887 66859",
+      "output": "0 39"
+    },
+    {
+      "testIndex": 353,
+      "isVisible": false,
+      "input": "50 175\n74 21 21 91 34 99 74 75 94 28 99 91 83 54 90 13 16 79 91 74 19 12 21 91 21 99 5 93 91 97 94 42 99 25 50 43 58 96 91 50 37 74 94 31 63 43 19 7 50 28",
+      "output": "17 37"
+    },
+    {
+      "testIndex": 354,
+      "isVisible": false,
+      "input": "41 -1357604\n-570950 -699198 -378948 -732058 -270113 -5994 -270113 -430477 -77192 -383812 -363800 -876895 -876895 -545620 -639052 -270113 -990984 -876895 -94993 -297073 -470157 -363800 -484725 -307995 -642670 -545620 -971847 -363800 -713182 -895718 -845865 -699198 -859620 -333106 -927286 -363800 -699198 -971847 -715423 -983646 -373958",
+      "output": "39 40"
+    },
+    {
+      "testIndex": 355,
+      "isVisible": false,
+      "input": "43 -16310\n8761 -6866 -2815 3512 -4242 -6458 3318 -9444 -6796 -2580 -1983 470 -1983 -4472 3233 -257 -4493 993 -6029 -4090 1124 5889 2497 9302 7314 -6796 -4493 -5421 3512 2960 -7432 6396 -4090 -6232 -1733 8479 -1733 -9986 -2815 2881 -2180 -3340 6158",
+      "output": "1 7"
+    },
+    {
+      "testIndex": 356,
+      "isVisible": false,
+      "input": "45 65201849\n446355566 866928201 525115046 910760110 873131878 136884411 318232430 13441625 913293453 53612180 853796964 35489845 522929669 295470065 860096654 967233672 42653439 591747976 212855773 794566105 581448990 288980567 68325152 294985304 712749532 642229798 235282561 11560746 581448990 654392037 11589669 933149583 237947898 212855773 804834577 587209363 183084828 581448990 82145115 207017082 294985304 793637316 209917464 843911576 424062311",
+      "output": "9 30"
+    },
+    {
+      "testIndex": 357,
+      "isVisible": false,
+      "input": "47 -1459\n567 454 -147 889 -503 396 604 466 -622 309 -207 532 -267 -535 -97 -46 -667 578 -147 393 -415 126 -593 -262 -42 734 -734 693 -508 433 -249 678 -610 880 -336 671 -207 -389 889 -667 -748 -888 -282 526 -725 162 537",
+      "output": "26 44"
+    },
+    {
+      "testIndex": 358,
+      "isVisible": false,
+      "input": "53 3890\n9790 -5900 -8049 1618 787 8346 -6704 -5461 6383 -1262 9777 -8253 1103 6760 6077 -7514 -9506 -2017 7902 -6328 -4582 -2590 -1161 6945 -1964 1442 9829 -1190 -8149 2836 4755 3962 1757 3640 -1374 -3605 -6299 -593 1317 -6613 -7142 3316 1913 -3063 -7584 -8052 -8927 -7698 1715 -9399 -1968 5111 3646",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 359,
+      "isVisible": false,
+      "input": "53 -35\n-39 9 79 -32 -71 16 85 27 30 97 93 83 93 -31 -47 63 98 -19 97 96 23 98 98 -43 6 98 -77 16 57 79 83 93 -100 -90 93 -69 58 -69 -97 -50 -97 98 80 73 79 55 16 -100 27 79 39 -69 -27",
+      "output": "33 45"
+    },
+    {
+      "testIndex": 360,
+      "isVisible": false,
+      "input": "47 -97\n-49 49 25 -37 80 80 58 6 -23 87 -49 87 50 -38 50 -96 6 -8 -97 -38 44 -49 -69 -70 33 49 63 52 -42 85 -91 29 66 -99 -96 -11 68 66 62 12 8 87 -30 -97 42 -28 93",
+      "output": "22 45"
+    },
+    {
+      "testIndex": 361,
+      "isVisible": false,
+      "input": "44 362\n45 49 82 132 173 189 224 240 281 297 359 363 368 406 408 466 467 499 516 527 540 573 576 588 599 622 633 653 660 667 684 696 702 735 795 798 897 916 931 938 951 955 974 995",
+      "output": "4 5"
+    },
+    {
+      "testIndex": 362,
+      "isVisible": false,
+      "input": "47 7373\n5636 5540 -6873 2652 -172 1694 318 5712 7308 4733 -592 732 2531 5859 -6002 -7124 777 6752 5109 7335 2893 960 1366 9004 -7209 -3232 -2115 4114 1971 -662 1178 -8631 8656 2992 -2059 -3862 1852 7246 -3511 4618 -8019 2933 256 5541 8758 -1385 -7709",
+      "output": "44 45"
+    },
+    {
+      "testIndex": 363,
+      "isVisible": false,
+      "input": "55 101653\n230268 75597 -420890 -612392 675034 -196590 -541266 -597447 683760 -652623 512990 279614 -340617 -384758 -415618 -472954 673483 -455380 -690106 855431 881235 -528231 -944766 146631 118922 14664 -577471 826062 -445098 280997 866137 -944766 646887 862289 -159592 500215 845634 146281 -756942 118922 -515137 -952056 -52649 425002 601954 558625 -642971 627296 500215 -554987 363064 316613 -139605 -261411 -614800",
+      "output": "50 53"
+    },
+    {
+      "testIndex": 364,
+      "isVisible": false,
+      "input": "43 -100420\n-81373 -19047 -99679 -58847 -62200 -60738 -63373 -19589 -92647 -53554 -13273 -17138 -84533 -32416 -15037 -51180 -20287 -71023 -4970 -56353 -57787 -8820 -98841 -4970 -29645 -2187 -2805 -62740 -98524 -72244 -63837 -5443 -5214 -56353 -4108 -5814 -88118 -75429 -93585 -66241 -50482 -34610 -95299",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 365,
+      "isVisible": false,
+      "input": "47 7813\n4566 13404 57621 77464 40980 18946 51301 99559 43134 96777 48470 99993 37873 19892 33653 76698 40342 57621 29175 23954 47049 93889 13666 19892 12100 41174 56200 87818 35453 71511 37210 57070 4062 61981 82080 89410 14253 89938 85277 61788 1277 46328 73916 13957 87412 43061 3247",
+      "output": "0 46"
+    },
+    {
+      "testIndex": 366,
+      "isVisible": false,
+      "input": "43 -10549\n-9540 -9531 -9513 -9382 -9166 -8233 -7302 -6463 -6120 -4857 -4521 -3372 -3277 -3247 -3105 -3039 -2519 -2517 -2391 -2098 -2013 -1859 -1579 -1026 -722 -640 222 235 2967 3439 4482 4646 4657 4802 5721 5998 6371 8189 8682 8804 8939 9286 9719",
+      "output": "6 13"
+    },
+    {
+      "testIndex": 367,
+      "isVisible": false,
+      "input": "43 -572960228\n-876599354 -26707235 -285591559 -451161030 -103845659 -553067037 -37255793 -823981986 -415975908 -740891631 -880012576 -410586729 -290878568 -891502865 -932047722 -13702089 -737295232 -134331885 -116673726 -299466234 -255049185 -945536597 -225638132 -865271061 -859082600 -404883845 -228190730 -643148915 -813330211 -109487677 -965282677 -444913632 -286480114 -341814309 -771906056 -404865456 -602974581 -193617948 -58195275 -599001696 -967563528 -286480114 -509806005",
+      "output": "32 41"
+    },
+    {
+      "testIndex": 368,
+      "isVisible": false,
+      "input": "55 -1663\n-757 -906 -4765 -6877 -7010 -7242 -7961 -8601 -10946 -12789 -13157 -13612 -13612 -14079 -14191 -16017 -20925 -21278 -22270 -22270 -29529 -30125 -30583 -30678 -33777 -33933 -33933 -34134 -34312 -35320 -45185 -46700 -49153 -49666 -50045 -51578 -58322 -60790 -60931 -63900 -67937 -70248 -70924 -70928 -71271 -72209 -75705 -79777 -82186 -82855 -90373 -90475 -93921 -94813 -94997",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 369,
+      "isVisible": false,
+      "input": "43 -638415\n384974 304996 -118051 -840643 60092 304996 -154463 -118051 -388542 696656 -823926 29109 170763 133655 174168 -447152 483507 -669054 -575584 -388542 -962731 -635059 -193721 67630 -460876 29109 -455358 -49596 325635 -407764 -877877 -805482 -242537 910440 696656 673487 696656 587979 907037 167067 -635929 809865 -7205",
+      "output": "31 39"
+    },
+    {
+      "testIndex": 370,
+      "isVisible": false,
+      "input": "54 112806\n94999 93673 93520 91339 85954 83797 81650 80712 80567 79562 76674 74937 73557 72701 71424 70871 68395 67075 64500 64139 63078 61943 59957 56805 56798 49152 48915 48735 47985 46068 43062 40023 38043 33492 31476 31156 30116 30047 29084 25725 22615 19820 18400 17160 14920 13263 11856 11494 8991 8909 6021 4560 4504 2089",
+      "output": "6 35"
+    },
+    {
+      "testIndex": 371,
+      "isVisible": false,
+      "input": "45 -1162567\n-520067 887110 -468739 -417694 -579681 378429 -663602 742113 -732707 378429 380320 281351 -958823 -527283 -579681 -757390 62835 346962 -942732 478048 472732 378429 -844372 -732707 560956 918464 378429 -663602 -309725 -583793 396404 742113 -222526 -620467 -524577 -803723 -248214 62835 -591070 -571497 -803723 -109491 -256518 -803723 378429",
+      "output": "38 39"
+    },
+    {
+      "testIndex": 372,
+      "isVisible": false,
+      "input": "48 -46\n-82 17 -58 53 -81 29 26 -33 48 65 -71 78 -82 95 74 75 -26 -78 -56 65 -82 53 -70 -91 -6 26 81 -26 27 -92 -78 53 54 -82 -56 97 65 24 -95 -97 78 63 34 -26 95 -95 -26 -52",
+      "output": "22 37"
+    },
+    {
+      "testIndex": 373,
+      "isVisible": false,
+      "input": "46 1310\n46 779 454 583 279 798 916 454 647 718 776 805 300 578 634 634 957 304 940 843 381 361 448 105 748 364 477 5 304 300 488 4 338 138 735 156 364 147 199 88 964 554 916 64 434 876",
+      "output": "44 45"
+    },
+    {
+      "testIndex": 374,
+      "isVisible": false,
+      "input": "50 93\n92 92 84 77 77 71 65 65 64 64 64 61 61 59 52 43 41 37 15 15 15 13 13 6 6 6 6 -3 -4 -13 -13 -13 -13 -13 -13 -13 -22 -23 -31 -41 -41 -43 -63 -64 -79 -80 -87 -87 -87 -93",
+      "output": "14 16"
+    },
+    {
+      "testIndex": 375,
+      "isVisible": false,
+      "input": "51 -120\n-43 -58 -7 -40 -94 -92 -25 -1 -17 -4 -78 -82 -7 -23 -89 -89 -68 -78 -57 -57 -25 -36 -89 -36 -23 -36 -37 -7 -13 -44 -23 -61 -61 -21 -19 -82 -29 -9 -89 -2 -24 -23 -78 -57 -1 -21 -49 -75 -66 -23 -77",
+      "output": "0 50"
+    },
+    {
+      "testIndex": 376,
+      "isVisible": false,
+      "input": "50 773390001\n831607762 553757817 538911712 258612780 840106315 129873739 120059908 223746157 179571695 545430150 196498444 843193430 562730405 798422325 979953135 906179037 783507048 855155558 973112784 674371438 359953035 731807343 621890555 524120743 192212385 782743781 910245273 691431776 28913966 208580563 451704743 503892716 498676079 283924945 298323039 502694392 749527253 284268843 386553102 829206552 750261465 833363614 473955993 584983510 646571282 403232207 385464678 69063401 73966319 699423682",
+      "output": "48 49"
+    },
+    {
+      "testIndex": 377,
+      "isVisible": false,
+      "input": "52 -176177\n-954927 -947466 -947466 -947466 -914640 -904460 -893686 -835046 -721572 -677789 -661701 -661701 -646361 -613350 -568979 -559944 -555220 -533013 -433012 -263003 -263003 -246809 -207180 -166069 -164241 -141655 -49183 31003 112532 137173 145758 156299 167415 342318 368317 385862 390666 413875 450886 455760 515671 532636 625659 658949 693111 699523 802789 833627 887851 938778 957885 987635",
+      "output": "22 27"
+    },
+    {
+      "testIndex": 378,
+      "isVisible": false,
+      "input": "55 -977\n-908 285 -176 172 -781 941 -409 369 -183 151 569 229 -606 330 509 874 -606 -758 582 -256 -249 -434 136 -949 -267 -105 -883 719 -196 -267 262 -289 704 920 569 -264 93 569 877 813 -208 -731 -972 -166 -828 47 -198 -481 717 -452 -136 364 34 956 -210",
+      "output": "4 28"
+    },
+    {
+      "testIndex": 379,
+      "isVisible": false,
+      "input": "46 -76588\n80838 22519 4638 -45858 78255 -47244 22376 -98964 87224 -92077 -36466 4638 61402 -22462 4638 99482 4199 906 -91353 -82149 30514 45779 -2076 -43560 -65052 -50898 -92077 -26916 -11855 80838 93940 36170 -76796 -52069 -42169 86676 93138 -50898 80838 -32121 -79687 -26916 4638 80838 38446 93138",
+      "output": "6 7"
+    },
+    {
+      "testIndex": 380,
+      "isVisible": false,
+      "input": "55 -420\n-992 -758 -322 -495 -104 -399 -697 -612 -592 -913 -84 -155 -89 -455 -602 -549 -764 -354 -836 -923 -832 -263 -154 -50 -560 -72 -71 -948 -164 -608 -835 -995 -66 -864 -302 -57 -317 -438 -693 -863 -126 -957 -601 -298 -902 -713 -835 -314 -220 -860 -712 -786 -155 -946 -334",
+      "output": "17 32"
+    },
+    {
+      "testIndex": 381,
+      "isVisible": false,
+      "input": "51 344048639\n522831105 45436431 963210542 229861656 111897829 948783758 307239626 606899935 395388812 179433798 845715957 164299227 613681551 685413572 626332155 755164159 976348477 127088457 956144553 424882146 939901424 121109125 116642956 643867348 760886210 902773063 60446522 335634116 385792490 164299227 924249848 206166906 862452979 515867491 120068157 468162378 399000776 467789287 334461983 564844285 98445773 578959041 611682360 963210542 790615726 976348477 358518220 589272992 395388812 247886890 96161749",
+      "output": "49 50"
+    },
+    {
+      "testIndex": 382,
+      "isVisible": false,
+      "input": "52 -244\n-498 -289 -478 215 682 85 -541 577 225 -248 -37 -868 577 448 -867 934 -576 -122 442 967 -502 96 -688 997 248 -164 -794 76 746 -570 -115 448 -819 -867 451 -269 -122 -665 762 -793 96 762 -383 194 997 -810 778 52 -151 -914 -172 -675",
+      "output": "17 36"
+    },
+    {
+      "testIndex": 383,
+      "isVisible": false,
+      "input": "48 1819456\n653531 451905 146861 121167 893827 986583 489664 930413 846479 10127 749081 110191 47753 594038 277443 956970 520618 277131 617889 581936 643410 260883 687289 164716 210780 291276 159057 751031 759756 794508 744525 803353 949042 511728 121167 47753 950913 196477 167597 47753 892729 862486 265002 424369 153569 900057 944675 413719",
+      "output": "15 41"
+    },
+    {
+      "testIndex": 384,
+      "isVisible": false,
+      "input": "60 -20\n-39 -29 -70 -17 -92 -51 -2 -19 -31 -22 -71 -1 -62 -89 -63 -31 -40 -8 -2 -53 -17 -29 -91 -10 -97 -29 -29 -40 -51 -60 -29 -65 -40 -51 -26 -97 -22 -87 -51 -61 -39 -41 -72 -8 -50 -44 -89 -87 -29 -47 -20 -53 -67 -25 -50 -35 -64 -86 -87 -88",
+      "output": "7 11"
+    },
+    {
+      "testIndex": 385,
+      "isVisible": false,
+      "input": "46 79\n54 -69 -62 -97 92 -54 -90 50 73 -48 -90 55 92 86 -83 73 -42 4 22 55 -22 -19 21 -69 59 -72 -90 -62 82 73 -21 93 -42 92 -54 0 -99 -36 17 -69 86 64 8 10 -36 25",
+      "output": "0 45"
+    },
+    {
+      "testIndex": 386,
+      "isVisible": false,
+      "input": "52 1461380\n940066 904859 851798 789430 777695 722344 693503 661468 643754 609582 609420 603664 563479 495160 475746 446993 425617 412037 392185 383144 189708 55092 43483 6349 -30713 -85852 -87077 -153435 -169486 -174449 -217940 -217940 -290124 -340629 -363232 -388022 -415685 -426835 -473122 -487478 -487478 -496284 -517837 -558047 -582602 -582703 -591624 -657557 -660121 -783818 -810884 -968432",
+      "output": "2 9"
+    },
+    {
+      "testIndex": 387,
+      "isVisible": false,
+      "input": "52 -457\n120 131 -526 511 930 -873 343 345 838 999 -38 -831 609 387 47 960 601 -231 821 -790 667 -511 -20 436 667 -764 -672 500 -793 -782 820 544 -98 -945 761 -597 -941 54 749 935 787 245 628 -364 -613 742 436 996 999 84 -871 875",
+      "output": "21 37"
+    },
+    {
+      "testIndex": 388,
+      "isVisible": false,
+      "input": "53 212\n980 979 927 856 850 845 829 829 823 787 784 765 693 617 563 535 518 457 457 456 456 456 456 389 362 362 362 362 362 362 361 328 288 243 216 204 167 167 160 136 136 136 136 136 124 123 123 106 106 66 20 17 4",
+      "output": "47 48"
+    },
+    {
+      "testIndex": 389,
+      "isVisible": false,
+      "input": "53 15862\n-9630 2875 6092 -939 -2362 -2394 6875 -4071 -5952 8551 2009 8515 -6567 6965 -2394 7765 3975 4357 9127 -4146 4357 6451 -4455 3088 9127 3975 3975 -8521 6451 9794 6121 6075 1606 2864 -7158 7136 2659 9057 6121 6092 2874 9787 -1476 9127 4357 -3299 -1361 7854 2830 -9460 -5409 4291 7854",
+      "output": "31 41"
+    },
+    {
+      "testIndex": 390,
+      "isVisible": false,
+      "input": "57 -150\n-75 -75 88 24 -91 66 3 42 -57 -14 11 62 -92 66 -6 29 29 48 -65 29 9 -5 -16 3 48 -82 -67 -82 85 42 31 80 -42 24 -42 -14 32 -49 15 24 -88 -52 -39 93 -56 42 -11 -42 -88 -55 -11 34 -76 45 -61 45 3",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 391,
+      "isVisible": false,
+      "input": "55 56\n-100 -96 -85 -81 -76 -75 -72 -67 -54 -54 -54 -54 -54 -53 -51 -44 -41 -41 -41 -40 -37 -34 -26 -12 -12 -12 -9 -8 -7 -1 0 5 5 5 7 7 8 22 23 25 27 28 28 32 36 40 42 46 46 54 61 69 71 86 94",
+      "output": "41 42"
+    },
+    {
+      "testIndex": 392,
+      "isVisible": false,
+      "input": "50 1858\n110 186 181 149 908 109 312 403 620 248 971 962 130 102 368 691 963 38 433 986 812 909 110 435 860 39 149 513 852 699 186 365 298 218 315 106 139 976 272 181 517 699 721 181 46 696 37 110 861 997",
+      "output": "48 49"
+    },
+    {
+      "testIndex": 393,
+      "isVisible": false,
+      "input": "63 -58881\n-64051 -64472 -85105 -66419 -16779 -24263 -47564 -97419 -2968 -55997 -2884 -17148 -22731 -85533 -33453 -96304 -37720 -61025 -2502 -94022 -84858 -87246 -8869 -49595 -20016 -49595 -72816 -60191 -42909 -53826 -94981 -47763 -55262 -37857 -89486 -85009 -8718 -1372 -64418 -4504 -61302 -49214 -34511 -17309 -27252 -79767 -43616 -91666 -37083 -34595 -96489 -20594 -85009 -22172 -82568 -23065 -90597 -94589 -1372 -91301 -99642 -96845 -29739",
+      "output": "9 10"
+    },
+    {
+      "testIndex": 394,
+      "isVisible": false,
+      "input": "55 -40\n-4 -36 -2 -5 -48 -34 -73 -10 -71 -82 -2 -86 -2 -57 -17 -84 -13 -28 -84 -73 -53 -24 -11 -14 -67 -86 -1 -86 -25 -98 -68 -13 -63 -2 -19 -55 -19 -98 -84 -7 -80 -73 -67 -10 -73 -25 -78 -84 -71 -55 -28 -73 -73 -32 -84",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 395,
+      "isVisible": false,
+      "input": "48 370\n570 366 178 995 90 206 524 215 910 562 702 681 177 870 609 132 779 112 751 936 817 588 958 752 343 294 206 545 615 744 416 472 578 752 875 938 422 315 96 280 368 539 455 684 432 444 79 383",
+      "output": "4 39"
+    },
+    {
+      "testIndex": 396,
+      "isVisible": false,
+      "input": "57 518\n-688 -630 -638 955 -701 295 -448 78 -225 272 -223 -194 871 -761 -687 183 -783 871 -216 -189 106 780 68 610 831 -409 803 -320 -33 84 -532 -794 -538 -320 -167 -50 -24 -449 355 549 595 923 934 -938 259 552 259 701 443 636 392 356 -944 -567 -608 -298 475",
+      "output": "44 46"
+    },
+    {
+      "testIndex": 397,
+      "isVisible": false,
+      "input": "54 60\n92 48 46 17 76 93 36 46 50 83 69 97 9 9 67 5 21 93 99 12 69 22 84 79 36 29 46 80 21 61 97 16 82 36 79 21 60 46 21 93 93 68 60 46 69 9 93 26 67 36 36 36 21 79",
+      "output": "1 19"
+    },
+    {
+      "testIndex": 398,
+      "isVisible": false,
+      "input": "64 -973720\n-486860 -389281 -168812 320745 76612 -404423 -99486 -87621 -662490 454377 -521794 -576193 489558 108331 -176626 497553 -751612 630005 431027 -593882 -840183 320745 903378 189904 974568 497553 -180286 -145012 836657 -528771 -957106 105969 375595 -521794 -866346 -654287 892900 -900596 153726 -576193 -22189 692588 398565 -18155 320745 -576193 115192 -788400 969734 -717907 630005 765274 -396923 57682 399324 -396923 -688543 -180286 -18155 48480 493189 -688543 -176626 -486860",
+      "output": "0 63"
+    },
+    {
+      "testIndex": 399,
+      "isVisible": false,
+      "input": "55 80140364\n-989373982 -928711481 -895191116 -840288379 -838824646 -785232273 -773939778 -706795608 -607700620 -587016270 -549312362 -546701753 -451597177 -449247729 -446701342 -415095809 -357127120 -304728447 -206161368 -116302626 -77986235 -70259984 -11024200 4133652 59988852 124865857 211390760 225885247 234027056 303525456 373797383 384417390 391272538 395554696 474796680 485648934 526841706 542197243 563917031 580798873 597736969 626463621 710262956 713846458 789769364 798473391 839173895 887888798 897813772 911794330 915449108 919800846 940692938 974396676 986103442",
+      "output": "14 36"
+    },
+    {
+      "testIndex": 400,
+      "isVisible": false,
+      "input": "51 -347855238\n-570262832 -252937516 -502709387 -986147968 -911045260 -261650745 -552138005 -821908101 -367398462 -767501367 -908951270 -284805073 -23300057 -35543029 -660370894 -772312942 -456925134 -472879308 -120815877 -354455103 -458450286 -234311073 -29371311 -954326637 -501118638 -487850598 -672394808 -23493128 -345770854 -20015544 -815452347 -818972776 -271194570 -303407584 -166738784 -730951573 -968006842 -536417996 -259626396 -748637306 -556991181 -263678785 -190997916 -503100780 -963922215 -706916288 -504638319 -378152067 -746280304 -318407277 -29447961",
+      "output": "49 50"
+    },
+    {
+      "testIndex": 401,
+      "isVisible": false,
+      "input": "64 -714\n-7643 6929 685 -8303 6686 7079 2066 -4632 -6130 -9918 -106 7402 -385 4038 3454 7433 7603 8884 9099 159 4038 -5623 -3833 8266 -784 -3894 1498 -6060 4563 2457 8060 2606 6099 -9479 3461 -5038 -2629 -6422 3954 -558 9879 -8617 1459 3849 -3198 1292 8996 -1527 -695 6298 -3333 4134 5941 -695 5330 -6691 -9923 7347 7901 -558 3444 -3230 9384 8068",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 402,
+      "isVisible": false,
+      "input": "51 982637999\n-209104864 -331143126 -378907089 -667713269 75854247 -159277290 -65854067 -591733808 822216001 118481398 783144031 722977211 -468968908 486629576 725623988 486629576 787230152 453728623 616087046 835195542 -557835304 502439370 628114452 851983276 5902180 525452325 -620721438 787230152 88725665 -696458556 -378907089 -376440709 -72887160 783144031 525452325 813110191 -557835304 52113842 -468968908 -173296625 525452325 257014011 260260372 687540218 525452325 751571054 -930529139 783144031 -930529139 835195542 486629576",
+      "output": "14 41"
+    },
+    {
+      "testIndex": 403,
+      "isVisible": false,
+      "input": "65 -733821656\n-448289332 -151425932 -421643327 -300768415 -601633533 -448289332 -487299699 -458020024 -789267833 -55751918 -885179439 -754640085 -365175574 -958491328 -189042999 -365288432 -270563846 -601633533 -390004959 -458020024 -706557806 -151425932 -880853735 -604732486 -958491328 -480645107 -868773163 -502535472 -412573213 -384949852 -844220021 -514691855 -418974814 -156620567 -885179439 -13836644 -943905420 -755804683 -151425932 -164432616 -480645107 -626175793 -565972167 -448289332 -516258579 -778013427 -487299699 -855837439 -943905420 -256388833 -425074 -416562062 -754640085 -455897928 -472955706 -601732508 -448289332 -671642935 -746642846 -837656914 -448289332 -885179439 -444036485 -719985012 -458020024",
+      "output": "35 63"
+    },
+    {
+      "testIndex": 404,
+      "isVisible": false,
+      "input": "57 897753772\n448876886 579294830 -401217144 -368482286 942356912 861124934 435727998 -372684558 -443237148 971444214 -837132822 871018753 44243195 -466914037 871018753 971444214 2849638 264829392 -368482286 -272310817 950306928 94391582 -706751936 -498390771 871018753 627612631 992383549 -687028010 -732773331 -221534121 278237897 -368482286 435727998 -14837512 439073478 627612631 566812476 992383549 16966530 218172497 -777140520 -777140520 798648543 931061012 -618941184 -723388218 877090246 -372684558 -984524956 -456644254 -925394081 790922494 -372684558 -372684558 -368482286 -777140520 448876886",
+      "output": "0 56"
+    },
+    {
+      "testIndex": 405,
+      "isVisible": false,
+      "input": "58 10239\n6654 3585 1022 9560 6201 2335 5401 7860 2521 9289 9354 3961 9705 2384 7158 7780 9069 2467 6082 8506 8393 2005 7972 3270 8254 3718 7656 8506 2888 6082 7776 3498 6692 8477 8578 8286 6388 4091 3365 3155 3686 5934 4321 9599 2573 4180 7745 9301 8674 994 6617 2448 8942 1361 7911 6225 8604 8775",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 406,
+      "isVisible": false,
+      "input": "52 549850\n994350 984873 981786 970192 960874 939827 938325 915089 907449 891493 868192 850859 841261 807883 796246 787860 747363 729700 727886 677061 640035 624918 603924 603905 577375 563947 554032 551550 539135 514723 512535 470405 367304 354893 343243 327685 313467 306616 294649 282563 274925 274925 165577 159847 143385 143182 139786 102683 86647 74475 69762 5397",
+      "output": "40 41"
+    },
+    {
+      "testIndex": 407,
+      "isVisible": false,
+      "input": "52 -426216743\n697592354 -805565891 -614643859 -214622975 -790213083 -736784090 279823621 -755269167 -19604742 -1800186 386308601 698949832 698949832 -601757138 655331943 -334534364 -505154455 753276221 -116357096 500292656 -768039204 -361113208 -259234144 616424220 -728916497 -63256870 -259234144 698949832 404079281 -259234144 -259234144 -128973287 -935084763 38480397 -787307558 -259234144 460026264 -926249401 -665228899 -692285764 155360313 -974850144 -259234144 -891798646 -665228899 533998014 163053264 -316229666 -737660545 455296444 -980193656 553976913",
+      "output": "50 51"
+    },
+    {
+      "testIndex": 408,
+      "isVisible": false,
+      "input": "67 -709566\n-8830 -9303 -9942 -24246 -36778 -43423 -81253 -81439 -87199 -97804 -101060 -103806 -106746 -108040 -109981 -124820 -151810 -174572 -198270 -198310 -200889 -208599 -209725 -220444 -227759 -240002 -247916 -252966 -289449 -305355 -306059 -308400 -316666 -329931 -333190 -362809 -369993 -377822 -380233 -389086 -416583 -427935 -442966 -450724 -462461 -477625 -497517 -522899 -532513 -551546 -562027 -563012 -606154 -622349 -666143 -729516 -737935 -771972 -785181 -839143 -863821 -866276 -892097 -910327 -941007 -966476 -971784",
+      "output": "5 54"
+    },
+    {
+      "testIndex": 409,
+      "isVisible": false,
+      "input": "64 -608\n-989 -972 -970 -964 -961 -955 -951 -937 -932 -932 -917 -913 -909 -904 -898 -878 -864 -846 -838 -836 -830 -819 -795 -794 -782 -779 -763 -736 -720 -678 -660 -620 -614 -570 -569 -553 -546 -537 -530 -526 -495 -482 -482 -482 -482 -418 -392 -385 -348 -348 -310 -300 -234 -199 -174 -165 -106 -102 -100 -90 -88 -78 -66 -21",
+      "output": "38 61"
+    },
+    {
+      "testIndex": 410,
+      "isVisible": false,
+      "input": "53 89\n-97 -97 -97 -97 -95 -95 -95 -95 -95 -94 -94 -93 -92 -92 -92 -84 -75 -72 -72 -69 -68 -66 -66 -50 -46 -46 -38 -38 -38 -38 -21 -8 -6 -6 -6 -6 -6 10 11 14 26 26 26 26 45 57 59 61 62 64 64 67 75",
+      "output": "39 52"
+    },
+    {
+      "testIndex": 411,
+      "isVisible": false,
+      "input": "52 143\n47 3 4 80 15 43 69 34 91 67 68 69 90 99 27 69 57 58 79 90 79 94 71 81 30 89 17 77 41 86 68 17 17 3 34 82 94 81 56 90 59 77 45 19 30 79 71 95 36 90 5 3",
+      "output": "16 29"
+    },
+    {
+      "testIndex": 412,
+      "isVisible": false,
+      "input": "55 102979\n-75 40214 -3836 -71636 -41193 91278 -83001 -71636 63514 -33434 -75 26763 41224 13773 -5407 99653 42367 -44316 65948 86770 -82037 21484 -98112 41521 69544 -65874 -8096 -82442 36791 -29427 33675 45075 13773 -176 30361 70751 -71325 15926 87996 42311 91401 67896 42245 14468 57964 -62938 -41127 -4642 -23329 97941 31111 -26268 -23329 79568 23411",
+      "output": "53 54"
+    },
+    {
+      "testIndex": 413,
+      "isVisible": false,
+      "input": "65 29\n8 -88 -35 86 -43 -26 18 96 -26 83 -13 -10 -14 44 13 -97 -55 -17 50 -98 38 -97 67 -28 -14 -26 -56 38 83 -55 96 -26 -11 96 23 6 83 96 -55 3 51 38 49 -77 -11 96 -49 -33 -34 -64 100 -31 -14 -44 -52 -77 -26 -26 96 82 -26 83 -17 51 -42",
+      "output": "34 35"
+    },
+    {
+      "testIndex": 414,
+      "isVisible": false,
+      "input": "66 -278768975\n-261270781 -17498194 -442362964 -544458485 -842998709 -492252070 -786584728 -203926062 -453210238 -926392386 -13982008 -298941678 -171239033 -699282249 -661028724 -3235718 -159620108 -368600264 -145685999 -449807128 -877300895 -585647361 -138404608 -909588986 -466784311 -685449236 -472838465 -195384045 -159620108 -791605549 -214892938 -210625136 -572257254 -748053963 -501446638 -552370201 -429051180 -305288112 -442396114 -635762020 -772372886 -895276394 -661028724 -335503144 -18302126 -938491892 -842998709 -142402137 -839587697 -481966917 -370562573 -8389481 -4473678 -174371433 -787713354 -515153372 -242793449 -458800325 -95381641 -380931085 -81590092 -481966917 -317984106 -665419769 -39189587 -626463503",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 415,
+      "isVisible": false,
+      "input": "56 -69747\n79389 -29298 9536 -343 -22376 -87432 -16723 -24101 -7844 -22087 -15792 65467 -55264 -49841 -89570 -69853 38736 -87003 -42980 59966 -95651 54148 15624 -99348 35665 95330 -3911 78165 -33390 -57774 15895 24824 -98421 -95651 55321 93648 -29750 49187 95611 11311 39129 -80862 67082 -10293 -93377 23310 86057 77443 43481 -32259 -95651 -93377 86763 57437 -65836 -55039",
+      "output": "26 54"
+    },
+    {
+      "testIndex": 416,
+      "isVisible": false,
+      "input": "63 -103\n48 93 61 -39 -98 -32 38 -51 52 99 42 48 -56 48 38 -29 52 -16 -29 76 -7 59 79 98 -98 48 48 -51 -79 -42 -4 -7 -85 -98 9 48 -80 100 47 -34 -21 27 -34 45 52 42 -30 48 26 47 48 43 27 -33 -63 38 -59 -44 -58 59 -34 42 57",
+      "output": "56 57"
+    },
+    {
+      "testIndex": 417,
+      "isVisible": false,
+      "input": "65 689\n536 441 -303 280 -127 996 419 -312 773 455 80 699 782 -715 961 -771 904 -701 950 371 -853 582 216 -635 860 829 201 -614 654 443 -481 -679 -8 69 419 -292 12 156 -753 -543 -101 -923 -945 -444 -518 -330 -524 693 -820 -461 -144 495 23 -574 982 -611 -850 -883 886 -696 -914 -604 -126 590 99",
+      "output": "63 64"
+    },
+    {
+      "testIndex": 418,
+      "isVisible": false,
+      "input": "70 -98555\n-47461 -16463 -50015 52645 72675 64648 -29044 40069 -99960 38030 -29942 24801 88638 37146 -1997 -29942 79443 38030 72844 -42335 -14608 -74293 -48902 49972 -37692 68372 -10800 -47151 77768 -76822 40069 60750 60750 -84916 52645 63995 55209 87971 49989 27829 11123 -83393 39827 -1633 52645 24801 39827 47054 43693 72844 -41066 -9401 60750 76806 11113 81908 60750 -14608 -60317 39827 60599 76828 -92109 -14667 40069 40069 50577 80257 1980 -51094",
+      "output": "0 69"
+    },
+    {
+      "testIndex": 419,
+      "isVisible": false,
+      "input": "64 -1401307\n966520 639050 -461228 31630 -309184 114860 -701737 80038 65154 580704 966520 125628 306893 572510 190352 311012 -664665 454749 -360293 -314903 484553 -663343 -737964 547290 579667 -397585 521018 60045 547290 -846276 -408396 830012 -790218 882150 775719 -562301 225051 543772 -111034 -272880 340914 391187 990974 -484078 38309 950875 -262635 134698 -262404 645142 963519 484487 316838 392719 -746897 -534059 551320 80038 -417964 929752 -746951 -813671 821479 -337634",
+      "output": "21 22"
+    },
+    {
+      "testIndex": 420,
+      "isVisible": false,
+      "input": "58 112\n62 95 19 35 63 41 6 24 25 63 7 25 62 6 10 36 100 90 29 98 82 48 56 67 96 55 66 53 25 20 43 13 94 98 6 90 63 98 19 7 62 90 98 61 90 8 97 66 7 69 75 94 72 61 66 25 98 25",
+      "output": "30 49"
+    },
+    {
+      "testIndex": 421,
+      "isVisible": false,
+      "input": "71 183208\n91604 91604 69317 30562 67728 65854 22321 52419 82344 55579 21473 72050 1972 64046 66067 39135 11411 65655 77375 50434 37067 26147 80070 53331 25633 97660 3961 42020 45779 81943 77865 12925 23855 87498 42584 43508 6678 83069 76204 9767 50501 72596 77215 43934 82350 83089 97945 6284 93799 4485 24083 93151 49256 61729 80146 77012 52846 21947 78435 78185 7746 98070 43666 65067 11961 40857 8638 61320 73156 375 84759",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 422,
+      "isVisible": false,
+      "input": "58 37\n100 98 95 94 91 85 79 78 76 75 71 70 62 57 57 57 53 51 50 48 47 47 43 42 42 42 42 41 41 41 40 34 33 33 33 33 31 28 28 24 19 19 15 12 10 10 8 8 8 7 7 7 7 7 6 5 5 1",
+      "output": "36 54"
+    },
+    {
+      "testIndex": 423,
+      "isVisible": false,
+      "input": "65 30\n79 75 10 71 72 70 16 35 41 90 51 90 70 94 62 68 90 90 87 90 79 37 90 1 41 5 98 27 100 16 15 33 51 15 90 26 79 11 37 82 51 26 90 16 79 69 26 66 95 51 44 97 88 33 88 26 60 46 39 79 75 70 94 90 79",
+      "output": "30 33"
+    },
+    {
+      "testIndex": 424,
+      "isVisible": false,
+      "input": "74 168875\n85406 34085 -66413 -77837 70463 35796 32207 69506 43450 -70604 43665 -83010 33130 -3934 -81749 -75277 -23994 -971 60257 -54225 91707 -99258 -95863 -54946 -77029 93978 74897 34599 -94855 35060 10991 78272 -250 96235 78109 -83707 18510 -6859 59190 80895 -8500 -65942 -85733 71090 48074 94995 61446 48832 -94592 63792 -80382 -14456 41942 -75561 19996 82017 4974 -64701 -6355 59602 -82227 -13717 -99632 17094 96413 -23774 -34276 -58112 -14565 93218 68992 -855 -53800 81500",
+      "output": "25 26"
+    },
+    {
+      "testIndex": 425,
+      "isVisible": false,
+      "input": "70 105862\n36853 -2099 -81953 -79011 61858 40877 91648 -65087 87906 -78588 -27843 -27905 -11316 -44172 -38005 30646 58439 -73433 -75665 -45010 -53934 -65443 -70972 -38368 11883 59825 -59977 18382 82623 -68465 -73449 79810 39409 -57586 95946 -89198 6698 68885 -4108 39743 10582 -45010 -40707 93476 63807 81988 -64101 -4108 -30317 -11593 98843 -45756 -1416 -84106 -81837 -64101 -75443 -82520 11450 -74928 80892 -46531 -72964 -58460 -73449 32925 83808 -48574 -33340 22054",
+      "output": "66 69"
+    },
+    {
+      "testIndex": 426,
+      "isVisible": false,
+      "input": "72 60\n-60 -76 78 -51 -9 -99 -40 65 11 -41 66 17 8 2 -4 8 -54 -82 18 78 -31 73 -16 -16 -38 -59 67 -37 11 -52 28 -9 -81 -60 11 -59 78 -26 -93 62 28 -76 78 65 11 11 -81 8 97 78 44 48 -81 0 -94 46 -16 -23 44 11 -91 -16 -38 0 -51 0 -95 54 59 -9 79 68",
+      "output": "27 48"
+    },
+    {
+      "testIndex": 427,
+      "isVisible": false,
+      "input": "73 -1230\n935 772 192 219 -809 -177 -752 -680 966 -36 990 -611 839 -202 118 721 -817 -400 82 876 -300 -548 -342 921 -646 788 -67 546 -144 884 -675 103 -291 -122 151 981 -615 -339 526 -866 -877 -840 -518 -229 -796 -122 -24 396 677 -871 -585 -451 532 -773 -884 -719 -710 -467 726 -929 592 602 -818 419 80 -388 -741 727 -998 474 -222 357 -615",
+      "output": "36 72"
+    },
+    {
+      "testIndex": 428,
+      "isVisible": false,
+      "input": "71 112313\n45811 77366 48943 1523 17823 61151 40966 13176 18130 1575 8156 25709 74527 8124 67074 20060 22511 56766 49151 78937 49891 61913 4326 39055 60001 81115 63069 8676 18230 85585 27633 53091 63651 89721 34956 8085 41385 18130 22901 61773 16985 4326 98584 99203 29821 90997 87997 12645 42424 80752 68490 13110 57357 27080 21436 75932 54244 43643 78597 2302 38940 62478 16218 57437 74220 65017 39055 2959 59316 99023 50768",
+      "output": "43 51"
+    },
+    {
+      "testIndex": 429,
+      "isVisible": false,
+      "input": "73 277689437\n30597961 -447411901 -407111960 134727797 366417295 134727797 -846403168 655394656 191065486 148993333 621910411 -43400547 -82847463 -689876891 -313335538 621910411 -638922761 740908487 330678975 580316726 -490947958 585210474 328130481 -43400547 397008839 -773653862 -773653862 330678975 950227535 74705189 191065486 -494424573 -688878260 -225390740 655394656 -225390740 859416642 -324161203 -922453532 761939129 994644167 -545633476 -313335538 109697837 239288476 732883113 829947247 -545633476 482525215 191065486 -922453532 603567581 544797889 -701780510 740908487 109727033 391016106 585210474 -846403168 439064276 -922453532 -176889011 -922453532 829947247 -176889011 -773653862 585210474 -593041207 -922453532 -922453532 -775876039 -561962112 839651549",
+      "output": "71 72"
+    },
+    {
+      "testIndex": 430,
+      "isVisible": false,
+      "input": "76 -1846\n357 -134 -365 -657 -466 382 -374 930 527 -210 -301 -751 952 23 532 721 -580 -243 -766 908 -417 44 -811 -590 645 267 -261 -220 -543 436 19 -864 124 802 859 -721 -652 382 -678 659 -185 50 -905 -993 -208 -158 -352 175 -824 -746 -115 -950 -896 267 -318 -736 -841 -24 266 -381 -496 726 641 662 314 759 773 -967 284 -891 -897 -713 524 974 440 371",
+      "output": "51 52"
+    },
+    {
+      "testIndex": 431,
+      "isVisible": false,
+      "input": "76 246\n224 8802 6388 6672 8709 4278 565 6640 2946 4634 8003 6257 6001 8282 4303 7937 523 9612 6868 413 1101 6672 4895 3373 7933 2116 2805 6422 8794 8627 7028 4427 1298 6564 2160 9195 5561 5705 2273 9355 7081 1292 6191 2890 1095 6339 1516 4900 6675 7197 6675 4688 1302 1237 3755 4266 1039 4414 8391 413 4634 5588 6675 5421 3771 8339 373 1 3486 8043 1516 1303 2975 5081 9652 22",
+      "output": "0 75"
+    },
+    {
+      "testIndex": 432,
+      "isVisible": false,
+      "input": "66 -466\n-243 -694 -709 -610 -111 -879 -949 -199 -111 -802 -161 -213 -374 -904 -690 -536 -844 -852 -285 -791 -408 -358 -570 -40 -379 -882 -582 -570 -246 -81 -385 -341 -309 -135 -443 -289 -390 -40 -421 -120 -574 -522 -73 -40 -456 -439 -940 -448 -467 -383 -136 -949 -469 -280 -588 -238 -247 -879 -895 -390 -36 -85 -283 -62 -967 -427",
+      "output": "29 30"
+    },
+    {
+      "testIndex": 433,
+      "isVisible": false,
+      "input": "67 -74\n-97 -31 25 -34 77 41 -60 -82 -6 21 52 -20 -97 -17 -100 21 -77 68 51 -66 -34 85 46 85 -80 14 68 -34 -31 87 27 80 14 -17 13 -97 85 -6 -34 -27 -4 85 82 -60 -37 -60 22 94 -20 21 -37 -34 -50 -27 61 21 96 -3 -66 -78 -66 -20 21 54 16 34 -34",
+      "output": "44 50"
+    },
+    {
+      "testIndex": 434,
+      "isVisible": false,
+      "input": "60 626\n7368 9539 2316 1198 6298 614 5384 313 6035 7732 7537 3560 3872 1674 6825 6832 4679 9947 1420 4474 1239 882 561 8843 3829 284 4622 5419 5564 3630 2016 4107 5674 1311 7155 668 9593 9251 6805 888 2476 8396 4349 4669 313 6792 7144 9302 7139 481 3143 8256 2489 8725 4771 6378 1335 4234 2069 9513",
+      "output": "7 44"
+    },
+    {
+      "testIndex": 435,
+      "isVisible": false,
+      "input": "68 2\n41 23 35 56 16 19 12 63 75 82 38 91 77 18 19 70 30 25 38 68 5 78 73 12 68 23 18 19 38 14 13 5 48 69 93 13 56 15 4 84 84 33 5 14 41 19 94 68 66 5 30 89 38 1 67 63 72 5 19 46 38 70 76 67 2 12 15 0",
+      "output": "64 67"
+    },
+    {
+      "testIndex": 436,
+      "isVisible": false,
+      "input": "59 -1955\n-974 -981 -653 37 -490 562 -258 833 -25 -26 429 241 -216 -154 -486 640 67 -822 -338 671 172 283 245 908 482 -157 -102 -490 -430 267 886 820 164 -566 312 524 -901 596 96 -249 -751 -622 -91 -675 18 -181 268 -284 979 448 872 948 -74 60 -95 708 347 442 -355",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 437,
+      "isVisible": false,
+      "input": "64 -122\n16 97 100 48 -79 -61 -45 -79 64 95 55 -19 -25 68 -79 37 -79 -40 -100 -63 -61 9 -81 -73 -51 -96 -100 -68 52 -45 -2 86 2 -72 72 68 64 -79 -46 -35 63 -17 -64 -32 -96 84 36 94 -32 95 -70 85 -70 63 -79 86 -1 34 -60 -14 -79 66 -60 64",
+      "output": "5 20"
+    },
+    {
+      "testIndex": 438,
+      "isVisible": false,
+      "input": "75 -17001\n-7294 4708 1605 5876 -2004 -5768 -8784 6286 5167 -3527 3408 9417 937 -4904 -7967 -366 6218 6979 282 1714 -9235 6442 5161 5301 6039 2381 5818 -1994 -3311 5450 568 825 -7287 -5469 4377 -1151 5542 2572 -5367 8720 -5240 3484 1348 1974 -8440 6670 -3120 -605 -7865 1278 -8214 -8529 -197 9533 -3929 -27 8469 2237 -352 684 -3767 8087 7476 3062 1403 8492 7945 7459 7199 9163 -4673 -5392 -4304 -4996 -9707",
+      "output": "0 74"
+    },
+    {
+      "testIndex": 439,
+      "isVisible": false,
+      "input": "74 -89750\n-44875 -44875 2520 5765 -2447 70101 -66137 23002 -29775 33281 18531 5765 97442 4043 -47072 4581 62598 -79206 2059 -2019 81708 -72401 70616 76798 12068 29105 62158 5765 -17072 95575 -44096 51487 -94284 -65045 5765 -28595 -32968 -3652 5765 -41697 14557 -78492 -45809 -5073 -51946 26474 45602 -80523 97442 -32176 10272 -86648 703 -61234 -51946 5765 -29236 35864 70616 -98138 5765 56621 5765 -2933 83604 11185 28754 -91257 77206 -22522 30161 84132 -65045 5765",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 440,
+      "isVisible": false,
+      "input": "70 93\n71 -21 48 17 -40 48 -93 -58 25 77 23 42 53 83 -74 48 -55 18 42 58 4 -82 23 -73 -93 100 91 69 -93 -83 23 -39 -93 31 -91 -73 91 -58 -80 18 -39 18 -50 21 -73 -93 18 -72 -84 -93 31 -74 -100 20 -21 -39 -39 -73 -39 20 -97 88 94 25 48 -83 6 -39 -1 23",
+      "output": "62 68"
+    },
+    {
+      "testIndex": 441,
+      "isVisible": false,
+      "input": "79 1381988\n-958691 -911022 -862864 -859172 -828060 -826547 -807337 -791855 -766521 -640685 -637177 -595258 -521622 -515948 -487322 -484861 -453638 -445157 -436638 -397408 -362051 -359555 -345558 -319200 -230937 -135309 -121496 -100292 -79748 -63025 -53728 -5034 31190 37288 83685 94299 103642 127307 127307 162393 173878 179439 188514 212638 233683 271465 276091 328292 334438 366402 366402 375365 431143 438029 516930 525287 552490 573051 576891 673852 701933 714396 739665 750027 752960 756908 764097 777665 787853 791280 833369 838596 847018 881044 881086 886457 931299 931669 950845",
+      "output": "52 78"
+    },
+    {
+      "testIndex": 442,
+      "isVisible": false,
+      "input": "80 -5315095\n391112818 -761676822 -469081210 -977317529 -517221029 -851013928 -101300003 -523563472 -688458015 954582673 -271498593 704069364 -569050800 954582673 643269688 -851013928 579580532 23048160 -28363255 374481921 -10195572 -915101734 -313264259 -425530568 580253760 -124122058 580253760 -612357608 -580561770 -436166243 -245085789 56966060 -234219849 22108189 918138223 -370433576 -580561770 -641763598 -702943910 722075374 570508992 -494198206 -10195572 519198557 351290152 370556745 -708103998 23890079 817492195 569548878 380132819 -688458015 159267555 743099212 261390262 351290152 -124122058 444420582 -486743936 843328211 729723807 -947316044 380132819 -76589518 918393617 923241863 -459861389 -567883580 -309805849 -290673508 351290152 -322026856 444420582 416481979 -306988022 -345064668 -8793787 -722075083 380132819 -181226970",
+      "output": "17 18"
+    },
+    {
+      "testIndex": 443,
+      "isVisible": false,
+      "input": "63 1282\n745 27 400 -436 -599 84 -436 -599 197 -599 -300 844 -819 425 -283 912 400 400 979 481 -147 579 -142 -989 844 -648 742 536 400 151 912 485 887 705 299 -609 400 786 -327 61 -231 -946 -10 -327 -37 641 892 912 -878 561 -902 -599 675 302 -916 188 641 636 -413 249 -603 -436 409",
+      "output": "45 56"
+    },
+    {
+      "testIndex": 444,
+      "isVisible": false,
+      "input": "65 879\n-911 -622 529 -125 532 598 463 513 -921 10 932 262 6 -641 242 -411 417 821 -126 987 -672 912 167 670 -576 -590 -91 305 -740 -459 109 -809 877 587 858 569 -79 325 151 831 -245 -66 -349 -398 515 446 477 295 940 -993 -74 317 -540 718 -375 -186 687 617 -225 219 971 -223 -550 236 9",
+      "output": "11 57"
+    },
+    {
+      "testIndex": 445,
+      "isVisible": false,
+      "input": "80 -1699532\n974067 930968 912156 911613 908131 877032 809883 765050 719497 693048 613277 552228 516015 511692 483606 468453 438116 425901 415744 409337 387468 348432 344478 269227 259935 251925 251062 218042 171043 166656 154976 142357 96169 75044 74039 -31129 -76029 -84727 -175524 -181092 -185468 -214172 -229919 -261773 -295995 -298966 -300539 -310288 -314718 -354378 -362423 -384173 -394978 -398599 -401625 -499509 -521684 -536410 -540646 -571599 -575119 -591027 -603512 -622742 -633387 -651383 -676273 -694549 -725070 -738532 -741815 -756312 -804025 -820261 -833308 -866224 -905424 -913027 -943221 -956839",
+      "output": "74 75"
+    },
+    {
+      "testIndex": 446,
+      "isVisible": false,
+      "input": "69 228135858\n958179039 918792529 880744440 725916597 686480052 665759123 650942434 637601353 613571152 553155370 550100998 528729861 485011319 470560574 372047899 355623412 283553023 281126140 246965562 209180960 171571054 165052689 154470473 145659326 114067929 114067929 98368615 97268027 87776904 10732302 3366044 -64628403 -177578546 -207176210 -215868919 -217286312 -225031677 -228096864 -248170571 -304045971 -318353037 -344749307 -407952058 -417649333 -506061517 -509012488 -511494804 -511555964 -512018801 -525469085 -560634660 -617831843 -617868563 -672555254 -673051406 -673094625 -679199084 -680766842 -703425278 -755533998 -772314796 -783711458 -799459064 -900324646 -913824943 -925712122 -966817236 -976313717 -978800630",
+      "output": "24 25"
+    },
+    {
+      "testIndex": 447,
+      "isVisible": false,
+      "input": "79 12191\n-4234 3562 -228 9568 4282 4109 8695 7139 -3702 2250 72 7139 684 -955 1907 -3424 2479 -6062 -7486 5088 -8928 -9020 344 9377 -1836 9187 6081 -7297 -228 6053 -4828 9284 -9993 1092 -3080 1634 -121 -1970 3985 9129 -2460 -2774 2182 -7710 -5146 1360 -7836 2582 -798 8339 -349 7904 -1750 -3370 -4075 3562 -6224 -8869 6332 -2604 2563 1229 129 -3322 5321 3240 8689 -8705 -3774 5859 9700 3128 -2346 -9725 -4652 -7709 -4828 -7005 -6826",
+      "output": "58 69"
+    },
+    {
+      "testIndex": 448,
+      "isVisible": false,
+      "input": "73 195548\n97774 11630 66546 17651 60826 8203 13185 28981 34529 64997 38980 34147 87612 66436 13079 87021 19101 60722 40795 81655 60868 4850 4568 71835 30397 33104 66305 47368 17281 11580 9547 24978 13756 93655 74153 99565 83204 62229 24733 52760 71976 158 60031 15870 69134 99689 97264 88336 20720 54175 60350 74549 89189 95008 99687 22456 97446 66152 50526 8872 97177 49221 14847 76376 30881 81141 9079 38973 55720 84826 27990 88799 97774",
+      "output": "0 72"
+    },
+    {
+      "testIndex": 449,
+      "isVisible": false,
+      "input": "82 -47\n-100 -99 -98 -98 -97 -97 -97 -93 -93 -93 -92 -89 -88 -86 -86 -84 -81 -77 -76 -75 -71 -71 -69 -69 -66 -65 -65 -63 -61 -59 -59 -59 -57 -56 -55 -55 -55 -55 -55 -54 -53 -53 -53 -51 -51 -49 -46 -46 -46 -36 -36 -33 -33 -33 -33 -33 -31 -31 -31 -31 -31 -31 -30 -29 -27 -26 -23 -20 -10 -9 -9 -9 -9 -8 -7 -6 -5 -5 -5 -5 -4 -4",
+      "output": "64 67"
+    },
+    {
+      "testIndex": 450,
+      "isVisible": false,
+      "input": "62 293\n659 203 315 807 775 433 992 177 444 86 545 73 537 799 132 719 218 690 744 451 5 497 414 320 343 572 450 409 693 770 951 822 816 961 622 109 5 565 728 901 212 469 594 343 660 709 896 352 522 789 208 168 696 92 259 329 925 215 144 23 292 1",
+      "output": "60 61"
+    },
+    {
+      "testIndex": 451,
+      "isVisible": false,
+      "input": "71 1868\n868 -922 559 -590 471 -590 809 -636 614 -309 -799 621 952 -922 -963 329 -445 -31 -790 -181 -413 1000 -790 -678 685 330 -922 606 787 635 -464 -790 -939 -444 -290 367 -606 330 -409 620 -181 971 287 -336 -296 -54 -790 -68 -939 -139 809 287 -996 0 851 -464 -590 -715 -669 -297 654 -522 395 -181 -53 -181 -939 -510 -181 901 -474",
+      "output": "0 21"
+    },
+    {
+      "testIndex": 452,
+      "isVisible": false,
+      "input": "63 2034\n865 1169 9311 596 5035 7036 4819 6102 5269 5077 2096 6199 8482 2828 9789 623 8450 5703 6725 550 9436 7266 1120 9529 8036 4078 6912 7005 1708 8890 7227 736 4141 2991 6149 654 1773 6261 9540 2856 6189 8838 9352 9557 6297 2522 6799 80 9723 4377 7969 1214 9281 8328 7875 1479 2652 5613 4635 628 8568 9367 6840",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 453,
+      "isVisible": false,
+      "input": "63 -1967005\n-973345 -993660 -264899 -617107 55362 -725498 373136 -161976 660454 -212036 49884 -459603 942608 -958223 563101 177217 -774406 -56077 883839 -919464 -676068 543428 -951641 -218050 -862264 49884 135513 437023 57014 676282 -115895 -264899 -351386 701151 767505 -161976 -232830 176322 541136 -161976 69561 111299 -859753 -64578 783336 -859753 645919 610173 -583306 767505 951312 915390 -836433 57014 -820065 454785 -331331 273796 -478616 932221 962406 398903 528105",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 454,
+      "isVisible": false,
+      "input": "81 127494\n65119 4888 99221 65798 68104 83231 55257 29378 83178 26284 24030 62888 56251 63287 17211 9941 47315 9219 87161 82215 22728 46714 7343 73181 85379 9732 65032 98116 32993 69511 79298 72111 18932 74108 53466 91551 68506 38298 49569 87653 82241 15187 78444 95199 76981 69583 18533 32319 60885 56251 47049 69511 20698 32688 34751 54519 89868 6084 23961 54215 50230 98047 61517 68406 97249 99563 68387 91523 58607 56045 29428 96700 40147 30637 55315 95724 36932 70710 12430 39774 8305",
+      "output": "7 27"
+    },
+    {
+      "testIndex": 455,
+      "isVisible": false,
+      "input": "74 -1366660\n-822482 -45051 -91591 -735495 -49571 -41202 -520594 -580250 -893240 -127640 -269201 -64019 -742617 -282948 -941594 -59573 -93951 -538673 -664257 -874917 -575989 -255260 -398553 -765260 -534161 -187253 -548514 -383040 -106757 -768582 -926361 -832765 -324657 -176703 -477250 -54128 -149469 -380409 -683330 -683330 -596519 -461819 -227986 -937911 -280371 -499592 -747619 -83274 -849443 -835575 -565059 -668600 -7411 -188772 -778074 -809995 -401316 -322891 -230775 -460279 -269879 -418080 -314382 -90783 -604386 -84168 -673295 -687971 -554704 -329358 -637358 -567714 -556850 -414602",
+      "output": "38 39"
+    },
+    {
+      "testIndex": 456,
+      "isVisible": false,
+      "input": "71 43\n53 -90 42 -11 15 -26 -26 -85 -9 -65 -15 -85 -15 -75 -41 -9 -32 100 19 -19 -31 99 14 68 -21 53 87 -19 -9 4 -68 76 76 -8 92 63 -82 -64 82 15 -75 -77 66 -30 -11 66 -100 4 -66 -73 44 -11 92 19 15 -75 -85 42 91 -64 -68 -54 -53 -66 -11 -75 -15 -26 19 2 41",
+      "output": "69 70"
+    },
+    {
+      "testIndex": 457,
+      "isVisible": false,
+      "input": "69 -85057\n57665 -35280 -675175 -571475 -835567 -775095 59381 -983655 -181391 -316104 747587 421780 97266 2815 241654 632432 424204 -250150 697056 152132 551726 -722445 405423 -353889 59381 153274 -896359 -229637 -284918 -353889 992328 861301 -552953 621925 -392452 861301 -896359 -896359 -921335 -775095 621509 -50129 632432 -50129 695121 424204 145912 -153762 507421 210975 97266 124893 747587 -785615 220617 403341 -863468 -342308 -935241 -552953 -153411 -766430 -201387 -392452 639527 145912 210975 888687 -142722",
+      "output": "0 68"
+    },
+    {
+      "testIndex": 458,
+      "isVisible": false,
+      "input": "72 629692975\n311467519 -399642072 655064280 -905629328 383285019 -357146462 231167266 -719161279 186708303 -178611038 781030423 -22202283 834608922 -143808920 60794905 669867735 162975800 -757732788 -680579538 591801179 -381557489 -66838396 760673399 -498017087 -706877492 -739317774 -647340152 138565294 -212508702 801474397 518071645 556037985 -820789488 6679602 -146149354 -171781422 -612765675 148081328 91039484 699627351 -940311336 311467519 -162354901 -899697212 856686037 660548041 -354119089 591801179 267543748 26434237 -82440906 324686361 185504706 -438344214 -784148907 413091230 227631418 -914953437 -437424679 -978815911 95619477 -351250637 115614940 -536688119 287122096 -206019794 34284116 968706690 -865153607 227631418 53329705 447868558",
+      "output": "29 35"
+    },
+    {
+      "testIndex": 459,
+      "isVisible": false,
+      "input": "71 -194902\n-74582 -357 -11312 41633 49077 -90020 -17125 -7624 54071 36410 -53096 -60950 -37781 67886 58960 92515 61708 27125 -12642 -14678 -36057 -52811 20163 46873 93769 99022 57059 1523 -28642 -30561 -74516 -8142 -99514 54862 86928 71707 37038 -7530 -95446 -71489 16040 -62446 -72080 -38825 98225 40861 -78284 -55667 82878 -39252 -53096 26293 78540 -7349 95876 84913 38482 -78284 24633 -20486 -40606 88695 30388 -86640 -68481 25815 76827 81596 96002 -97451 -97451",
+      "output": "69 70"
+    },
+    {
+      "testIndex": 460,
+      "isVisible": false,
+      "input": "78 -41\n-17 8 8 -90 -32 -54 -87 -73 18 79 -5 18 23 -2 -77 65 -52 84 79 -26 -32 -99 -35 -32 -26 25 94 -32 18 -47 18 79 -81 55 -19 -32 -65 85 -94 94 80 -52 62 79 17 -65 -28 -32 94 -93 -73 91 91 -93 -25 3 -40 3 34 -55 -73 76 -53 94 18 29 -32 -94 64 -57 79 -47 -67 -93 -87 -94 45 -24",
+      "output": "0 77"
+    },
+    {
+      "testIndex": 461,
+      "isVisible": false,
+      "input": "74 5707\n9876 9830 9662 9583 9529 9366 9294 9286 9052 8775 8188 7980 7980 7926 7676 7611 7376 7319 7195 7172 7048 7038 6845 6661 6588 6211 6033 5977 5697 5624 5477 5477 5329 5283 4805 4805 4783 4650 4420 4316 4008 3957 3642 3617 3422 3200 3098 3080 2791 2423 2377 2229 2201 2157 2143 2080 1934 1742 1644 1644 1551 1465 1445 1328 1325 945 924 853 718 652 595 595 472 421",
+      "output": "36 66"
+    },
+    {
+      "testIndex": 462,
+      "isVisible": false,
+      "input": "73 3102\n-9428 -3517 171 4978 -8090 6293 -9408 4825 4978 8134 9403 8111 -1733 5063 -9871 -3663 -376 2330 -2735 -9636 1387 9403 -3671 6993 6157 7487 7502 4489 1059 -6709 5063 -1066 -9428 -4089 -9848 -4497 -3517 7993 5063 -1129 -8408 4978 -5801 -8223 3566 -6074 20 -9644 6293 7263 5063 5063 -2074 -1129 7004 6460 1009 -5630 6293 -9241 -9701 4908 4210 3372 8874 -6876 1551 -786 6550 8465 4489 -3708 1551",
+      "output": "66 72"
+    },
+    {
+      "testIndex": 463,
+      "isVisible": false,
+      "input": "70 -82084\n958954 930967 863165 831829 779994 746320 727105 725659 706529 662182 630923 524299 476622 443266 438624 418856 409673 384272 354040 347818 260364 233120 223959 217730 138765 112213 23265 18046 15224 -30246 -36231 -51838 -56654 -62451 -108520 -121521 -126802 -153107 -210131 -214133 -250412 -261169 -281157 -346444 -358042 -359273 -381598 -424654 -441920 -493768 -507950 -539795 -557927 -559817 -591633 -592209 -604403 -624838 -634719 -654279 -803653 -803653 -805005 -834929 -841615 -844826 -888428 -890997 -899410 -899410",
+      "output": "29 31"
+    },
+    {
+      "testIndex": 464,
+      "isVisible": false,
+      "input": "84 1134381\n693661 440720 830522 667271 632993 551203 62077 468173 787020 934906 841681 177949 716711 933517 374164 677198 536825 446952 471374 123475 692573 340098 482419 743560 528454 588594 185921 752250 774617 236256 362324 989475 981114 831703 462307 986516 887358 178567 822093 832829 709203 537791 606536 982963 203882 539569 488071 627433 209735 512994 677955 432276 298208 912955 322776 637020 463882 935300 338962 193958 385957 742203 833851 747583 163837 187927 177859 976506 953305 214974 608087 138269 256302 844474 377616 248088 239558 637425 600727 970490 371814 24826 220788 218677",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 465,
+      "isVisible": false,
+      "input": "71 -148967\n-6236 -36610 -90567 -8844 57453 62422 79744 -67503 46210 40469 58996 -55094 -9950 50813 -16422 -49365 -49128 -67692 83183 92121 -79351 -55591 96131 65925 -75174 78362 -5840 -11612 55820 -61054 -46781 91913 -92691 21899 75749 -8651 64341 -64257 33628 -71098 -69718 -73782 -91450 -73941 -88543 93457 -91351 76344 -73083 38019 -46069 26259 -91219 64019 72178 15520 -93625 36520 -21811 -36113 -19 -77108 20950 -21433 28379 30904 55713 25910 89193 -58530 -90437",
+      "output": "69 70"
+    },
+    {
+      "testIndex": 466,
+      "isVisible": false,
+      "input": "88 93\n-64 23 -92 -1 -53 -64 55 -53 76 85 9 -89 87 -24 96 -98 88 58 28 9 28 -68 99 36 -54 31 -41 -48 9 -21 -26 99 -24 -69 -94 -39 67 27 99 -99 -20 91 87 73 -78 -94 -84 -24 -53 -64 10 -1 -21 9 -7 87 81 9 -11 55 -54 88 19 -72 -54 88 42 -46 96 -75 -33 -34 76 -58 76 -64 -72 9 76 -11 57 -50 60 -4 96 -42 -12 -33",
+      "output": "23 80"
+    },
+    {
+      "testIndex": 467,
+      "isVisible": false,
+      "input": "84 -40618\n-14318 45136 7519 21415 18700 40573 -87278 -81037 28818 -84103 53663 64214 81443 51833 -77157 -84103 36730 3806 68300 85660 73706 38283 40792 -97588 60299 -14318 98994 -50052 64214 93663 48698 28818 -20678 65750 -67373 -92901 28818 -77157 45033 85520 28854 -95990 -12433 -58477 -4996 -14318 -40566 -43638 -54319 -87278 -56045 -20638 93344 48698 -61840 -54319 48110 3062 -14318 -38112 75174 93690 18651 -4996 -84103 60299 -84103 15427 -85035 -97588 55337 81025 -84995 -14318 57172 -14318 73706 -12433 3662 -19788 -20638 -99276 -81680 -2284",
+      "output": "50 67"
+    },
+    {
+      "testIndex": 468,
+      "isVisible": false,
+      "input": "77 2315\n431 1887 9687 4204 1966 2955 7269 697 1446 6532 8437 3833 2098 4315 1547 4490 52 3985 4294 5594 1829 2844 376 7465 5269 4027 9305 2466 1410 7465 5231 7703 4596 3367 7385 9261 8628 1612 7871 6798 5231 4667 5772 8441 3286 568 5772 7905 7173 5800 3866 8962 9842 6880 2896 9795 3589 1446 6087 4420 5113 8698 5484 6769 6304 2642 153 9434 6619 3235 4213 6523 5772 1002 1657 4027 1884",
+      "output": "0 76"
+    },
+    {
+      "testIndex": 469,
+      "isVisible": false,
+      "input": "71 1458\n993 976 957 925 917 866 855 844 840 787 779 773 754 736 729 729 609 598 582 566 499 440 417 413 395 338 326 300 280 279 270 257 245 227 187 161 139 118 96 63 44 16 11 1 -73 -98 -106 -135 -157 -199 -235 -292 -347 -356 -413 -421 -434 -469 -525 -583 -644 -645 -793 -834 -851 -856 -939 -941 -959 -966 -986",
+      "output": "14 15"
+    },
+    {
+      "testIndex": 470,
+      "isVisible": false,
+      "input": "86 -537\n-510 -29 -787 -346 -898 -627 -907 -306 -980 -284 -820 -980 -962 -980 -899 -626 -298 -668 -273 -470 -438 -209 -286 -302 -873 -737 -302 -262 -266 -276 -551 -71 -563 -712 -820 -438 -775 -271 -382 -504 -506 -820 -7 -828 -634 -35 -931 -820 -563 -815 -179 -941 -674 -276 -368 -503 -898 -759 -594 -579 -270 -306 -493 -634 -985 -107 -961 -749 -56 -624 -324 -25 -540 -141 -821 -579 -780 -71 -333 -342 -183 -563 -961 -767 -438 -961",
+      "output": "28 37"
+    },
+    {
+      "testIndex": 471,
+      "isVisible": false,
+      "input": "90 180\n90 98 22 3 27 50 84 55 87 65 4 88 38 39 61 0 79 80 27 27 42 81 1 57 40 37 80 18 85 64 80 75 22 16 39 21 27 84 75 84 87 45 73 84 18 80 52 9 22 25 40 58 8 44 67 21 21 49 84 64 80 67 65 3 37 46 4 98 3 87 2 73 50 80 27 1 21 1 38 58 80 45 38 31 8 10 80 24 45 90",
+      "output": "0 89"
+    },
+    {
+      "testIndex": 472,
+      "isVisible": false,
+      "input": "78 171\n-95 -92 -92 -92 -84 -84 -83 -81 -76 -70 -70 -65 -65 -64 -62 -59 -59 -59 -59 -53 -52 -52 -52 -52 -46 -46 -42 -33 -33 -33 -32 -13 -13 -10 -10 -10 -5 -5 -5 -4 -4 11 15 18 20 20 20 21 39 43 47 49 51 52 55 65 66 69 71 72 76 80 80 83 87 90 94 94 94 94 96 96 96 96 96 96 96 99",
+      "output": "59 77"
+    },
+    {
+      "testIndex": 473,
+      "isVisible": false,
+      "input": "71 88\n90 90 87 83 81 81 74 74 71 62 59 59 58 58 58 46 45 39 28 13 1 -1 -1 -1 -3 -4 -4 -4 -4 -4 -6 -7 -7 -7 -7 -11 -12 -12 -13 -18 -20 -24 -25 -25 -26 -26 -32 -34 -36 -38 -43 -45 -47 -47 -60 -60 -64 -70 -70 -70 -72 -73 -73 -73 -73 -81 -92 -94 -94 -97 -97",
+      "output": "2 20"
+    },
+    {
+      "testIndex": 474,
+      "isVisible": false,
+      "input": "88 49515\n82558 85310 64789 60414 99978 26544 51964 65786 72224 16844 63593 37771 60481 1181 48645 46290 26785 6986 78619 39885 65786 40178 98203 91983 91780 45374 62552 87917 99695 35361 82101 40178 91971 21128 61848 28589 18032 37629 40980 2245 48157 72190 70849 62818 72349 85415 24645 4124 69811 88143 68091 4161 41154 10711 41600 72092 33305 77741 6617 79443 62777 53949 24869 24568 87183 51566 91983 56228 67214 16904 88470 93362 72190 15603 23524 14588 50792 3939 82663 94081 5986 56761 63654 14158 70293 48548 5631 43884",
+      "output": "86 87"
+    },
+    {
+      "testIndex": 475,
+      "isVisible": false,
+      "input": "74 143\n96 92 84 79 78 77 76 76 72 70 69 68 65 56 56 53 49 46 46 46 46 46 38 25 24 24 24 24 23 20 20 19 19 6 6 3 -1 -1 -1 -2 -12 -15 -19 -23 -24 -38 -38 -38 -38 -39 -48 -51 -51 -51 -52 -52 -52 -54 -55 -56 -63 -63 -64 -64 -77 -80 -80 -81 -86 -86 -87 -92 -92 -92",
+      "output": "4 12"
+    },
+    {
+      "testIndex": 476,
+      "isVisible": false,
+      "input": "77 1813\n1295 -9368 -7086 -6731 -4253 -7983 2897 -9812 8374 7326 8756 -8345 -9130 -7417 5278 355 -3030 879 -1141 -1846 -4028 3483 -5241 8684 8947 -4211 326 8706 -5989 -3953 -5241 -688 6737 5700 -5307 2525 242 1797 -1811 -3953 -9948 -5851 8633 6767 1797 -5851 1797 9595 4088 879 8428 -270 4240 1717 7362 -7426 7804 5434 -3234 7120 8428 5434 -6247 -1997 -8286 6886 -8013 6639 4327 5385 3772 -441 -9964 -7571 -7426 2897 -7831",
+      "output": "34 59"
+    },
+    {
+      "testIndex": 477,
+      "isVisible": false,
+      "input": "76 -759\n-957 -938 -898 -776 -770 -744 -743 -743 -704 -704 -647 -639 -581 -570 -485 -478 -444 -375 -338 -338 -338 -338 -338 -300 -293 -251 -224 -180 -145 -142 -112 -109 -78 -78 -28 -24 -20 -20 109 109 136 144 161 172 191 191 311 336 352 362 455 455 455 469 469 469 500 524 594 600 617 639 648 653 747 790 790 790 790 843 848 883 889 921 922 929",
+      "output": "10 30"
+    },
+    {
+      "testIndex": 478,
+      "isVisible": false,
+      "input": "82 -1317891\n-51930 -771362 -912460 -533281 -6594 -741241 -622259 -81386 -531145 -643843 -912460 -407545 -736716 -667691 -340070 -362293 -608217 -550356 -882186 -323723 -2154 -758996 -789903 -46148 -920574 -824071 -124519 -214828 -920947 -235072 -155958 -6594 -429230 -876627 -352164 -530841 -652611 -608670 -378499 -908318 -243914 -765936 -304514 -886457 -684250 -298981 -748591 -540634 -555796 -88585 -172392 -95944 -287836 -842679 -460191 -519182 -174476 -562968 -634428 -152827 -222871 -893000 -468502 -396944 -534688 -619702 -603739 -152827 -916244 -335182 -165343 -919511 -884548 -312883 -887193 -407545 -693464 -369134 -712727 -354544 -774031 -908318",
+      "output": "28 63"
+    },
+    {
+      "testIndex": 479,
+      "isVisible": false,
+      "input": "83 898156612\n987277058 974476806 965410404 965410404 950219633 931348445 926770723 900360797 891498990 880071596 857548810 848165918 815288082 752957728 677384878 663934440 623752981 609997753 609476248 609476248 524249299 483750762 483750762 409082632 333853434 333853434 288631776 288631776 287814468 287814468 248963207 202273595 174012167 166541745 166541745 131034024 116850877 116850877 113139940 112983924 112983924 91681931 72017791 43873042 43873042 36473956 -11895207 -41000942 -52063021 -54936907 -66841543 -90332971 -101688888 -101688888 -114123319 -211333122 -211333122 -248848089 -248848089 -248848089 -248848089 -296106822 -326991816 -326991816 -326991816 -326991816 -405952300 -447287191 -506828268 -538813270 -543432163 -590110168 -686399039 -761010487 -761240719 -766078779 -778493655 -884823516 -884823516 -913093397 -953524649 -976756187 -991938526",
+      "output": "4 48"
+    },
+    {
+      "testIndex": 480,
+      "isVisible": false,
+      "input": "87 -263595448\n359177189 -582964733 884665901 101462902 -318636078 -592353236 -956627826 -603020823 -803066091 278422892 394595041 715296983 908582791 691238022 264692375 767943407 812584950 812584950 -361778992 839656227 818742572 435305011 818742572 363693369 -628982466 426628388 689583033 50576736 444303276 818742572 244493338 -509847697 393114409 22060479 -520517029 -108522969 4927360 818742572 -592353236 -318636078 568490019 264692375 -219067533 -388299183 -387358200 -133339101 738041873 -222294574 -219067533 426628388 -936694369 -183948591 -982971124 402371896 370682471 426628388 -848299012 -232006990 139273434 359177189 -219067533 -108522969 -435179064 584703564 464809418 -948818892 -87054547 -962289597 435305011 -178602551 359177189 -366052414 334559886 -435179064 883786306 363693369 -845455038 -628982466 818742572 139273434 -204179071 -253817872 -287762012 -458020773 -125062568 -736506989 -204179071",
+      "output": "56 63"
+    },
+    {
+      "testIndex": 481,
+      "isVisible": false,
+      "input": "86 1116\n938 937 909 862 843 842 826 803 770 770 688 680 678 678 678 678 678 671 664 655 634 582 578 573 558 507 434 414 395 334 310 281 281 229 229 225 179 138 128 119 119 84 84 49 24 14 -16 -52 -92 -119 -133 -133 -144 -203 -272 -366 -366 -370 -387 -387 -406 -411 -411 -418 -427 -442 -460 -470 -626 -648 -662 -720 -726 -748 -765 -787 -820 -839 -879 -908 -925 -946 -964 -969 -979 -996",
+      "output": "1 36"
+    },
+    {
+      "testIndex": 482,
+      "isVisible": false,
+      "input": "90 11434\n9525 9225 9024 8897 8483 8197 8061 7597 7550 7550 7516 7516 7496 6952 5993 5773 5738 5717 5717 5235 5012 4557 3921 3291 3164 3123 3056 2953 2774 2698 2591 2254 2127 2114 2106 2000 1823 1813 1079 1066 852 624 340 286 -21 -622 -736 -1024 -1479 -1806 -1845 -1983 -2178 -2178 -2248 -2344 -2645 -2652 -2772 -3170 -3704 -3978 -4233 -4792 -4792 -5447 -5753 -5903 -5903 -6093 -6407 -6407 -6483 -6552 -6804 -7040 -7040 -7045 -7786 -7905 -8016 -8064 -8248 -8412 -8412 -8412 -8687 -9336 -9577 -9643",
+      "output": "17 18"
+    },
+    {
+      "testIndex": 483,
+      "isVisible": false,
+      "input": "87 -106\n-334 -797 -199 -959 -972 -235 -131 -760 -622 -86 -642 -281 -224 -350 -601 -935 -555 -152 -923 -66 -636 -230 -291 -938 -523 -362 -155 -126 -75 -104 -571 -117 -195 -176 -955 -151 -361 -514 -23 -42 -110 -901 -240 -272 -703 -394 -359 -371 -995 -957 -604 -874 -423 -259 -746 -96 -117 -678 -513 -748 -366 -773 -882 -691 -780 -930 -971 -742 -894 -983 -121 -181 -325 -20 -683 -749 -357 -392 -476 -454 -867 -98 -885 -143 -607 -867 -528",
+      "output": "9 73"
+    },
+    {
+      "testIndex": 484,
+      "isVisible": false,
+      "input": "90 1573\n-515 -154 987 488 572 -336 -574 603 426 836 252 -307 -615 -337 124 550 -652 624 190 -902 -316 786 -325 897 -297 574 9 -796 191 -307 -867 750 124 -557 -624 43 -828 970 655 -681 978 -540 -320 -825 -172 339 274 -939 719 -871 701 -130 -307 860 -676 -133 -49 -577 -13 -109 149 -231 246 -152 47 -529 -762 719 957 -256 -130 339 -60 799 944 432 -762 252 143 261 437 942 -681 798 432 -867 514 -307 754 176",
+      "output": "7 37"
+    },
+    {
+      "testIndex": 485,
+      "isVisible": false,
+      "input": "90 191777\n-9626 93593 -84515 98339 -52669 59691 -81111 80000 82597 92651 -39381 41564 -37636 94004 77734 -38961 98616 79563 -92981 40149 -33766 -75884 28248 43850 -94583 -32825 -9548 62503 10772 34586 58458 30465 -49582 -67648 -86586 -55756 -86676 34481 9704 74158 90352 -8353 67064 -29574 61063 68774 24815 -48125 55361 -36398 13031 97444 13788 -93980 93853 39944 11762 65226 -38210 8472 2512 -66713 -14930 2167 46181 -56124 81242 -74541 -20761 61112 -560 4846 -3916 86520 -79997 29051 1572 4587 -64385 -97060 -95560 71820 -19075 -3083 79179 -82474 97924 92954 -66326 38996",
+      "output": "54 86"
+    },
+    {
+      "testIndex": 486,
+      "isVisible": false,
+      "input": "90 1649\n566 279 866 452 988 123 543 240 337 72 335 277 16 591 535 72 897 749 773 239 174 114 534 567 560 522 102 520 369 734 114 638 922 72 709 958 113 948 946 136 239 217 745 341 386 47 291 883 355 598 767 60 224 311 767 903 552 602 767 509 880 643 320 427 574 201 550 828 142 986 249 603 26 318 221 419 782 84 976 160 306 547 914 503 700 515 858 867 492 518",
+      "output": "76 87"
+    },
+    {
+      "testIndex": 487,
+      "isVisible": false,
+      "input": "75 -14580\n-9809 -9707 -9574 -9067 -8930 -8656 -8181 -7562 -7254 -6989 -6348 -6348 -6348 -6348 -6348 -6248 -6038 -6038 -5610 -5610 -5513 -5096 -4796 -4796 -4796 -4796 -4796 -4796 -4729 -4631 -4355 -3931 -3159 -3131 -2575 -2575 -2120 -1882 -1696 -1695 -1661 -1260 -1043 -579 -579 -579 -511 197 2198 2363 2908 3258 3346 3400 3916 4384 4616 4616 4917 6444 6934 7003 7238 7238 7238 7687 7980 8330 8330 8467 8467 8688 9270 9301 9866",
+      "output": "3 20"
+    },
+    {
+      "testIndex": 488,
+      "isVisible": false,
+      "input": "90 -434930210\n-992635945 -992031969 -989762532 -976835329 -936204793 -924093643 -895444839 -880211990 -877313165 -874995754 -866387442 -860431587 -848139411 -847158689 -834698652 -828266720 -812247938 -810459832 -809769950 -802525512 -791161995 -789865465 -754227395 -751289803 -727832992 -725520181 -684088679 -617836705 -612339506 -612310821 -589805702 -580906312 -578566051 -566898362 -544960284 -537053503 -535127291 -530019868 -520638993 -515538784 -515101740 -505865879 -503099481 -499254443 -497300862 -487432503 -484992066 -474037781 -470811731 -459562409 -457183839 -439612039 -434686733 -426724961 -412715196 -412019855 -390610064 -368720686 -367613375 -365989253 -340953946 -331339500 -320419835 -311744321 -310396701 -276743252 -267007280 -245547416 -238305997 -217465105 -217465105 -194037925 -176861874 -175645127 -174225882 -161807351 -156951630 -155974794 -142458343 -131562585 -88836384 -77869142 -75807994 -71755532 -68268095 -31208555 -26902955 -24009452 -2348635 -1226962",
+      "output": "69 70"
+    },
+    {
+      "testIndex": 489,
+      "isVisible": false,
+      "input": "84 2903\n9982 9807 9750 9706 9464 9462 9353 9239 9237 8922 8828 8645 8280 8230 7772 7709 7466 7456 7456 7442 7442 7422 6894 6789 6758 6685 6418 6376 6320 5886 5886 5637 5637 5637 5340 5309 5023 4819 4387 4276 4276 3938 3860 3793 3793 3793 3741 3486 3085 3009 2929 2924 2882 2737 2737 2645 2608 2562 2522 2513 2443 2135 2135 2053 1823 1820 1746 1559 1510 1433 1433 1244 1217 1148 1083 1016 1016 1016 919 748 713 627 557 482",
+      "output": "65 74"
+    },
+    {
+      "testIndex": 490,
+      "isVisible": false,
+      "input": "90 -14802\n-4111 -7401 -7401 -4854 -2299 -8131 -9836 -8291 -8990 -7032 -4016 -6104 -4780 -4147 -3447 -920 -7509 -6136 -7276 -4942 -120 -9220 -2640 -7354 -2577 -4266 -3391 -694 -4874 -651 -9592 -1729 -5794 -4025 -7232 -7177 -2314 -9889 -6529 -3639 -3573 -4300 -9909 -1759 -9509 -2388 -7483 -3299 -9248 -6084 -4268 -4214 -7033 -2254 -9746 -5078 -735 -4323 -9410 -2274 -8306 -1495 -4101 -4141 -2789 -6130 -2522 -8445 -4476 -9257 -6956 -1836 -442 -7702 -3072 -4304 -8955 -8805 -1084 -7690 -312 -8396 -3132 -9758 -6224 -874 -3588 -6991 -5320 -6163",
+      "output": "1 2"
+    },
+    {
+      "testIndex": 491,
+      "isVisible": false,
+      "input": "90 64820\n-3549 -68285 -80235 -9233 -50284 -72169 -12009 -2367 91066 2718 20942 89217 62367 17230 -54355 33141 10874 -58420 17599 -90485 -69187 -13779 13906 376 2379 30631 92316 27716 -20282 -5597 9008 -18141 -49332 -96932 78567 14226 -5873 -99766 -8503 40445 -88706 81822 97591 -26419 43800 58852 23190 -42915 -83079 20989 -89533 15443 11618 -36577 -53124 -30751 69745 58955 -52777 94724 -60976 -46781 -77300 -22385 -12571 -6704 -36700 36735 -79889 -4796 -55413 41155 2277 -17245 4982 12015 22245 -42463 -33003 -65460 -83238 -1591 77228 -51226 29991 6205 94779 98607 50914 -68581",
+      "output": "22 88"
+    },
+    {
+      "testIndex": 492,
+      "isVisible": false,
+      "input": "87 -766514\n157976 -952926 -857848 583977 -757749 -169961 997871 -901382 904630 -831857 891656 436943 -64620 421424 742654 -775656 -918617 980723 727844 529671 939274 547876 786739 -757749 -279793 -212430 -539561 -216441 -571120 -875982 -857848 -664856 -569597 -822653 -766892 95400 594962 -481081 -158657 299781 -600747 -595410 -649314 608750 370857 997400 -29635 -818438 -169961 -924283 768130 789403 910153 119421 -79285 849308 -122887 697997 466907 128155 -146055 -955619 444805 900151 -737271 396735 -649314 -661330 -15187 72881 104203 7537 358697 -334426 -790572 -785137 -70635 91011 -673802 351995 935959 -163804 727503 506667 451820 -857070 90556",
+      "output": "85 86"
+    },
+    {
+      "testIndex": 493,
+      "isVisible": false,
+      "input": "78 4638\n5971 -2586 -8416 9535 -7399 5506 8834 -8016 6302 9728 9993 -4798 6683 -1265 -715 -2925 6282 4636 112 -5010 -7818 1230 7699 -2752 470 -2723 3343 -1665 6914 8273 -8180 -4255 -1835 9749 1728 8979 -6966 5932 1633 2176 5955 -4869 -4683 4635 -8783 6190 4625 -9620 2746 3309 -7466 -4177 2994 2928 -4612 -7399 2994 2455 7633 3998 7938 1465 -6507 2414 3523 -3426 3753 -3805 6444 413 7938 -2097 -6735 6914 1563 6111 -53 -1333",
+      "output": "0 77"
+    },
+    {
+      "testIndex": 494,
+      "isVisible": false,
+      "input": "88 -847\n-918 71 540 612 -680 -810 612 125 -21 -498 -74 -501 120 415 -406 -978 -810 -123 82 -934 -429 -355 125 -258 675 -381 -940 253 49 125 -460 571 -304 -881 -792 -474 -467 254 -429 -617 712 -308 -344 -545 -571 -408 159 555 -707 -21 571 -155 -471 540 125 -304 298 -717 -74 -837 898 -695 939 470 341 -789 538 -839 -548 -934 -671 539 -789 -11 612 529 -357 189 -547 215 -579 -406 -501 176 -937 25 125 -146",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 495,
+      "isVisible": false,
+      "input": "250 73554\n36777 36777 99838 -66394 49481 -33177 -5690 67814 63731 -6695 -66126 -80270 19610 -76377 -78297 -89449 -44716 -94273 -10484 -17175 15411 -34813 67656 95384 -69384 60738 11248 47004 84668 -62646 18862 69729 91629 -15691 -79594 16064 -20053 -72805 37168 8526 -81411 -43265 -86665 -48969 5162 -48385 -65618 -34598 17649 54479 78426 -6259 -36008 83207 15463 3297 -48522 -57119 -75509 2407 55064 64977 6606 66518 54197 -12156 -46024 -51342 -84358 -87535 96146 -33471 90963 -4967 -32894 76942 -57212 -10350 43700 -34259 68722 -99912 -65838 94416 10415 7704 -70645 -13661 78795 -10417 8524 67158 -81565 -36695 -62379 -59773 -73589 -64557 65170 6265 -17261 96969 98162 9085 -47853 36851 62166 22274 39860 91476 -95276 62931 4045 -41728 14214 -97119 37030 64978 -31346 47109 -48400 23998 -66700 -25082 -74657 40538 39315 74655 20017 -91424 33114 -65283 24143 -95606 -18160 84526 60319 75045 48040 -27761 9949 -97598 74826 -87141 -47548 15122 37451 12039 -62397 -56160 3946 -47008 -43311 12077 -37909 32252 87332 42880 20791 95059 -31629 94979 -33788 98206 52939 46498 68444 -22316 -19847 -43968 20603 55166 70642 53411 32631 -43702 32934 -55688 -55928 -62535 16672 -65750 76415 64039 -88219 -39305 49908 56417 5289 -80967 44338 67370 -1148 -45126 -81177 44846 52441 59717 -9169 -18615 72271 -67114 -17755 12353 57450 -6580 35988 81 -98026 54663 11553 -26220 86620 -3230 -46494 -7942 78909 1615 52993 -97155 -55792 -30794 44375 -67660 -55475 -7485 38017 -296 -6065 51458 -47790 -40385 -51969 10057 -49013 55183 -63515 56986 -29979 -65132 25670 35847 -64298 -83161 78941 -60817 -63332 82868 24644 -89241",
+      "output": "0 1"
+    },
+    {
+      "testIndex": 496,
+      "isVisible": false,
+      "input": "354 18014\n9956 9886 9867 9863 9810 9759 9754 9651 9631 9618 9580 9442 9395 9389 9384 9301 9299 9209 9191 9173 9089 9039 9023 8993 8894 8862 8735 8641 8520 8388 8360 8342 8303 8204 8068 7995 7986 7924 7855 7832 7753 7734 7670 7667 7624 7533 7478 7404 7377 7326 7302 7292 7277 7277 7251 7231 7158 7114 7015 6908 6802 6769 6756 6735 6622 6554 6504 6432 6371 6371 6351 6342 6342 6148 6134 6065 6051 5996 5984 5863 5665 5664 5591 5563 5514 5139 5112 5103 5074 5019 4981 4966 4931 4899 4870 4836 4768 4734 4729 4724 4704 4654 4577 4568 4430 4380 4379 4192 4039 4000 3999 3998 3906 3906 3805 3679 3503 3466 3412 3333 3230 3175 3077 3049 3044 2981 2981 2981 2895 2678 2677 2560 2560 2560 2546 2545 2494 2409 2365 2338 2338 2320 2312 2261 2162 2113 2108 2075 2075 2028 1933 1925 1890 1876 1858 1801 1761 1757 1700 1696 1528 1528 1488 1328 1312 1312 1288 1145 1104 949 754 637 558 543 509 462 337 148 84 53 46 21 16 2 -34 -185 -319 -322 -546 -570 -618 -676 -699 -700 -722 -796 -796 -797 -980 -1014 -1225 -1293 -1293 -1346 -1391 -1475 -1475 -1530 -1559 -1591 -1623 -1691 -1810 -1829 -1918 -1993 -2059 -2097 -2101 -2169 -2208 -2307 -2550 -2633 -2649 -2764 -2816 -2823 -2858 -2887 -2932 -2932 -3115 -3172 -3178 -3232 -3282 -3313 -3437 -3495 -3546 -3615 -3617 -3707 -4013 -4047 -4203 -4211 -4248 -4255 -4287 -4457 -4541 -4672 -4724 -4772 -4880 -4923 -4925 -5052 -5062 -5161 -5184 -5240 -5256 -5257 -5270 -5286 -5402 -5409 -5418 -5444 -5445 -5459 -5484 -5511 -5680 -5701 -5761 -6042 -6138 -6139 -6154 -6170 -6206 -6208 -6225 -6251 -6395 -6589 -6623 -6629 -6675 -6744 -6760 -6848 -6867 -6869 -6912 -6930 -7177 -7250 -7279 -7303 -7374 -7404 -7584 -7599 -7622 -7628 -7691 -7787 -7796 -7928 -8007 -8020 -8079 -8079 -8096 -8150 -8187 -8242 -8287 -8293 -8293 -8293 -8360 -8381 -8430 -8597 -8643 -8643 -8668 -8708 -8818 -8848 -8933 -9009 -9009 -9049 -9150 -9265 -9271 -9275 -9446 -9451 -9546 -9587 -9595 -9613 -9771 -9842 -9850 -9977",
+      "output": "4 33"
+    },
+    {
+      "testIndex": 497,
+      "isVisible": false,
+      "input": "500 -51031\n-20502 -82269 85794 -54636 19316 66189 31575 -11739 71180 95939 27245 -77368 90389 52683 -77542 -75974 -61586 -17431 36311 -42082 20471 55677 7182 46163 94274 50396 -20738 79469 -23129 58484 51208 -3042 -84938 29761 -92176 19759 -50652 -92176 66754 90051 -31653 -30930 -19385 52683 -98685 -48842 -96229 7634 -55290 -16209 63274 -90340 -62218 17798 66806 21421 -96229 40027 -77542 36422 -78408 33691 -77542 -33012 2899 22488 58177 72227 93186 23786 54945 44626 27279 71180 3849 -97384 -44632 -89322 -13107 -34297 51208 24960 69786 -21198 -25917 81477 99452 -774 74767 -34808 -23384 85794 5683 -54559 -89703 67761 9221 -33049 52683 52019 38382 -14907 97610 -58809 60350 99004 36907 -37161 -75360 38382 -774 23728 31860 -26683 74483 -78408 95939 77882 36907 -91467 3927 -11617 24104 96504 -5285 -73195 -53873 -27585 -9868 71097 54248 -73195 -37830 -19623 21909 -43983 -94136 -75989 -75091 63207 32165 -95704 -22221 97610 -20738 -22221 43267 99928 -8104 53807 -82269 2461 37842 45274 35528 -57913 -56431 -6823 80987 -12935 -79147 -75207 41356 -12333 -41781 30763 90664 -62034 -77542 10386 -55212 -92176 19759 49682 -70597 16258 -94067 -50210 -25060 -94067 68703 3521 -57582 97459 5823 40765 -13059 95952 -94067 40765 -23220 19586 54420 -20032 -13518 -39988 72098 -52517 -12007 3927 60337 -75668 -90750 66754 -82269 -25933 96322 16246 54143 -48595 94749 97294 -11739 15292 80997 41055 -29484 -52517 75881 -66217 -76536 -76367 -76026 -56240 -42879 -64122 54100 -34069 -87618 30706 -77542 -23006 17635 6378 59207 66188 -81766 95952 -2845 57403 -89433 -73835 97 -55212 -19626 -25324 -74403 -6431 -86118 -80958 -46552 -59325 52019 97 -88404 -52517 99704 -82465 -30714 59514 -84672 19586 58632 65570 89832 -11084 -52942 61229 79915 37002 94750 -94955 19425 -94672 36422 82919 42847 18035 -77542 19759 -73195 -70748 -70459 44762 -73711 -71689 -34952 58484 81143 28825 70437 91392 -66004 -34370 -67965 -31771 31860 -76367 -12790 70671 65665 -43354 25570 16805 71865 -53836 3927 3521 82227 2147 77075 44762 -42728 56286 74702 -19964 51101 -26683 -35945 71957 60350 -94955 -79300 17731 19759 99555 74707 95037 -28185 -7791 -72780 -50955 32120 -62034 -43354 12383 -6513 -57582 12154 -7413 -20850 -22950 -28221 -20379 -50955 49682 -75005 -826 55378 81752 74767 51101 -96981 -55926 19586 88631 -43700 -68279 -59325 85148 86688 28825 -70359 82954 66754 -23642 58217 -44329 61803 -65137 77397 12547 -14486 3927 -27571 -904 -3926 -92176 -9506 -23806 -8252 8630 -774 17352 -20335 -87205 3849 44930 17174 61185 -17949 31860 69005 73163 4316 94202 20388 -33050 84614 -11739 40044 -11090 -92176 -68527 94202 118 39771 -22218 28577 -77542 56119 -38212 -73276 -59325 2461 -94824 -66506 -71629 -36191 42690 90139 -76766 -16774 -68527 47030 54143 -62189 -21428 -39988 51552 -64499 70140 -6422 82803 14845 -87105 -16192 -81607 -51321 -95415 -7783 -89321 98853 3849 82609 -48842 83864 -51759 78481 118 -7413 27279 -95415 27245 -25324 -82566 -71689 -3891 -76356 -60547 54091 28825 54559 -24301 79734 89380 -9099 -33581 27279 -53836 -82723 -56147 -54810 52683 35547 22327 25584 -53387 -826 -69591 -38898 95037 -30541 49372 15227 -44074 -774 21008 -97729 -81492 -61516 98538 -86478 79778 32120 84812 -65928 -65493 -50353 -30529",
+      "output": "0 499"
+    },
+    {
+      "testIndex": 498,
+      "isVisible": false,
+      "input": "707 -42523\n92383 -80448 79112 95445 -40067 88889 61532 -90950 3064 -1720 -15040 -34406 -90309 19251 84630 87218 -24030 71128 46506 -34298 -66209 79187 -1225 52473 -24862 -63393 95289 48602 84991 65252 37280 74492 -70601 -48356 48256 -64111 -63873 -22757 -25033 -55753 75017 -47387 -45701 19350 -61224 -47722 -11854 -32939 -83938 47289 -17637 -71896 72109 91785 95445 -12921 93998 46695 19890 52292 30928 40740 -66606 -20138 -58613 63545 -37134 -58204 29758 -77691 373 -56040 -72292 29141 -21432 39850 -60622 -59796 -21701 10322 -92550 99545 41468 50516 -81797 28983 -77727 -27768 -90640 -7413 -4226 -78503 -15066 40179 -32914 -97585 -13243 80332 62588 -23385 -91879 -87711 49076 -39166 52569 -13451 -97166 -15573 4794 -44161 -13275 90962 -54259 -88956 76250 75348 -17061 91039 41947 -89435 93454 67827 91717 6671 -4747 -23533 11456 -77248 41109 70912 91322 86599 -39166 52775 -3834 98282 -83793 53609 84420 -62319 -54177 56791 45588 -97395 41551 3684 -86721 80223 2147 98924 87867 83870 87667 27924 40547 1095 -2360 30349 -21597 8326 40364 -5664 11143 23368 -98090 -50142 -48912 59807 26831 29991 -99997 26080 -38393 63292 -4312 78243 57285 -10200 34716 -20253 9860 34068 -58468 52220 -73760 -39879 -37025 -21312 19175 33394 -6914 91474 11568 -85542 -48810 -35719 13627 92383 96711 -6725 -78972 41600 -32123 46612 -85515 -73318 63942 91313 10445 -75500 32913 27924 69963 -97261 -94291 9465 67931 69903 11897 36698 -87815 -59729 -17082 56565 57292 -28603 54468 -99629 -58996 -44154 -85113 77223 -10237 -46713 -69979 -81714 22849 -66947 96846 -32072 -79000 29700 -16426 -69979 -51671 41537 -57705 59667 34469 44405 16095 -50564 -24862 98583 -60551 -53152 -75282 -2004 -52390 55947 -54275 23420 -17082 55200 61670 -75960 -15803 -24029 -86230 6301 -86994 -94441 68137 -88999 45068 -763 -37705 -17928 -48062 -51376 -89615 -63379 -43440 40547 9334 70367 -73769 -20701 95693 -28060 -85898 -95948 518 5961 -69881 -50702 24266 47261 -8978 30349 35547 -52827 20623 73078 -40767 23011 28983 -98061 98264 80725 -44401 -72815 99258 -39607 -73699 -76410 -21597 -74665 -54102 92427 69846 -92260 -43680 -99822 12517 -78272 -71624 88012 80689 -77092 81828 -66101 -92289 -81947 1784 -78911 -4064 42315 -77015 -30473 3272 -89058 -22281 59028 16980 -34771 5964 -26246 -16800 58220 88447 -29497 -58805 -18192 36981 -57874 -12921 -79295 -4405 13484 11196 -34321 -28453 59050 27924 -4078 20429 -29925 -73769 -22554 -19333 77791 -28666 4594 91208 18044 -45077 -98549 55623 -87475 19279 -58036 66596 -1627 85474 -83661 -27259 -99776 42265 20834 72095 90151 -51681 -60216 -27480 57046 644 -94752 87218 29561 12605 20871 58620 30567 81802 -31293 -53735 -43833 -58036 16095 -96595 84940 -7964 -41567 -34191 24554 39276 75085 62598 86889 15797 -5497 85761 40179 91299 -49809 -62084 -2907 -13874 26420 59127 -68354 -42322 67386 44792 38778 -79600 13933 55543 33150 -59399 -15363 -10354 58610 57207 -4661 -48676 -94326 -61486 9837 -90309 -35912 -66495 -65934 12183 46024 94668 36006 -78280 31224 47449 -39927 -89573 -94394 -33680 -129 33247 97104 96334 4226 -60950 -79301 -58257 -87612 -38015 -96492 92418 53166 82489 -17479 92383 -75500 -33892 40184 77328 79967 7085 -85953 -42424 -24030 -83746 -47054 57299 -69166 70111 9837 12840 -87365 55332 72171 -64665 -21598 -7280 -92174 1901 17531 46303 -55894 2388 -79170 -32101 3470 6528 -59743 -53176 29391 -65024 70992 -8086 -36396 49820 94629 -2839 -89330 -9552 -28628 -22440 -97600 58909 -82242 -65775 56521 -72495 -17188 20550 12881 -5346 -66201 22379 62985 -32939 -64954 12877 -88376 33644 -81447 -4078 -16078 -67673 68137 62769 55935 -40488 26219 -21808 -3081 -81182 -97381 2340 17531 -67448 26159 -32591 -41467 -78067 9676 72235 99138 -10550 -12728 32268 18511 39610 -51671 57207 -59629 -32683 86870 -9743 -58885 -74731 -92260 34494 68655 9837 29800 -81419 84317 3412 642 -80670 -37791 -5450 51538 31158 13122 98288 57928 2366 -84849 38351 -99577 -75500 -70197 76714 23530 -14958 3079 30898 -48598 -68223 -15914 -2246 -32769 98665 74896 94060 -89082 -49053 -13275 -87572 -62940 -71354 31544 6087 27924 -20979 -50564 -89893 -19273 -41552 55922 81563 -88999 -7973 -35061 -14770 -57064 38431 71451 68408 37752 -50233 -67448 -72785 21196 36184 -65874 2242 30686 49829 -31101 -85293 -10250 -24485 37752 -23308 24427 -33613 53654 93554 11878 72331 95139 78712 -36284 21148 -50468 -61719 2328 16692 20458 -51674 -55550 45812 33394 -24651 70111 41057 55136 16628 52717 31686 81469 23140 61497 -14242 -15782 7720 97068 26080 -97283 -53999 -13275 82429 -74520 64407 26602 14538 -26982 34896 54103 82611 -68735 -95183 75138 -81732",
+      "output": "323 492"
+    },
+    {
+      "testIndex": 499,
+      "isVisible": false,
+      "input": "1000 -12646\n5442 6632 -6071 3755 -8419 2665 -7559 -3072 721 4742 -167 -9828 2581 -8019 6894 1164 -3358 6861 7654 2764 3709 -8396 -4667 -7791 -2839 -4618 5985 -5425 -345 -2613 5336 -7632 -6407 -9736 8190 9143 2801 7657 -6168 -4078 6665 -4142 5756 -2061 -455 -566 -5491 2333 4187 7300 7510 -464 -7666 9524 5360 -7313 -7851 9445 7037 9006 -313 3939 -9625 6658 3944 -448 -4502 523 -5071 5102 2928 -4487 -1964 -6642 -7898 1716 9575 6558 1827 609 91 9603 -6656 -2977 4 1470 7639 -178 9556 -6376 3512 7166 -1627 -4808 -5772 2761 3596 8673 -7166 9128 4700 5933 7074 2718 7543 -5568 -732 -1095 1822 5132 3999 2878 6380 767 -2691 -1790 807 -18 2251 7851 -6463 -3899 -434 9443 698 -3507 -8686 1260 1358 3592 396 -7041 -6248 1659 1387 -7013 -3411 2294 -116 2675 -8432 -6945 -7828 -8203 384 -8033 8397 -1696 1865 7435 9229 3355 -8342 -4135 -4653 -8730 8701 9593 7312 -6610 7315 1714 7006 8463 2094 4169 3806 8349 -962 4668 2306 -9457 6211 7391 -280 -308 -1705 2884 7435 4598 -5736 753 6037 -9766 -7070 -370 5254 692 3707 -7031 -7145 -1712 -4042 8504 4826 -2743 -7683 -1924 -2324 -2653 -695 -8927 697 -7702 3934 4297 4444 992 5228 9964 -1575 -186 -1538 5740 1766 -959 8266 9759 -9795 6388 5062 7995 -2047 -2326 -8986 1814 6892 -6886 7710 9909 -9465 -9079 3957 5574 -8902 9232 7103 5956 5843 -3467 1318 8117 3558 2761 5277 6471 -1796 7109 3015 -2952 5263 9955 -7674 -4663 1284 5480 -5809 -9249 5383 -10000 3351 -4918 6211 5525 7073 7585 -8850 -9482 -9258 1041 1155 7467 -1 -3135 547 3636 -4466 5828 -1716 -703 5367 5155 6792 -3952 8485 -6175 6286 -735 5248 -7035 584 2231 -1974 5143 4668 -5394 4811 -5176 2811 -127 -8135 9677 -9647 9217 -316 -2312 8313 -694 -7744 -3413 3350 -1860 2015 -3001 -5753 4716 -2181 2665 -4301 9553 -7385 3622 3712 8931 6604 6994 -671 -3859 6214 4867 3678 6278 -904 680 8839 -1483 -3930 -2500 -4768 -8780 8868 8954 817 -8355 -2351 3066 -317 -3633 -2228 1093 9691 -374 938 -6355 7829 -1956 1548 -4078 2081 -8575 -1145 -7534 -2879 -2553 -3446 -2703 8358 -2591 -600 -9874 -1503 9770 -5323 -5105 8018 2996 5107 8975 -8771 3099 -8753 -1680 -7139 5787 8495 8516 -1073 465 -2076 -4462 711 -1073 -184 8903 -8112 -8642 2995 6879 8986 -5585 6890 9708 -3825 -8975 1878 2515 1940 5955 3427 9868 3112 -2185 -3917 -609 -5695 4437 -8539 4967 -715 6650 -9171 -6829 -8860 4811 -6712 2592 5703 8029 4643 8073 2721 -3150 -8697 3907 4007 8203 -6411 6609 6850 -2827 -9056 -9639 3066 2920 7443 3308 1342 -451 -3338 7162 2856 -5887 1441 -685 4675 3237 243 -6646 4283 -882 2039 2788 3099 175 1923 4101 6930 -5967 -8503 -4345 -1685 -6608 -8656 -8427 -7916 8000 2916 9155 -5813 8214 -17 306 -6503 7622 -1584 7658 6821 -4657 -5929 -7332 -7666 7962 175 6116 3590 3445 3997 1573 9955 -359 -525 4152 -6723 -8112 6632 8392 4273 994 7378 7074 938 3572 2263 3763 9943 -561 -4517 -3778 -1959 -3596 1112 9919 -5715 -6845 1692 -1052 -8138 2711 -1527 7038 2905 -782 -9879 -4011 -4199 -8678 8569 6247 2665 29 -968 -2413 7587 -3478 -3031 -9768 2425 4249 7617 -8774 6388 6715 -2280 9102 1140 -2671 2041 1963 4201 -6365 -591 4522 6205 8270 9225 -9468 -3707 -6790 9204 -6616 -4923 -8562 -2316 8340 -4764 6352 1996 -4749 3993 -6816 -4802 4072 5402 -5802 8406 3021 5128 -6702 -1276 7681 1062 2284 4385 9032 -8201 -8290 -5306 1444 -6175 3882 -6483 1716 -1331 4058 -8549 2992 -5784 1785 -5880 8117 -8482 8174 -5205 -2603 5552 6104 -1033 -4465 -6199 969 -4960 3525 -6283 -1612 -8490 -6078 -3776 1066 7040 -1967 2208 2857 1583 5993 1275 -479 9314 6247 8889 -6638 -6763 962 -6877 -575 8283 7893 8637 9333 -480 -4365 789 -1210 5087 6281 2395 -9242 6632 -2313 -2548 -1154 9968 -7324 -2879 3080 -5485 -3596 -7531 5878 -7761 -1809 -273 -3857 -7775 -5122 -4555 3383 502 -1038 3726 -1368 2015 -6386 -4913 -1681 -1671 8415 -8050 7299 6899 -5425 -6359 2401 9198 -1050 2450 4587 -1629 7797 4290 3286 -2556 -9770 -4587 -7937 -2667 1984 -7547 8871 1479 -7531 267 533 -4216 1922 -5970 1057 -6820 6140 2609 -9460 -594 8069 -7020 -6071 -965 8304 2578 7809 3583 -1299 9274 -4736 3423 -1202 7603 -1483 7543 1516 7537 -6794 -6546 5730 -7140 -3459 2782 -1612 6459 -7070 4243 -8001 1636 6864 616 9452 -4293 9060 -4090 -6616 3574 2288 5692 -7966 9491 365 1791 2976 4450 -3336 7327 337 6057 8117 -8901 3193 -9325 -6462 1884 6341 3008 149 4522 6362 -1073 8547 5525 6011 7807 5501 4574 4328 7837 7543 4671 9556 -553 532 2880 3301 -9643 -4130 6242 -5539 3939 6620 8358 -8158 -3804 -5160 -9345 7091 -1210 11 4042 1212 1679 7175 4069 -9457 9697 -8537 8395 3414 -514 5319 -2129 -4367 -6111 -1075 4737 2665 7395 4956 900 844 -9886 2515 -2368 7743 -3238 2396 -3235 5261 -6822 9703 -9923 1261 2693 6386 1888 -1994 -5823 -8288 3976 4636 4668 -6567 9147 -280 -3445 -1832 -8576 -61 6990 -304 3749 4011 -5655 2221 3976 4014 -6630 -1865 -1328 -7134 -2080 -6459 4446 -1538 -728 -9841 -1561 -2969 -8630 1639 2284 8473 -1965 -4658 -5319 933 -5867 -5339 -597 -2348 1542 2080 -5080 -4129 9955 5456 -3185 -5753 -2346 3007 9145 -8396 -9533 -2844 -9906 8701 6321 5788 -4542 -4197 1361 573 -3804 8569 4930 1805 -922 4365 -5841 8191 -2346 -9138 799 5809 6272 -866 -8396 6288 4111 9093 -7633 -4155 6364 -608 9678 -1413 -8095 9657 140 5151 8124 8431 1837 -8725 646 1264 -6977 -9296 -7006 -1115 9968 -6406 -1962 -3890 -2274 -6450 -4519 8582 4432 -2938 -7865 9243 6881 -761 -9983 -5378 -7152 1652 1278 -6090 -7360 734 -2432 -4058 -608 4354 1964 2249 8690 -7779 -7719 -8057 -599 8408 4939 6910 -1512 -6826 9953 -2 7356 8912 8463 7701 -5042 -7604",
+      "output": "998 999"
     }
   ],
   "templates": {

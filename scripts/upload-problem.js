@@ -56,7 +56,7 @@ function mapProblemPayload(data, slug) {
   };
 }
 
-async function uploadProblem(jsonPath, forceUpdate = false) {
+async function uploadProblem(jsonPath, forceUpdate = false, testcasesOnly = false) {
   const raw = fs.readFileSync(jsonPath, 'utf8');
   const data = JSON.parse(raw);
   const slug = data.slug || path.basename(jsonPath, '.json');
@@ -66,6 +66,23 @@ async function uploadProblem(jsonPath, forceUpdate = false) {
     where: { slug },
     include: { _count: { select: { examples: true, testcases: true, templates: true } } },
   });
+
+  if (testcasesOnly) {
+    if (!existing) {
+      console.log(`⏭️  SKIP ${slug} - not in DB (--testcases-only never creates problems)`);
+      return { status: 'skipped', slug };
+    }
+    // One write: old testcases are deleted and new ones inserted atomically.
+    const updated = await prisma.problem.update({
+      where: { id: existing.id },
+      data: { testcases: { deleteMany: {}, createMany: { data: payload.testcases } } },
+      include: { _count: { select: { testcases: true } } },
+    });
+    console.log(
+      `🔄 TESTCASES ${updated.slug} (#${updated.problemNumber}) - ${existing._count.testcases} -> ${updated._count.testcases} TCs (other fields untouched)`,
+    );
+    return { status: 'updated', slug: updated.slug };
+  }
 
   if (existing) {
     if (forceUpdate) {
@@ -131,10 +148,11 @@ async function uploadProblem(jsonPath, forceUpdate = false) {
 
 const args = process.argv.slice(2);
 const forceUpdate = args.includes('--update') || args.includes('--force');
+const testcasesOnly = args.includes('--testcases-only');
 const target = args.find((a) => !a.startsWith('--'));
 
 if (!target) {
-  console.log('Usage: node scripts/upload-problem.js ./problems [--update]');
+  console.log('Usage: node scripts/upload-problem.js ./problems [--update | --testcases-only]');
   process.exit(1);
 }
 
@@ -146,11 +164,11 @@ try {
     console.log(`📂 Found ${files.length} JSON files in ${target}\n`);
     for (const f of files) {
       const fullPath = path.join(target, f);
-      const res = await uploadProblem(fullPath, forceUpdate);
+      const res = await uploadProblem(fullPath, forceUpdate, testcasesOnly);
       results[res.status]++;
     }
   } else {
-    const res = await uploadProblem(target, forceUpdate);
+    const res = await uploadProblem(target, forceUpdate, testcasesOnly);
     results[res.status]++;
   }
 } finally {
@@ -176,6 +194,8 @@ console.log(
  *    - If a problem does not exist, creates it with examples, testcases, and templates.
  *    - If a problem exists with 0 examples, automatically backfills `examples`.
  *    - Pass `--update` (or `--force`) to replace examples, testcases, and templates.
+ *    - Pass `--testcases-only` to replace only the testcases of an existing problem
+ *      (examples, templates, tags, description, limits are left as they are in the DB).
  *
  * HOW TO USE THIS SCRIPT:
  * -----------------------
@@ -187,4 +207,7 @@ console.log(
  *
  * 3. Upload a single problem JSON file:
  *    $ node scripts/upload-problem.js ./problems/two-sum.json
+ *
+ * 4. Replace only the testcases of one problem (e.g. after regenerating them):
+ *    $ node scripts/upload-problem.js ./problems/two-sum.json --testcases-only
  */
