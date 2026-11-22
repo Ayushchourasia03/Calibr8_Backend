@@ -134,7 +134,7 @@ const MEMO_RE =
   /\b(?:memo|memoize|memoization|cache|cached|dp|mem|lru_cache|dpTable)\b|@(?:functools\.)?(?:lru_)?cache/;
 const GRAPH_RE =
   /\b(?:visited|seen|vis|marked|indegree|indeg|in_degree|dist|dists)\b/;
-const GRID_RE = /\b(?:dirs?|directions?|DIRS|moves|deltas?|dx|dy)\b/;
+const GRID_RE = /\b(?:dirs?|directions?|DIRS|moves|deltas?|dx|dy|dr|dc|di|dj|drow|dcol)\b/;
 const HALVE_RE =
   /\bmid\b|\bmiddle\b|\bhalf\b|\/\/?\s*(?:[2-9]|\d{2,})\b|>>>?\s*\d|\*\s*0\.5\b/;
 const TREE_RE =
@@ -732,7 +732,14 @@ const modifiesRe = (x) => {
     `\\b${q}\\s*(?:\\+\\+|--|\\+=|-=|\\*=|\\/=)|(?:\\+\\+|--)\\s*${q}\\b|\\b${q}\\s*=(?!=)|\\b${q}\\s*(?:\\.|->)\\s*(?:pop|pop_back|pop_front|popleft|shift|poll|pollFirst|pollLast|removeFirst|removeLast|remove|dequeue|erase|popitem)\\b|\\bdel\\s+${q}\\b`,
   );
 };
-const resetRe = (x) => new RegExp(`\\b${esc(x)}\\s*=(?!=)|\\b${esc(x)}\\s*(?:\\.|->)\\s*clear\\b`);
+// x is (re)assigned: x = …, x.clear(), and tuple / destructuring forms such as
+// Python `l, r = i + 1, n - 1` or JS `[l, r] = [a, b]`.
+const resetRe = (x) => {
+  const q = esc(x);
+  return new RegExp(
+    `\\b${q}\\s*=(?!=)|\\b${q}\\s*(?:\\.|->)\\s*clear\\b|\\b${q}\\s*,[\\w\\s,]*=(?!=)|\\[[^\\]=\\n]*\\b${q}\\b[^\\]=\\n]*\\]\\s*=(?!=)`,
+  );
+};
 const advanceRe = (x) => {
   const q = esc(x);
   return new RegExp(
@@ -749,6 +756,13 @@ function enrichLoops(ir, ctx) {
     const whileLike = L.kind === "while" || L.kind === "do" || (L.kind === "for" && !L.init);
     L.key = boundKey(L, ctx);
 
+    // exponential bounds: for (mask = 0; mask < (1 << n); …), range(2 ** n), pow(2, n)
+    const boundSrc = `${L.test || ""} ${typeof L.iter === "object" && L.iter ? L.iter.range : L.iter || ""}`;
+    if (/\b1\s*<<\s*[A-Za-z_(]|\b(?:Math\s*\.\s*)?pow\s*\(\s*2\s*,|\b2\s*\*\*\s*[A-Za-z_(]/.test(boundSrc)) {
+      L.weight = "exp";
+      continue;
+    }
+
     // constant-bound loops do not scale with input
     if (L.key === "const") {
       L.weight = "zero";
@@ -757,9 +771,21 @@ function enrichLoops(ir, ctx) {
     // amortised inner loops (two pointers, sliding window, monotonic stack)
     if (L.parent && whileLike) {
       const pre = text.slice(L.parent.bodyStart, L.start);
+      const post = text.slice(L.end, L.parent.end);
+      const outerVars = words(L.parent.test || "").filter((w) => !KEYWORDS.has(w));
       for (const x of testIds) {
         if (!modifiesRe(x).test(body)) continue;
-        if (resetRe(x).test(pre)) continue;
+        if (resetRe(x).test(pre)) {
+          // Run-length / grouping scan: j = i; while (…) j++; … i = j.
+          // The outer index jumps past what the inner loop consumed, so the
+          // total work stays linear.
+          const jumps = outerVars.some(
+            (p) =>
+              new RegExp(`\\b${esc(x)}\\s*=\\s*${esc(p)}\\b`).test(pre) &&
+              new RegExp(`\\b${esc(p)}\\s*=\\s*${esc(x)}\\b`).test(post),
+          );
+          if (!jumps) continue;
+        }
         L.weight = "zero";
         L.amortized = true;
         break;
@@ -778,6 +804,19 @@ function enrichLoops(ir, ctx) {
     const upIds = L.update ? words(L.update) : [];
     for (const x of new Set([...testIds, ...upIds])) {
       if (geoRe(x).test(upd)) { isLog = true; break; }
+    }
+    // Euclid-style reduction through a temporary or a tuple assignment:
+    // t = a % b; a = b; b = t   /   a, b = b, a % b
+    if (!isLog) {
+      const modTemps = [];
+      const mr = /\b([A-Za-z_$][\w$]*)\s*=(?!=)[^;\n=]*%[^;\n]*/g;
+      let mt;
+      while ((mt = mr.exec(body))) modTemps.push(mt[1]);
+      isLog = testIds.some(
+        (x) =>
+          modTemps.some((t) => new RegExp(`\\b${esc(x)}\\s*=\\s*${esc(t)}\\s*(?:[;\\n]|$)`).test(body)) ||
+          new RegExp(`(?:\\b${esc(x)}\\s*,[\\w\\s,]*|,\\s*${esc(x)}\\s*)=(?!=)[^\\n]*%`).test(body),
+      );
     }
     if (!isLog && testIds.length >= 2) {
       const halves = [];
@@ -817,7 +856,8 @@ const chainAdd = (c, L) => {
   if (L.weight === "zero") return c;
   const n = { ...c };
   if (L.logOp) n.logOp = true;
-  if (L.weight === "log") n.log++;
+  if (L.weight === "exp") n.exp = (c.exp || 0) + 1;
+  else if (L.weight === "log") n.log++;
   else if (L.weight === "sqrt") n.sq++;
   else {
     n.lin++;
@@ -826,9 +866,13 @@ const chainAdd = (c, L) => {
   }
   return n;
 };
-const chainRank = (c) => c.lin * 10 + c.log + (c.logOp ? 1 : 0) + c.sq * 5;
+const chainRank = (c) => (c.exp ? 1e5 * c.exp : 0) + c.lin * 10 + c.log + (c.logOp ? 1 : 0) + c.sq * 5;
 
 function chainToCx(c) {
+  if (c.exp) {
+    const poly = c.lin ? `${c.lin === 1 ? "n" : `n^${c.lin}`} × ` : "";
+    return { ...mk(c.lin), label: `O(${poly}2^n)`, rank: 1e5 * c.exp + c.lin * 10 };
+  }
   const groups = [];
   for (const k of c.keys) {
     const g = groups.find((x) => sameDim(x.key, k));
@@ -886,7 +930,17 @@ function boundedDepth(fn, ctx) {
 const inLoop = (L, pos) => pos >= L.bodyStart && pos < L.end;
 
 function analyzeRecursion(fn, ctx) {
-  const calls = fn.selfCalls;
+  // A call that only normalises its input (f(x, -n), f(abs(n))) is not a
+  // subproblem: it does not shrink anything and runs at most once.
+  const isNormalization = (k) =>
+    k.args.length > 0 &&
+    k.args.some((a, i) => a.replace(/\s/g, "") !== fn.params[i]) &&
+    k.args.every((a, i) => {
+      const t = a.replace(/\s/g, "");
+      const p = fn.params[i];
+      return p !== undefined && (t === p || t === `-${p}` || new RegExp(`^(?:std::|Math\\.)?abs\\(${esc(p)}\\)$`).test(t));
+    });
+  const calls = fn.selfCalls.filter((k) => !isNormalization(k));
   if (!calls.length) return null;
   const { text } = ctx;
   const body = text.slice(fn.bodyStart, fn.end);
@@ -911,12 +965,47 @@ function analyzeRecursion(fn, ctx) {
   const hRe = /\b([A-Za-z_$][\w$]*)\s*=[^;\n]*?(?:\/\/?\s*2\b|>>>?\s*1\b|\*\s*0\.5\b|\bmid\b|\bmiddle\b|\bhalf\b)/g;
   let hm;
   while ((hm = hRe.exec(body))) halvingVars.push(hm[1]);
+  // A call halves the problem only if it shrinks a parameter (n / 2, lo..mid)
+  // or passes a midpoint; dividing a local (a carry digit s / 10) does not.
+  const params = new Set(fn.params);
+  const argHalves = (a) => {
+    if (/\bmid\b|\bmiddle\b|\bhalf\b|\*\s*0\.5\b/.test(a)) return true;
+    const dm = /([A-Za-z_$][\w$]*)\s*(?:\/\/?\s*(?:[2-9]|\d{2,})\b|>>>?\s*\d)/.exec(a);
+    return !!dm && params.has(dm[1]);
+  };
   const halving =
-    HALVE_RE.test(argText) ||
+    calls.some((k) => k.args.some(argHalves)) ||
     (halvingVars.length > 0 &&
       halvingVars.some((v) => new RegExp(`\\b${esc(v)}\\b`).test(argText)));
   const step = STEP_RE.test(argText);
   const out = { cx: ZERO_CX, aux: ZERO_CX, pat: "", ev: [], conf: HIGH };
+
+  // Grid flood fill: calls move to a neighbouring cell (r ± 1, c ± 1, r + dr…)
+  // and the cell is marked, so every cell is processed once in total.
+  const neighbourArg = (a) =>
+    /^\s*[A-Za-z_$][\w$]*\s*[-+]\s*1\s*$/.test(a) ||
+    /^\s*[A-Za-z_$][\w$]*\s*[-+]\s*[A-Za-z_$][\w$]*\s*\[[^\]]*\]\s*$/.test(a) ||
+    /^\s*[A-Za-z_$][\w$]*\s*\+\s*(?:d[rcxyij]|dr|dc|dx|dy)\b/.test(a) ||
+    /^\s*n(?:r|c|x|y|i|j|ew_?r|ew_?c)\s*$/i.test(a);
+  const cellWrite = /\b[A-Za-z_$][\w$]*\s*\[[^\]\n]+\]\s*\[[^\]\n]+\]\s*=(?!=)/.test(body);
+  const neighbourCalls = calls.filter((k) => k.args.some(neighbourArg)).length;
+  // A cell written again after the recursive calls is restored (backtracking,
+  // e.g. word search): cells are revisited, so this is not a flood fill.
+  const lastCall = Math.max(...calls.map((k) => k.pos)) - fn.bodyStart;
+  const restoresCell = /\b[A-Za-z_$][\w$]*\s*\[[^\]\n]+\]\s*\[[^\]\n]+\]\s*=(?!=)/.test(body.slice(lastCall));
+  const flood =
+    !memo &&
+    !restoresCell &&
+    (cellWrite || (GRAPH_RE.test(body) && /\[[^\]\n]+\]\s*\[[^\]\n]+\]/.test(body))) &&
+    ((calls.length >= 2 && neighbourCalls >= 2) || (driven > 0 && GRID_RE.test(body) && neighbourCalls >= 1));
+  if (flood) {
+    out.cx = mk(2, 0, { dims: [1, 1] });
+    out.aux = mk(2, 0, { dims: [1, 1] });
+    out.pat = "grid_flood_fill";
+    out.ev.push("Grid DFS / flood fill marks each cell as visited: every cell is processed once (n × m cells, recursion depth up to n × m)");
+    out.conf = MED;
+    return out;
+  }
 
   if (memo) {
     const k = stateParamCount(fn);
@@ -956,7 +1045,18 @@ function analyzeRecursion(fn, ctx) {
     out.ev.push(`Recursion depth is bounded by a constant (${D}) that shrinks by 1 per call; ${D - b} branching level(s) plus O(n^${work}) work at the base`);
     out.conf = MED;
   } else if (driven > 0 || ce >= 2) {
-    const perm = PERM_RE.test(body) && driven > 0;
+    // Permutation-style backtracking (N-Queens, permutations): the loop runs
+    // over all choices from a fixed start and marks the chosen ones. A loop
+    // starting at a parameter (start, idx) enumerates combinations instead.
+    const callLoop = fn.loops.find((L) => calls.some((k) => inLoop(L, k.pos)));
+    const loopStart = callLoop
+      ? callLoop.init
+        ? (callLoop.init.split("=")[1] || "").trim()
+        : (/range\s*\(\s*([^,)]+)\s*,/.exec(callLoop.header || "") || [])[1] || "0"
+      : "";
+    const startsAtParam = fn.params.some((p) => new RegExp(`^${esc(p)}\\b`).test(loopStart));
+    const marks = /\b[A-Za-z_$][\w$]*\s*\[[^\]\n]+\]\s*=\s*(?:[^;\n]*=\s*)?(?:true|false|True|False|1|0)\b/.test(body);
+    const perm = driven > 0 && (PERM_RE.test(body) || (marks && !startsAtParam));
     const base = driven > 0 ? 2 : ce;
     out.cx = perm ? { ...mk(1), label: "O(n!)", rank: 1e6 } : { ...mk(1), label: base === 2 ? "O(2^n)" : `O(${base}^n)`, rank: 1e5 + base };
     out.aux = mk(1);
@@ -979,17 +1079,106 @@ function analyzeRecursion(fn, ctx) {
   return out;
 }
 
+/**
+ * True when a sort runs on a fixed-size literal (sorted((a, b, c)), or a
+ * container initialised from a small literal), so it does not scale with n.
+ * Plain indexing such as nums[i] is NOT a literal initialiser.
+ */
 function isConstantSort(text, pos) {
+  const open = text.indexOf("(", pos);
+  const r = open < 0 ? -1 : matchForward(text, open);
+  const firstArg = r > 0 ? (splitTop(text.slice(open + 1, r))[0] || "").trim() : "";
   const back = /([A-Za-z_$][\w$]*)\s*\.\s*$/.exec(text.slice(Math.max(0, pos - 40), pos));
-  let x = back ? back[1] : null;
-  if (!x) {
-    const open = text.indexOf("(", pos);
-    const r = open < 0 ? -1 : matchForward(text, open);
-    x = r > 0 ? lastIdent((splitTop(text.slice(open + 1, r))[0] || "").replace(/\.\s*(?:begin|rbegin)\(\)/, "")) : null;
+  // sorted((a, b, c)) / sort([x, y]) - not a method call, whose first
+  // argument would be a comparator such as (a, b) => a - b.
+  if (!back && /^[([{]/.test(firstArg) && !/\bfor\b|=>|\blambda\b/.test(firstArg)) {
+    return (firstArg.match(/,/g) || []).length < 16;
   }
+  const x = back ? back[1] : firstArg ? lastIdent(firstArg.replace(/\.\s*(?:begin|rbegin|end|rend)\(\)/g, "")) : null;
   if (!x) return false;
-  const m = new RegExp(`\\b${esc(x)}\\s*(?:=\\s*)?[\\[{]([^\\]}]*)[\\]}]`).exec(text);
-  return !!m && !/\bfor\b/.test(m[1]) && (m[1].match(/,/g) || []).length < 16;
+  const q = esc(x);
+  const m = new RegExp(
+    `\\b${q}\\s*(?:\\[\\s*\\d*\\s*\\])?\\s*=\\s*[\\[{]([^\\]}]*)[\\]}]|(?:<[^;()]*>|\\b\\w+)\\s+${q}\\s*\\{([^}]*)\\}`,
+  ).exec(text);
+  if (!m) return false;
+  const literal = m[1] ?? m[2] ?? "";
+  // x = [] / x = {} start empty and grow, so they are not fixed-size
+  return /\S/.test(literal) && !/\bfor\b/.test(literal) && (literal.match(/,/g) || []).length < 16;
+}
+
+/**
+ * Positions (absolute) of slice / substring / array copies in text[from, to)
+ * whose length can grow with the input: s[i:j], s[1:], s[::-1], x.slice(),
+ * s.substring(i, j), s.substr(i), Arrays.copyOf(…). Fixed-length copies
+ * (s[:3], x.slice(0, 2), s.substr(i, 2)) are skipped.
+ */
+function copyOps(text, fam, from, to) {
+  const out = [];
+  const seg = text.slice(from, to);
+  const lit = (s) => /^\s*-?\d+\s*$/.test(s || "");
+  // A copy in a return statement runs once, not once per iteration.
+  const inReturn = (i) => /^\s*return\b/.test(seg.slice(seg.lastIndexOf("\n", i) + 1, i));
+  let m;
+  if (fam === PY) {
+    const re = /\[([^[\]\n]*)\]/g;
+    while ((m = re.exec(seg))) {
+      const parts = m[1].split(":");
+      if (parts.length < 2 || parts.length > 3) continue;
+      if (!/[\w\])]/.test(seg[m.index - 1] || "")) continue; // indexing, not a list literal
+      const [a, b] = parts;
+      if ((lit(a) || !a.trim()) && lit(b)) continue; // fixed length
+      if (inReturn(m.index)) continue;
+      out.push(from + m.index);
+    }
+    return out;
+  }
+  const re = /\.\s*(slice|substring|substr|concat)\s*\(([^()\n]*)\)|\b(?:Arrays\s*\.\s*)?copyOf(?:Range)?\s*\(/g;
+  while ((m = re.exec(seg))) {
+    if (m[1]) {
+      const args = splitTop(m[2] || "");
+      if (m[1] === "substr" && lit(args[1])) continue;
+      if ((m[1] === "slice" || m[1] === "substring") && args.length === 2 && lit(args[0]) && lit(args[1])) continue;
+    }
+    if (inReturn(m.index)) continue;
+    out.push(from + m.index);
+  }
+  return out;
+}
+
+/**
+ * Library calls that cost O(n) on a sequence: C++ algorithms over iterators,
+ * C string routines, Python built-ins over one collection, string/array
+ * methods. Returns absolute positions in text[from, to). Calls that are
+ * O(1) (max(a, b), set.count(x)) or already counted as loops (generator
+ * expressions, JS map/filter) are excluded.
+ */
+function libraryOps(text, fam, from, to) {
+  const out = [];
+  const seg = text.slice(from, to);
+  let m;
+  const push = (i) => out.push(from + i);
+  if (fam === PY) {
+    const re = /(?<![\w.])(sum|max|min|any|all|list|set|tuple|dict|Counter)\s*\(|\.\s*(join|split|count|index|reverse|copy|strip|lower|upper|replace|find)\s*\(/g;
+    while ((m = re.exec(seg))) {
+      if (m[1]) {
+        const open = from + m.index + m[0].length - 1;
+        const r = matchForward(text, open);
+        if (r < 0) continue;
+        const args = splitTop(text.slice(open + 1, r)).filter((a) => !/^\s*\w+\s*=(?!=)/.test(a));
+        if (args.length !== 1 || /\bfor\b/.test(args[0]) || /^\s*[[({'"\d]/.test(args[0])) continue;
+      }
+      push(m.index);
+    }
+    return out;
+  }
+  if (fam === JS) {
+    const re = /\.\s*(?:reverse|includes|indexOf|lastIndexOf|join|split|fill|toUpperCase|toLowerCase|trim|repeat)\s*\(|\bMath\s*\.\s*(?:max|min)\s*\(\s*\.\.\.|\bArray\s*\.\s*from\s*\(|\bnew\s+(?:Set|Map)\s*\(\s*[A-Za-z_$]|\[\s*\.\.\./g;
+    while ((m = re.exec(seg))) push(m.index);
+    return out;
+  }
+  const re = /(?<![\w.>:])(?:std::)?(?:reverse|accumulate|count|count_if|find|find_if|max_element|min_element|fill|copy|unique|rotate|iota|equal|is_sorted|partial_sum|transform|any_of|all_of|none_of|replace|remove|remove_if)\s*\(\s*[A-Za-z_][\w.\->]*?\s*(?:\.|->)\s*c?r?begin\s*\(|(?<![\w.])(?:strlen|memset|memcpy|memmove|strcpy|strcmp|strcat|strncmp)\s*\(|\b(?:Arrays\s*\.\s*(?:fill|stream|equals|asList)|Collections\s*\.\s*(?:reverse|max|min|frequency)|String\s*\.\s*join)\s*\(|\.\s*(?:toCharArray|split|indexOf|toUpperCase|toLowerCase|trim)\s*\(/g;
+  while ((m = re.exec(seg))) push(m.index);
+  return out;
 }
 
 function analyzeFn(fn, ctx) {
@@ -1038,10 +1227,11 @@ function analyzeFn(fn, ctx) {
       conf = Math.min(conf, MED);
     }
   }
-  if (best.lin || best.log || best.sq) {
+  if (best.lin || best.log || best.sq || best.exp) {
     const lg = best.log + (best.logOp ? 1 : 0);
     let p = "linear_traversal";
-    if (best.special && best.lin === 1) p = "parallel_linked_list_traversal";
+    if (best.exp) p = "bitmask_enumeration";
+    else if (best.special && best.lin === 1) p = "parallel_linked_list_traversal";
     else if (best.lin >= 3) p = "multi_nested_loops";
     else if (best.lin === 2) p = chainCx.multiDim ? "nested_independent_loops" : "nested_loops";
     else if (best.lin === 0 && lg) p = "binary_search";
@@ -1050,7 +1240,7 @@ function analyzeFn(fn, ctx) {
     else if (best.logOp) p = "heap_operations";
     cands.push({
       cx: chainCx, pat: p, conf,
-      ev: `Loop nest: ${best.lin} linear${best.log ? `, ${best.log} logarithmic` : ""}${best.sq ? `, ${best.sq} sqrt` : ""} level(s)${best.logOp ? ", O(log n) heap/ordered-set operation per iteration" : ""}`,
+      ev: `Loop nest: ${best.exp ? "2^n (bitmask) iterations, " : ""}${best.lin} linear${best.log ? `, ${best.log} logarithmic` : ""}${best.sq ? `, ${best.sq} sqrt` : ""} level(s)${best.logOp ? ", O(log n) heap/ordered-set operation per iteration" : ""}`,
     });
     if (chainCx.multiDim) conf = Math.min(conf, MED);
   }
@@ -1066,6 +1256,54 @@ function analyzeFn(fn, ctx) {
     for (const L of loops) if (!L.skip && inLoop(L, pos) && chains.get(L) && chainRank(chains.get(L)) >= chainRank(c)) c = chains.get(L);
     const withSort = { ...c, lin: c.lin + 1, log: c.log + 1, keys: c.keys.concat([null]) };
     cands.push({ cx: chainToCx(withSort), pat: c.lin ? "sorting_with_linear_pass" : "standard_sort", ev: "Comparison sort (O(n log n))", conf: HIGH });
+  }
+
+  // copies inside a scaling loop cost O(length) per iteration
+  for (const pos of copyOps(ctx.text, ctx.fam, fn.bodyStart, fn.end)) {
+    let c = null;
+    for (const L of loops) {
+      const lc = chains.get(L);
+      if (!L.skip && pos >= L.bodyStart && pos < L.end && lc && (!c || chainRank(lc) >= chainRank(c))) c = lc;
+    }
+    if (!c || !c.lin) continue;
+    cands.push({
+      cx: chainToCx({ ...c, lin: c.lin + 1, keys: c.keys.concat([null]) }),
+      pat: "copy_in_loop",
+      ev: "Slice/substring copy inside a loop costs O(length) per iteration",
+      conf: MED,
+    });
+  }
+
+  // O(n) library calls: once at top level, per iteration inside a scaling loop
+  // (body, or a loop condition that is re-evaluated every iteration).
+  const inner = (pos) => {
+    let c = EMPTY_CHAIN;
+    for (const L of loops) {
+      const lc = chains.get(L);
+      if (!L.skip && lc && pos >= L.bodyStart && pos < L.end && chainRank(lc) >= chainRank(c)) c = lc;
+    }
+    return c;
+  };
+  for (const pos of libraryOps(ctx.text, ctx.fam, fn.bodyStart, fn.end)) {
+    if (ctx.fns && fnAt(ctx.fns, ctx.root, pos) !== fn) continue; // belongs to a nested function
+    const c = inner(pos);
+    cands.push({
+      cx: chainToCx({ ...c, lin: c.lin + 1, keys: c.keys.concat([null]) }),
+      pat: c.lin ? "library_call_in_loop" : "library_linear_call",
+      ev: c.lin ? "O(n) library call inside a loop" : "O(n) library call",
+      conf: MED,
+    });
+  }
+  for (const L of loops) {
+    if (L.skip || !(L.kind === "while" || (L.kind === "for" && L.init)) || !L.test) continue;
+    if (!libraryOps(L.test, ctx.fam, 0, L.test.length).length) continue;
+    const c = chains.get(L) || EMPTY_CHAIN;
+    cands.push({
+      cx: chainToCx({ ...c, lin: c.lin + 1, keys: c.keys.concat([null]) }),
+      pat: "library_call_in_loop_condition",
+      ev: "O(n) library call re-evaluated in a loop condition on every iteration",
+      conf: MED,
+    });
   }
 
   // recursion
@@ -1116,6 +1354,8 @@ function applyHelperCalls(ir, ctx) {
 function computeTime(entry) {
   const { ir, ctx } = entry;
   enrichLoops(ir, ctx);
+  ctx.fns = ir.fns;
+  ctx.root = ir.root;
   for (const f of ir.fns) analyzeFn(f, ctx);
   applyHelperCalls(ir, ctx);
   let top = ir.root;
@@ -1145,17 +1385,23 @@ const ALLOC_RES = [
   /\bArray\s*\(\s*([^)]+)\)/g,
   /\bArray\.from\s*\(\s*\{\s*length\s*:\s*([^}]+)\}/g,
   /\bvector\s*<[^;(){}]*>\s*\w*\s*\(\s*([^,;(){}]+)/g,
-  /\]\s*\*\s*(\([^)]*\)|[\w.$]+)/g,
+  // Python list multiplication [0] * n - the [...] must be a literal list,
+  // not an index expression such as A[i][k] * B.
+  /(?:^|[=(,:\s[])\[[^\]\n]*\]\s*\*\s*(\([^)]*\)|[\w.$]+)/g,
   /\b(?:int|long|bool|char|double|float|string)\s+\w+\s*((?:\[[^\]\n]+\]\s*)+)/g,
 ];
+// Growth: x.push(…) / x[key] = … (one level of nested brackets, e.g.
+// seen[nums[i]] = i) / heapq.heappush(x, …) / bisect.insort(x, …).
 const GROW_RE =
-  /\b([A-Za-z_$][\w$]*)\s*(?:\.|->)\s*(?:push_back|push|append|add|set|insert|emplace_back|emplace|put|offer|enqueue|extend|appendleft|addLast|addFirst)\s*\(|\b([A-Za-z_$][\w$]*)\s*(?:\[[^\]\n]*\]\s*(?:=(?!=)|\+=)|\+=)/g;
+  /\b([A-Za-z_$][\w$]*)\s*(?:\.|->)\s*(?:push_back|push|append|add|set|insert|emplace_back|emplace|put|offer|enqueue|extend|appendleft|addLast|addFirst)\s*\(|\b([A-Za-z_$][\w$]*)\s*(?:\[(?:[^[\]\n]|\[[^\]\n]*\])*\]\s*(?:=(?!=)|\+=)|\+=)|\b(?:heapq\s*\.\s*)?(?:heappush|heappushpop|insort(?:_left|_right)?)\s*\(\s*([A-Za-z_$][\w$]*)/g;
 const DECL_RES = [
   /\b([A-Za-z_$][\w$]*)\s*(?::[^=\n;]+)?=\s*(?:\[\s*\]|\{\s*\}|new\s+(?:Map|Set|Array|WeakMap)\b|set\s*\(\s*\)|dict\s*\(\s*\)|list\s*\(\s*\)|(?:collections\.)?(?:deque|defaultdict|Counter|OrderedDict)\s*\(|\[[^\]\n]*\]\s*\*|\[[^\]\n]*\bfor\b|new\s+(?!\w*Node\b)\w+(?:<[^>;]*>)?\s*[([])/g,
   /\b(?:vector|unordered_map|unordered_set|map|set|multiset|multimap|deque|queue|stack|priority_queue|list|string|bitset)\s*(?:<[^;(){}]*>)?\s+([A-Za-z_]\w*)\s*(?=[;(=[{])/g,
   /\b(?:List|ArrayList|LinkedList|Map|HashMap|TreeMap|LinkedHashMap|Set|HashSet|TreeSet|LinkedHashSet|Deque|ArrayDeque|Queue|PriorityQueue|Stack|StringBuilder|Vector)\s*(?:<[^;(){}=]*>)?\s+([A-Za-z_]\w*)\s*(?=[;=])/g,
 ];
-const RET_RE = /\breturn\s+(?:\(\s*)?([A-Za-z_$][\w$]*)(?!\s*[[(\w$])/g;
+// `return x` returns the container x; `return x.top()` / `x.toString()` /
+// `x->val` / `x[0]` return something derived from it, not x itself.
+const RET_RE = /\breturn\s+(?:\(\s*)?([A-Za-z_$][\w$]*)(?!\s*(?:[[(\w$.]|->))/g;
 const NODE_ALLOC = /\bnew\s+\w*Node\s*[([]/g;
 
 function computeSpace(entry, time) {
@@ -1183,10 +1429,29 @@ function computeSpace(entry, time) {
     }
   }
 
+  // Only what the entry function returns is output. Containers returned by
+  // helpers (build(s) in backspaceCompare) are temporaries of the caller.
+  const calledElsewhere = (f) => {
+    const re = new RegExp(`(?<![\\w$])${esc(f.name)}\\s*\\(`, "g");
+    let cm;
+    while ((cm = re.exec(text))) if (cm.index < f.hdrStart || cm.index >= f.end) return true;
+    return false;
+  };
+  const named = ir.fns.filter((f) => f !== ir.root && /^[A-Za-z_$][\w$]*$/.test(f.name));
+  const helpers = new Set(named.filter(calledElsewhere));
   const returned = new Set();
   let m;
   RET_RE.lastIndex = 0;
-  while ((m = RET_RE.exec(text))) returned.add(m[1]);
+  while ((m = RET_RE.exec(text))) {
+    if (!helpers.has(fnAt(ir.fns, ir.root, m.index))) returned.add(m[1]);
+  }
+  // The entry function returns a value (return dummy.next, return reverse(head), …):
+  // nodes it allocates per iteration form that result.
+  let returnsValue = false;
+  const rv = /\breturn\s+[^;\s}]/g;
+  while ((m = rv.exec(text))) {
+    if (!helpers.has(fnAt(ir.fns, ir.root, m.index))) { returnsValue = true; break; }
+  }
   const growsAt = (pos) => ir.loops.some((L) => inLoop(L, pos)) || ir.fns.some((f) => f.selfCalls.length && pos >= f.bodyStart && pos < f.end);
   const loopSpecial = (pos) => {
     let sp = null;
@@ -1241,9 +1506,9 @@ function computeSpace(entry, time) {
   GROW_RE.lastIndex = 0;
   const seen = new Set();
   while ((m = GROW_RE.exec(text))) {
-    const nm = m[1] || m[2];
+    const nm = m[1] || m[2] || m[3];
     if (seen.has(nm) || !growsAt(m.index)) continue;
-    if (m[2] && !decls.has(nm)) continue;
+    if ((m[2] || m[3]) && !decls.has(nm)) continue;
     seen.add(nm);
     place(nm, mk(1), `container "${nm}" grows with input`, m.index);
   }
@@ -1255,11 +1520,21 @@ function computeSpace(entry, time) {
     if (growsAt(m.index)) {
       const sp = loopSpecial(m.index);
       const c = sp ? { ...mk(1), special: sp } : mk(1);
-      if (returned.size) { if (rank(c) > rank(out)) { out = c; ev.push("Output space: new nodes allocated per iteration"); } }
+      if (returnsValue) { if (rank(c) > rank(out)) { out = c; ev.push("Output space: new nodes allocated per iteration"); } }
       else if (rank(c) > rank(aux)) { aux = c; ev.push("Auxiliary space: new nodes allocated per iteration"); }
       conf = Math.min(conf, MED);
       break;
     }
+  }
+  // a slice/substring copy made inside a scaling loop needs O(n) memory
+  for (const f of ir.fns) {
+    const pos = copyOps(text, ctx.fam, f.bodyStart, f.end).find((p) =>
+      f.loops.some((L) => !L.skip && L.weight !== "zero" && L.weight !== "exp" && p >= L.bodyStart && p < L.end),
+    );
+    if (pos === undefined) continue;
+    const lineStart = text.lastIndexOf("\n", pos) + 1;
+    const asg = /([A-Za-z_$][\w$]*)\s*(?::[^=\n]+)?=(?!=)/.exec(text.slice(lineStart, pos));
+    place(asg ? asg[1] : null, mk(1), "slice/substring copy inside a loop", pos);
   }
   if (/\bsorted\s*\(|\btoSorted\s*\(/.test(text) && rank(aux) < 10) {
     aux = mk(1);

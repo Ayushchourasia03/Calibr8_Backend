@@ -12,6 +12,13 @@ import {
   resolveProblem,
 } from "../utils/problemResolver.js";
 import { ApiError } from "../utils/ApiError.js";
+import { getCodeboxUrl, fetchCodeboxJson } from "../utils/codeboxClient.js";
+import {
+  enqueueComplexityProfile,
+  markJudgingEnd,
+  markJudgingStart,
+  profilingEligibility,
+} from "../profiling/profilingQueue.js";
 import { syncProblemSolvedCount } from "../utils/problemSolvedCount.js";
 import {
   applyAcceptedSubmissionReward,
@@ -148,94 +155,7 @@ export const getLanguages = async (req, res, next) => {
   }
 };
 
-function getCodeboxUrl(required = true) {
-  const codeboxUrl = process.env.CODEBOX_URL;
-  const codeboxToken = process.env.CODEBOX_TOKEN;
 
-  if (!codeboxUrl || !codeboxToken) {
-    if (!required) return null;
-    throw new ApiError(
-      503,
-      "Code execution service is unavailable.",
-      "EXECUTION_UNAVAILABLE",
-    );
-  }
-
-  let runnerUrl;
-
-  try {
-    runnerUrl = new URL(codeboxUrl);
-  } catch {
-    if (!required) return null;
-    throw new ApiError(
-      503,
-      "Code execution service is unavailable.",
-      "EXECUTION_UNAVAILABLE",
-    );
-  }
-
-  const isHttps = runnerUrl.protocol === "https:";
-  const isHttp = runnerUrl.protocol === "http:";
-  const allowInsecureHttp = process.env.CODEBOX_ALLOW_INSECURE_HTTP === "true";
-
-  if (!isHttps && !(isHttp && allowInsecureHttp)) {
-    if (!required) return null;
-    throw new ApiError(
-      503,
-      "Code execution service is unavailable.",
-      "EXECUTION_UNAVAILABLE",
-    );
-  }
-
-  return runnerUrl;
-}
-
-async function fetchCodeboxJson(url, options = {}) {
-  const codeboxToken = process.env.CODEBOX_TOKEN;
-  const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
-    options.timeoutMs || 15_000,
-  );
-
-  try {
-    const response = await fetch(url, {
-      ...options,
-      redirect: "error",
-      headers: {
-        "X-Auth-Token": codeboxToken,
-        ...options.headers,
-      },
-      signal: controller.signal,
-    });
-    if (response.status === 401 || response.status === 403) {
-      throw new ApiError(
-        500,
-        "Code execution service authentication failed.",
-        "EXECUTION_AUTH_FAILED",
-      );
-    }
-    if (!response.ok) {
-      const statusErr = new ApiError(
-        503,
-        "Code execution service returned an error status.",
-        "EXECUTION_UNAVAILABLE",
-      );
-      statusErr.httpStatus = response.status;
-      throw statusErr;
-    }
-    return await response.json();
-  } catch (err) {
-    if (err instanceof ApiError) throw err;
-    throw new ApiError(
-      503,
-      "Code execution service is unavailable.",
-      "EXECUTION_UNAVAILABLE",
-    );
-  } finally {
-    clearTimeout(timeout);
-  }
-}
 
 // CODEBOX_BATCH_EXECUTION_ENABLED: "auto" (default) | "true" | "false".
 // auto: use POST /batches (compile once, run many) when the CodeBox server
@@ -304,7 +224,48 @@ function normalizeBatchStatus(status) {
   return "Runtime Error";
 }
 
-function normalizeBatchResult(rawResult = {}, fallbackIndex = 0) {
+/**
+ * Submission verdict for a failed testcase. Only a genuine output mismatch is
+ * a Wrong Answer; resource-limit and crash outcomes keep their own verdict.
+ */
+export function verdictForFailure(failureType) {
+  switch (failureType) {
+    case "Time Limit Exceeded":
+      return "TIME_LIMIT_EXCEEDED";
+    case "Memory Limit Exceeded":
+      return "MEMORY_LIMIT_EXCEEDED";
+    case "Compilation Error":
+      return "COMPILATION_ERROR";
+    case "Runtime Error":
+    case "Output Limit Exceeded": // like Judge0: runtime error (SIGXFSZ)
+      return "RUNTIME_ERROR";
+    default:
+      return "WRONG_ANSWER";
+  }
+}
+
+/**
+ * CodeBox reuses one sandbox (cgroup) per batch lane, and isolate's "OOM
+ * killed" flag is that cgroup's cumulative counter: after one memory-limit
+ * kill, every later testcase in the lane comes back as memory_limit_exceeded
+ * (CodeBox fix pending deployment). A testcase only hit the memory limit if
+ * its process was actually SIGKILLed; a SIGKILL at the time limit is a TLE.
+ */
+function correctStickyMemoryLimit(status, { exitCode, exitSignal, timeMs, memoryKb }, limits) {
+  if (status !== "Memory Limit Exceeded") return status;
+  const signal = Number(exitSignal) || 0;
+  // CodeBox runs batch testcases through a shell: a SIGKILLed program shows up
+  // as exit code 137 (128 + 9) with no signal.
+  const sigkilled = signal === 9 || (!signal && exitCode === 137);
+  if (!sigkilled) return exitCode === 0 && !signal ? "OK" : "Runtime Error";
+  const memLimitKb = Number(limits?.memoryLimitKb) || 0;
+  const cpuLimitMs = Number(limits?.cpuLimitMs) || 0;
+  const nearMemLimit = memLimitKb > 0 && memoryKb >= memLimitKb * 0.95;
+  if (!nearMemLimit && cpuLimitMs > 0 && timeMs >= cpuLimitMs) return "Time Limit Exceeded";
+  return status;
+}
+
+function normalizeBatchResult(rawResult = {}, fallbackIndex = 0, limits = null) {
   const rawStatus = String(
     rawResult.status || rawResult.state || "completed",
   ).trim();
@@ -324,7 +285,12 @@ function normalizeBatchResult(rawResult = {}, fallbackIndex = 0) {
   const memoryKb = Number(
     rawResult.memory ?? rawResult.memoryKb ?? rawResult.memory_kb ?? 0,
   );
-  const status = normalizeBatchStatus(rawStatus);
+  const exitSignal = rawResult.exitSignal ?? rawResult.exit_signal ?? null;
+  const status = correctStickyMemoryLimit(
+    normalizeBatchStatus(rawStatus),
+    { exitCode, exitSignal, timeMs, memoryKb },
+    limits,
+  );
 
   return {
     status,
@@ -500,7 +466,10 @@ async function executeCodeboxBatchOnce({
     };
 
     return {
-      ...normalizeBatchResult({ ...fallback, ...rawResult }, index),
+      ...normalizeBatchResult({ ...fallback, ...rawResult }, index, {
+        memoryLimitKb: payload.limits.memory_limit,
+        cpuLimitMs: payload.limits.cpu_time_limit * 1000,
+      }),
       inputBytes: Buffer.byteLength(
         String(testcases[index]?.stdin ?? ""),
         "utf-8",
@@ -587,13 +556,86 @@ function isMultiCaseEnabled() {
 const MULTICASE_MAX_CPU_SEC = Number(process.env.CODEBOX_MAX_CPU_TIME_LIMIT) || 15;
 const MULTICASE_MAX_WALL_SEC = Number(process.env.CODEBOX_MAX_WALL_TIME_LIMIT) || 20;
 const MULTICASE_POLL_INITIAL_INTERVAL_MS = 120;
-const MULTICASE_MAX_CASES_PER_SUBMISSION = 200;
+const MULTICASE_MAX_CASES_PER_SUBMISSION =
+  Number(process.env.CODEBOX_MULTICASE_MAX_CASES) || 500;
+// Keeps each harness request well under CodeBox's 5 MB body limit (base64 adds 33%).
+const MULTICASE_MAX_STDIN_BYTES = 3 * 1024 * 1024;
 const MULTICASE_MAX_ROUNDS = 6;
 
+/** Thrown when the harness-wrapped source fails to compile (see executeCodeBatch). */
+const HARNESS_COMPILE_FAILED = "HARNESS_COMPILE_FAILED";
+
 /**
- * Runs all testcases in as few submissions as possible using the fork-per-case
- * harness (one compile per chunk). Returns results by index; entries are
- * undefined for cases that did not report.
+ * Infrastructure failures (CodeBox down, sandbox/queue errors, bad responses)
+ * may fall back to another execution path. Anything else - including every
+ * verdict about the user's code - must not.
+ */
+function isInfrastructureError(err) {
+  return err instanceof ApiError && err.code === "EXECUTION_UNAVAILABLE" && !err.isBatchTimeout;
+}
+
+/** Result for a testcase that was intentionally not run (after a definitive TLE). */
+function skippedCaseResult(testcase) {
+  return {
+    status: "Skipped",
+    studentStdout: "",
+    actual: "",
+    errorText: null,
+    timeMs: 0,
+    cpuTimeMs: 0,
+    wallTimeMs: 0,
+    memoryKb: 0,
+    memorySource: "none",
+    exitCode: null,
+    inputBytes: Buffer.byteLength(String(testcase?.stdin ?? ""), "utf-8"),
+  };
+}
+
+/**
+ * Flattens per-chunk results. Chunks never started (after a TLE) become
+ * "Skipped"; with stopOnTimeout every case after the first TLE is "Skipped" too,
+ * so the outcome does not depend on which parallel chunk finished first.
+ */
+function finishAfterTimeout(chunks, chunkResults, stopOnTimeout) {
+  const cases = chunks.flat();
+  const flat = [];
+  chunks.forEach((chunk, i) => {
+    chunk.forEach((tc, k) => flat.push(chunkResults[i] ? chunkResults[i][k] : skippedCaseResult(tc)));
+  });
+  if (stopOnTimeout) {
+    const first = flat.findIndex((r) => r?.status === "Time Limit Exceeded");
+    if (first >= 0) {
+      for (let i = first + 1; i < flat.length; i++) flat[i] = skippedCaseResult(cases[i]);
+    }
+  }
+  return flat;
+}
+
+/** Splits testcases into harness chunks bounded by case count and stdin bytes. */
+function chunkForHarness(testcases) {
+  const chunks = [];
+  let current = null;
+  testcases.forEach((tc, index) => {
+    const bytes = Buffer.byteLength(String(tc.stdin ?? tc.stdinSmall ?? tc.input ?? ""), "utf-8") + 16;
+    if (
+      !current ||
+      current.cases.length >= MULTICASE_MAX_CASES_PER_SUBMISSION ||
+      (current.cases.length > 0 && current.bytes + bytes > MULTICASE_MAX_STDIN_BYTES)
+    ) {
+      current = { offset: index, cases: [], bytes: 0 };
+      chunks.push(current);
+    }
+    current.cases.push(tc);
+    current.bytes += bytes;
+  });
+  return chunks;
+}
+
+/**
+ * Runs testcases through the fork-per-case harness: one compile and one
+ * sandbox per chunk. Returns results by index; entries are undefined for cases
+ * that did not report (budget ran out). With stopOnTimeout, cases after a
+ * definitive TLE come back as "Skipped" and no further chunk is started.
  */
 async function executeMultiCase({
   language,
@@ -601,38 +643,38 @@ async function executeMultiCase({
   testcases,
   timeLimit,
   memoryLimit,
+  stopOnTimeout = false,
 }) {
   const runnerUrl = getCodeboxUrl(true);
   const languageId = LANGUAGE_IDS[language] || 54;
   const headers = { "Content-Type": "application/json" };
   const perCaseMs = Math.max(100, Number(timeLimit) || 2000);
   const memLimitMb = Math.max(1, Number(memoryLimit) || 256);
-  const source = Buffer.from(wrapWithHarness(fullCode)).toString("base64");
+  const source = Buffer.from(wrapWithHarness(fullCode, language)).toString("base64");
 
-  // One compile per chunk. The harness stops starting new cases before the
-  // budget runs out, so a slow/TLE-heavy chunk reports partial results instead
-  // of being killed; the caller re-runs whatever was not reported.
+  // The harness stops starting new cases before the budget runs out, so a
+  // slow chunk reports partial results instead of being killed; the caller
+  // re-runs whatever was not reported.
   const budgetMs =
     Math.min(MULTICASE_MAX_CPU_SEC, MULTICASE_MAX_WALL_SEC) * 1000 - 1500;
-  const casesPerChunk = MULTICASE_MAX_CASES_PER_SUBMISSION;
-  const chunks = [];
-  for (let offset = 0; offset < testcases.length; offset += casesPerChunk) {
-    chunks.push({ offset, cases: testcases.slice(offset, offset + casesPerChunk) });
-  }
+  const chunks = chunkForHarness(testcases);
 
-  const runChunk = async ({ offset, cases }) => {
+  const runChunk = async ({ cases }) => {
     const stdins = cases.map(
       (tc) => tc.stdin ?? tc.stdinSmall ?? tc.input ?? "",
     );
+    // wait=true: CodeBox holds the request until the run finishes (up to its
+    // 30 s sync window), so results arrive without client-side poll delays.
     const created = await fetchCodeboxJson(
-      new URL("/submissions?base64_encoded=true&wait=false", runnerUrl),
+      new URL("/submissions?base64_encoded=true&wait=true", runnerUrl),
       {
         method: "POST",
         headers,
+        timeoutMs: 40_000,
         body: JSON.stringify({
           source_code: source,
           language_id: languageId,
-          stdin: buildHarnessStdin(stdins, perCaseMs, budgetMs).toString("base64"),
+          stdin: buildHarnessStdin(stdins, perCaseMs, budgetMs, { stopOnTimeout }).toString("base64"),
           cpu_time_limit: MULTICASE_MAX_CPU_SEC,
           wall_time_limit: MULTICASE_MAX_WALL_SEC,
           memory_limit: memLimitMb * 1024,
@@ -640,7 +682,8 @@ async function executeMultiCase({
         }),
       },
     );
-    if (!created?.token) {
+    const isPending = (s) => !s?.status?.id || [1, 2].includes(Number(s.status.id));
+    if (!created || (isPending(created) && !created.token)) {
       throw new ApiError(
         503,
         "Code execution service returned an invalid response.",
@@ -648,15 +691,17 @@ async function executeMultiCase({
       );
     }
 
-    const pollUrl = new URL(`/submissions/${created.token}`, runnerUrl);
-    pollUrl.searchParams.set("base64_encoded", "true");
     const deadline = Date.now() + BATCH_TIMEOUT_MS;
     let interval = MULTICASE_POLL_INITIAL_INTERVAL_MS;
-    let sub;
-    while (true) {
+    let sub = created;
+    while (isPending(sub)) {
+      // Still queued/running after the sync window (or an old server that
+      // ignores wait): fall back to polling by token.
       await new Promise((resolve) => setTimeout(resolve, interval));
+      const pollUrl = new URL(`/submissions/${created.token}`, runnerUrl);
+      pollUrl.searchParams.set("base64_encoded", "true");
       sub = await fetchCodeboxJson(pollUrl, { headers });
-      if (![1, 2].includes(Number(sub?.status?.id))) break;
+      if (!isPending(sub)) break;
       if (Date.now() >= deadline) {
         throw new ApiError(503, "Code execution service timed out.", "EXECUTION_UNAVAILABLE");
       }
@@ -666,22 +711,16 @@ async function executeMultiCase({
     const decode = (v) => (v ? Buffer.from(v, "base64").toString("utf-8") : "");
     const inputBytesOf = (i) => Buffer.byteLength(String(stdins[i] ?? ""), "utf-8");
 
-    // Compilation error applies to every case.
-    if (Number(sub.status?.id) === 6 || sub.compile_output && !sub.stdout) {
-      const compileOutput = decode(sub.compile_output) || decode(sub.message) || "Compilation failed.";
-      return cases.map((_, i) => ({
-        status: "Compilation Error",
-        studentStdout: "",
-        actual: "",
-        errorText: compileOutput,
-        timeMs: 0,
-        cpuTimeMs: 0,
-        wallTimeMs: 0,
-        memoryKb: 0,
-        memorySource: "max-rss",
-        exitCode: 1,
-        inputBytes: inputBytesOf(i),
-      }));
+    // The harness-wrapped source did not compile. Never report that as the
+    // user's Compilation Error: the caller re-judges with the plain source.
+    if (Number(sub.status?.id) === 6 || (sub.compile_output && !sub.stdout)) {
+      const err = new Error(decode(sub.compile_output) || decode(sub.message) || "Compilation failed.");
+      err.code = HARNESS_COMPILE_FAILED;
+      throw err;
+    }
+    // Internal CodeBox error (status 13): infrastructure, not the user's code.
+    if (Number(sub.status?.id) === 13) {
+      throw new ApiError(503, "Code execution service internal error.", "EXECUTION_UNAVAILABLE");
     }
 
     const parsed = parseHarnessOutput(
@@ -692,7 +731,7 @@ async function executeMultiCase({
       // Harness never started (unexpected environment) - let caller fall back.
       throw new ApiError(503, "Multi-case harness unavailable.", "EXECUTION_UNAVAILABLE");
     }
-    return parsed.map((raw, i) =>
+    const normalized = parsed.map((raw, i) =>
       raw
         ? normalizeHarnessCase(raw, {
             timeLimitMs: perCaseMs,
@@ -701,38 +740,150 @@ async function executeMultiCase({
           })
         : undefined,
     );
+    normalized.stoppedOnTimeout = parsed.stoppedOnTimeout;
+    return normalized;
   };
 
   const results = new Array(testcases.length);
   let nextChunk = 0;
+  let timedOut = false;
   const worker = async () => {
-    while (nextChunk < chunks.length) {
+    while (nextChunk < chunks.length && !timedOut) {
       const chunk = chunks[nextChunk++];
       const chunkResults = await runChunk(chunk);
       chunkResults.forEach((r, i) => {
         results[chunk.offset + i] = r;
       });
+      if (stopOnTimeout && chunkResults.some((r) => r?.status === "Time Limit Exceeded")) {
+        timedOut = true;
+      }
     }
   };
   await Promise.all(
     Array.from({ length: Math.max(1, Math.min(MAX_CONCURRENT_BATCHES, chunks.length)) }, worker),
   );
+
+  if (timedOut) {
+    // Definitive TLE: everything after the first timed-out case is not run.
+    const firstTle = results.findIndex((r) => r?.status === "Time Limit Exceeded");
+    for (let i = firstTle + 1; i < results.length; i++) {
+      results[i] = skippedCaseResult(testcases[i]);
+    }
+  }
   return results;
 }
 
-export async function executeCodeBatch({
+/**
+ * Multi-case execution with re-runs: each round compiles once; the harness
+ * reports as many cases as fit in its time budget and later rounds pick up the
+ * rest. Anything still unreported runs on the next execution path so verdicts
+ * are never guessed.
+ */
+async function executeMultiCaseRounds({ language, fullCode, testcases, timeLimit, memoryLimit, stopOnTimeout }) {
+  const results = new Array(testcases.length);
+  let missing = testcases.map((_, i) => i);
+  for (let round = 0; round < MULTICASE_MAX_ROUNDS && missing.length; round++) {
+    const roundResults = await executeMultiCase({
+      language,
+      fullCode,
+      testcases: missing.map((i) => testcases[i]),
+      timeLimit,
+      memoryLimit,
+      stopOnTimeout,
+    });
+    let progressed = false;
+    missing.forEach((caseIndex, k) => {
+      if (roundResults[k]) {
+        results[caseIndex] = roundResults[k];
+        progressed = true;
+      }
+    });
+    if (!progressed) break;
+    missing = missing.filter((i) => !results[i]);
+    if (stopOnTimeout && results.some((r) => r?.status === "Time Limit Exceeded")) {
+      missing.forEach((i) => {
+        results[i] = skippedCaseResult(testcases[i]);
+      });
+      missing = [];
+    }
+  }
+  if (missing.length > 0) {
+    const rerun = await executeCodeBatch({
+      language,
+      fullCode,
+      testcases: missing.map((i) => testcases[i]),
+      timeLimit,
+      memoryLimit,
+      allowMultiCase: false,
+      stopOnTimeout,
+    });
+    missing.forEach((caseIndex, k) => {
+      results[caseIndex] = rerun[k];
+    });
+  }
+  return results;
+}
+
+/**
+ * Runs testcases on CodeBox and returns normalized results in input order.
+ *
+ * Execution paths, in order of preference:
+ *   1. C/C++: multi-case harness - compile once, all cases in one sandbox.
+ *   2. CodeBox batch API - compile once, one sandbox per case.
+ *   3. Legacy per-testcase submissions.
+ * Only infrastructure failures fall through to the next path; verdicts about
+ * the user's code (WA/RE/TLE/MLE/CE) never do.
+ *
+ * stopOnTimeout: after a definitive Time Limit Exceeded, remaining cases are
+ * not run and come back with status "Skipped".
+ */
+export async function executeCodeBatch(options) {
+  // Background complexity profiling yields while judging is in progress.
+  markJudgingStart();
+  try {
+    return await executeCodeBatchImpl(options);
+  } finally {
+    markJudgingEnd();
+  }
+}
+
+async function executeCodeBatchImpl({
   language,
   fullCode,
   testcases,
   timeLimit = 2000,
   memoryLimit = 256,
   allowMultiCase = true,
+  stopOnTimeout = false,
 }) {
   if (!testcases.length) return [];
 
-  // Fastest path (all languages): CodeBox batch API compiles once and runs
-  // every testcase in its own sandbox. Chunks run in parallel; after the first
-  // chunk compiles, the others hit CodeBox's build cache.
+  const normLang = normalizeLanguage(language);
+  if (allowMultiCase && isMultiCaseEnabled() && supportsMultiCase(normLang)) {
+    try {
+      return await executeMultiCaseRounds({
+        language: normLang,
+        fullCode,
+        testcases,
+        timeLimit,
+        memoryLimit,
+        stopOnTimeout,
+      });
+    } catch (err) {
+      if (err?.code === HARNESS_COMPILE_FAILED) {
+        // Almost always a genuine compile error; the plain path below compiles
+        // the unmodified source and reports the real verdict.
+      } else if (!isInfrastructureError(err)) {
+        throw err;
+      } else {
+        console.warn("[Execution] Multi-case path unavailable, falling back:", err.message);
+      }
+    }
+  }
+
+  // CodeBox batch API: compiles once and runs every testcase in its own
+  // sandbox. Chunks run in parallel; after the first chunk compiles, the
+  // others hit CodeBox's build cache.
   if (isCodeboxBatchExecutionEnabled()) {
     try {
       const chunks = [];
@@ -741,8 +892,9 @@ export async function executeCodeBatch({
       }
       const chunkResults = new Array(chunks.length);
       let nextChunk = 0;
+      let timedOut = false;
       const worker = async () => {
-        while (nextChunk < chunks.length) {
+        while (nextChunk < chunks.length && !timedOut) {
           const chunkIndex = nextChunk++;
           chunkResults[chunkIndex] = await executeCodeboxBatchOnce({
             language,
@@ -751,81 +903,20 @@ export async function executeCodeBatch({
             timeLimit,
             memoryLimit,
           });
+          if (stopOnTimeout && chunkResults[chunkIndex].some((r) => r?.status === "Time Limit Exceeded")) {
+            timedOut = true;
+          }
         }
       };
       await Promise.all(
         Array.from({ length: Math.min(MAX_CONCURRENT_BATCHES, chunks.length) }, worker),
       );
-      return chunkResults.flat();
+      return finishAfterTimeout(chunks, chunkResults, stopOnTimeout);
     } catch (err) {
-      if (
-        !(err instanceof ApiError && err.code === "EXECUTION_UNAVAILABLE") ||
-        err.isBatchTimeout
-      ) {
+      if (!isInfrastructureError(err)) {
         throw err;
       }
       // Batch API unavailable (old CodeBox server): fall through.
-    }
-  }
-
-  // Fallback for compiled languages on servers without the batch API:
-  // compile once, fork per testcase.
-  const normLang = normalizeLanguage(language);
-  if (allowMultiCase && isMultiCaseEnabled() && supportsMultiCase(normLang)) {
-    try {
-      const results = new Array(testcases.length);
-      let missing = testcases.map((_, i) => i);
-      // Each round compiles once; the harness reports as many cases as fit in
-      // its time budget, and later rounds pick up the rest.
-      for (let round = 0; round < MULTICASE_MAX_ROUNDS && missing.length; round++) {
-        const roundResults = await executeMultiCase({
-          language: normLang,
-          fullCode,
-          testcases: missing.map((i) => testcases[i]),
-          timeLimit,
-          memoryLimit,
-        });
-        let progressed = false;
-        missing.forEach((caseIndex, k) => {
-          if (roundResults[k]) {
-            results[caseIndex] = roundResults[k];
-            progressed = true;
-          }
-        });
-        if (!progressed) break;
-        missing = missing.filter((i) => !results[i]);
-        // A compile error applies to everything: no point running more rounds.
-        if (results.some((r) => r?.status === "Compilation Error")) {
-          const ce = results.find((r) => r?.status === "Compilation Error");
-          missing.forEach((i) => {
-            results[i] = { ...ce, inputBytes: Buffer.byteLength(String(testcases[i]?.stdin ?? ""), "utf-8") };
-          });
-          missing = [];
-        }
-      }
-      // Anything still unreported runs on the per-testcase path so verdicts
-      // are never guessed.
-      if (missing.length > 0) {
-        const rerun = await executeCodeBatch({
-          language,
-          fullCode,
-          testcases: missing.map((i) => testcases[i]),
-          timeLimit,
-          memoryLimit,
-          allowMultiCase: false,
-        });
-        missing.forEach((caseIndex, k) => {
-          results[caseIndex] = rerun[k];
-        });
-      }
-      return results;
-    } catch (err) {
-      if (
-        !(err instanceof ApiError && err.code === "EXECUTION_UNAVAILABLE")
-      ) {
-        throw err;
-      }
-      // Service rejected the harness submission: fall back to per-testcase runs.
     }
   }
 
@@ -850,10 +941,14 @@ export async function executeCodeBatch({
   // after another; results keep their original order.
   const chunkResults = new Array(chunks.length);
   let nextChunk = 0;
+  let timedOut = false;
   const worker = async () => {
-    while (nextChunk < chunks.length) {
+    while (nextChunk < chunks.length && !timedOut) {
       const chunkIndex = nextChunk++;
       chunkResults[chunkIndex] = await runLegacyChunk(chunks[chunkIndex]);
+      if (stopOnTimeout && chunkResults[chunkIndex].some((r) => r?.status === "Time Limit Exceeded")) {
+        timedOut = true;
+      }
     }
   };
   const workerCount = Math.max(
@@ -861,7 +956,7 @@ export async function executeCodeBatch({
     Math.min(MAX_CONCURRENT_BATCHES, chunks.length),
   );
   await Promise.all(Array.from({ length: workerCount }, worker));
-  return chunkResults.flat();
+  return finishAfterTimeout(chunks, chunkResults, stopOnTimeout);
 
   async function runLegacyChunk(cases) {
     const created = await fetchCodeboxJson(
@@ -1305,7 +1400,10 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
   // Testcases carry their tier as a group; with stop_on_failure CodeBox skips
   // later tiers once a testcase crashes/times out, so failing submissions still
   // stop early. Verdicts below are computed exactly as in the per-tier loop.
-  const precomputedTierResults = await runAllTiersInOneBatch({
+  // C/C++ use the multi-case harness instead (one compile, one sandbox per
+  // tier) via executeCodeBatch below.
+  const multiCasePrimary = isMultiCaseEnabled() && supportsMultiCase(normLang);
+  const precomputedTierResults = multiCasePrimary ? null : await runAllTiersInOneBatch({
     tiers,
     language: normLang,
     fullCode,
@@ -1330,6 +1428,7 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
         })),
         timeLimit: problem.timeLimit || 2000,
         memoryLimit: problem.memoryLimit || 256,
+        stopOnTimeout: true,
       });
     }
 
@@ -1340,6 +1439,8 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
       const testInput = tc.stdinSmall || tc.input || "";
       const expectedOutput = tc.expectedSmall || tc.output || "";
       const execResult = tierExecResults[idx];
+      // Not run: an earlier case in this tier hit a definitive TLE.
+      if (execResult?.status === "Skipped") continue;
 
       maxTimeMs = Math.max(maxTimeMs, execResult.timeMs || 0);
       maxMemoryKb = Math.max(maxMemoryKb, execResult.memoryKb || 0);
@@ -1377,13 +1478,7 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
       } else {
         tierHasFailure = true;
         if (!firstFailure) {
-          if (failureType === "Time Limit Exceeded")
-            finalStatus = "TIME_LIMIT_EXCEEDED";
-          else if (failureType === "Runtime Error")
-            finalStatus = "RUNTIME_ERROR";
-          else if (failureType === "Compilation Error")
-            finalStatus = "COMPILATION_ERROR";
-          else finalStatus = "WRONG_ANSWER";
+          finalStatus = verdictForFailure(failureType);
 
           const isVisible = Boolean(tc.isVisible);
           firstFailure = {
@@ -1725,11 +1820,13 @@ export const submitSolution = async (req, res, next) => {
         return null;
       });
 
+      let verdictPersisted = false;
       try {
         const [rewards, dbUpdated] = await Promise.all([
           rewardsChain(),
           verdictChain(),
         ]);
+        verdictPersisted = true;
         updated = {
           ...dbUpdated,
           ...updated,
@@ -1747,9 +1844,28 @@ export const submitSolution = async (req, res, next) => {
 
       const complexity = await complexityTask;
 
+      // Empirical complexity profiling runs in the background and never
+      // delays or changes this verdict. The response only announces it.
+      let complexityProfile = null;
+      if (isAccepted && verdictPersisted) {
+        const eligibility = profilingEligibility({ problemSlug: problem.slug, language: normLang });
+        if (eligibility.eligible) {
+          complexityProfile = {
+            status: "PENDING",
+            url: `/api/execution/submissions/${submission.id}/complexity`,
+          };
+          enqueueComplexityProfile({
+            submissionId: submission.id,
+            problemSlug: problem.slug,
+            language: normLang,
+          });
+        }
+      }
+
       updated = {
         ...updated,
         complexity,
+        complexityProfile,
       };
       submissionCache.set(submission.id, updated);
 
@@ -1772,6 +1888,7 @@ export const submitSolution = async (req, res, next) => {
         results: publicTestResults(completed.results || []),
         firstFailure: completed.firstFailure || null,
         complexity: compactComplexitySummary(completed.complexity),
+        complexityProfile: completed.complexityProfile || null,
         reward: completed.reward || null,
         rewardError: completed.rewardError || false,
         dailyProblemReward: completed.dailyProblemReward || { granted: false, coins: 0 },
@@ -1871,6 +1988,22 @@ export const getSubmissionStatus = async (req, res, next) => {
       throw new ApiError(404, "Submission not found.", "SUBMISSION_NOT_FOUND");
     }
 
+    let complexityProfile = cachedSubmission?.complexityProfile || null;
+    if (submission.status === "ACCEPTED") {
+      const row = await prisma.complexityProfile
+        .findUnique({
+          where: { submissionId: submission.id },
+          select: { status: true, timeComplexity: true, spaceComplexity: true, confidence: true },
+        })
+        .catch(() => null);
+      if (row) {
+        complexityProfile = {
+          ...row,
+          url: `/api/execution/submissions/${submission.id}/complexity`,
+        };
+      }
+    }
+
     const total = submission.totalCount || 1;
     const passed = submission.passedCount || 0;
     let tierReached = submission.tierReached || "Tier 0 (Failed)";
@@ -1903,6 +2036,7 @@ export const getSubmissionStatus = async (req, res, next) => {
         complexity: compactComplexitySummary(
           cachedSubmission?.complexity || submission.complexity || null,
         ),
+        complexityProfile,
         reward: submission.reward || null,
         rewardError: submission.rewardError || false,
         dailyProblemReward: submission.dailyProblemReward || { granted: false, coins: 0 },
@@ -1942,6 +2076,97 @@ export const getComplexityAnalysis = async (req, res, next) => {
     res.status(200).json({
       success: true,
       complexity,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/execution/submissions/:id/complexity
+ * Empirical complexity profile of a submission (owner only, like the
+ * submission itself). Status: PENDING | RUNNING | COMPLETED | INCONCLUSIVE |
+ * FAILED, or UNAVAILABLE when the submission is not profiled.
+ */
+export const getSubmissionComplexity = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const submission = await prisma.submission.findUnique({
+      where: { id },
+      select: { id: true, userId: true, status: true, language: true, problem: { select: { slug: true } } },
+    });
+    // Same rule as GET /submissions/:id: only the owner, 404 otherwise.
+    if (!submission || !req.user?.id || submission.userId !== req.user.id) {
+      throw new ApiError(404, "Submission not found.", "SUBMISSION_NOT_FOUND");
+    }
+
+    const profile = await prisma.complexityProfile.findUnique({ where: { submissionId: id } });
+    if (!profile) {
+      const eligibility =
+        submission.status === "ACCEPTED"
+          ? profilingEligibility({ problemSlug: submission.problem?.slug, language: submission.language })
+          : { eligible: false, reason: "Only accepted submissions are profiled." };
+      return res.status(200).json({
+        success: true,
+        submissionId: id,
+        status: "UNAVAILABLE",
+        reason: eligibility.eligible ? "Profiling was not scheduled for this submission." : eligibility.reason,
+      });
+    }
+
+    const analysis = profile.analysis || {};
+    const finished = ["COMPLETED", "INCONCLUSIVE", "FAILED"].includes(profile.status);
+    res.status(200).json({
+      success: true,
+      submissionId: id,
+      status: profile.status,
+      language: profile.language,
+      time: profile.timeComplexity
+        ? {
+            complexity: profile.timeComplexity,
+            confidence: profile.timeConfidence,
+            method: analysis.time?.method || "raw",
+          }
+        : null,
+      space: profile.spaceComplexity
+        ? {
+            complexity: profile.spaceComplexity,
+            confidence: profile.spaceConfidence,
+            kind: "auxiliary (estimate)",
+            outputSpace: analysis.space?.outputSpace || null,
+          }
+        : null,
+      confidence: profile.confidence,
+      worstCase: analysis.worstCase ?? null,
+      notes: analysis.notes || [],
+      inputSizes: profile.inputSizes || [],
+      measurements: finished
+        ? {
+            time: (analysis.time?.points || []).map((p) => ({
+              n: p.n,
+              functionNs: Math.round(p.cost),
+              referenceNs: p.refCost != null ? Math.round(p.refCost) : null,
+              repetitionsNs: (p.raw || []).map(Math.round),
+              spread: p.spread,
+            })),
+            space: (analysis.space?.points || []).map((p) => ({
+              n: p.n,
+              auxiliaryBytes: p.cost,
+              heapBytes: p.heapBytes,
+              stackBytes: p.stackBytes,
+              outputBytes: p.outputBytes,
+              peakRssKb: p.userRssKb,
+              baselineRssKb: p.baselineRssKb,
+            })),
+            fits: { time: analysis.time?.fits || [], space: analysis.space?.fits || [] },
+            raw: profile.measurements || [],
+          }
+        : null,
+      failureReason: profile.failureReason,
+      attempts: profile.attempts,
+      durationMs: profile.durationMs,
+      createdAt: profile.createdAt,
+      updatedAt: profile.updatedAt,
     });
   } catch (err) {
     next(err);

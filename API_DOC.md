@@ -428,6 +428,39 @@ Full multi-tier judging across sample and hidden testcases.
 ### 8.4 `GET /api/execution/submissions/:id`
 Polls status and results of a submission. Strictly restricted to submission owner.
 - **Access**: Protected (Owner Only)
+- For ACCEPTED submissions the response also carries `complexityProfile` (`{ status, url, timeComplexity?, spaceComplexity?, confidence? }`) when a measured-complexity profile exists. Submit responses carry `complexityProfile: { status: "PENDING", url }` when one was scheduled, otherwise `null`.
+
+### 8.4.1 `GET /api/execution/submissions/:id/complexity`
+Measured (empirical) complexity of an accepted submission. The solution is run in the background on progressively larger generated inputs; this never delays or changes the verdict.
+- **Access**: Protected (Owner Only — same rule as 8.4; other users get `404 SUBMISSION_NOT_FOUND`)
+- **Status values**: `PENDING` · `RUNNING` · `COMPLETED` · `INCONCLUSIVE` · `FAILED` · `UNAVAILABLE` (not profiled: not accepted, profiling disabled, or no profiler for this problem/language)
+- **Availability**: currently Add Two Numbers in C++ (`src/profiling/registry.js`).
+- **Response (`200 OK`, completed)**:
+```json
+{
+  "success": true,
+  "submissionId": "cm...",
+  "status": "COMPLETED",
+  "language": "cpp",
+  "time": { "complexity": "O(n)", "confidence": "High", "method": "reference-normalized" },
+  "space": { "complexity": "O(1)", "confidence": "High", "kind": "auxiliary (estimate)", "outputSpace": "O(n)" },
+  "confidence": "High",
+  "worstCase": true,
+  "notes": ["Worst-case inputs: All-9 digit lists: ...", "Space is an estimate: ..."],
+  "inputSizes": [250, 500, 1000, 2000, 4000, 8000, 16000],
+  "measurements": {
+    "time": [{ "n": 1000, "functionNs": 44701, "referenceNs": 44012, "repetitionsNs": [44701, 45210, 47003], "spread": 0.05 }],
+    "space": [{ "n": 1000, "auxiliaryBytes": 0, "heapBytes": 16016, "stackBytes": 0, "outputBytes": 16016, "peakRssKb": 20100, "baselineRssKb": 19588 }],
+    "fits": { "time": [], "space": [] },
+    "raw": []
+  },
+  "failureReason": null,
+  "attempts": 1,
+  "durationMs": 5832
+}
+```
+- `INCONCLUSIVE`: the measurements could not be classified reliably (e.g. the solution failed on inputs larger than the problem constraints); `failureReason` says why. `time`/`space` may be `null`.
+- Labels such as `"O(n) or O(n log n)"` with `Low` confidence are returned when two neighbouring classes fit equally well.
 
 ### 8.5 `POST /api/execution/analyze-complexity`
 Performs static AST and lexical complexity analysis.

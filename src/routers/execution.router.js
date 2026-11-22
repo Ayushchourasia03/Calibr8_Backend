@@ -5,6 +5,7 @@ import {
   submitSolution,
   getSubmissionStatus,
   getComplexityAnalysis,
+  getSubmissionComplexity,
 } from "../controllers/execution.controller.js";
 import { protect, optionalAuth } from "../middlewares/auth.middleware.js";
 import {
@@ -29,6 +30,7 @@ router.post("/submit", protect, submitLimiter, inFlightLimiter, submitSolution);
 
 // GET /api/execution/submissions/:id - poll submission status, verdict & complexity
 router.get("/submissions/:id", protect, getSubmissionStatus);
+router.get("/submissions/:id/complexity", protect, getSubmissionComplexity);
 
 // POST /api/execution/analyze-complexity - standalone static & empirical complexity analysis
 router.post("/analyze-complexity", optionalAuth, runLimiter, getComplexityAnalysis);

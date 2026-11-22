@@ -384,18 +384,37 @@ Maps Judge0 status descriptors into Calibr8 domain statuses:
 - Status `3` (Accepted) / `4` (Wrong Answer) $\rightarrow$ `"OK"` (Output evaluation is performed by Calibr8's `areOutputsEqual`).
 - Extracts CPU time in milliseconds (`cpuTimeMs`), wall time in milliseconds (`wallTimeMs`), and Resident Set Size memory (`memoryKb`).
 
-#### `executeCodeBatch({ language, fullCode, testcases, timeLimit, memoryLimit })`
-- Converts the language key to its `judge0Id` via `LANGUAGE_IDS` (`python: 71`, `javascript: 63`, `cpp: 54`, `c: 50`, `java: 62`).
-- Computes CPU time limit: `cpuTimeLimit = Math.max(1, Math.ceil(timeLimit / 1000))`.
-- Computes Wall time limit: `wall_time_limit = cpuTimeLimit * 2 + 1`.
-- Computes Memory limit: `memory_limit = memoryLimit * 1024` (in KB).
-- **Chunking Pipeline:** Slices the testcases array into chunks of `MAX_CASES_PER_BATCH = 20`.
-- **Transmission:** Dispatches `POST /submissions/batch?base64_encoded=false` with up to 20 submissions per HTTP request.
-- **Adaptive Polling Loop:**
-  - Queries `GET /submissions/batch?tokens=...&base64_encoded=false`.
-  - Starts with polling interval `BATCH_POLL_INITIAL_INTERVAL_MS = 250ms`.
-  - Backs off adaptively by `1.35x` on each cycle up to `BATCH_POLL_MAX_INTERVAL_MS = 800ms`.
-  - Terminates when all tokens have left statuses `1` (In Queue) and `2` (Processing), or when `BATCH_TIMEOUT_MS = 60,000ms` (60 seconds) is reached.
+#### `executeCodeBatch({ language, fullCode, testcases, timeLimit, memoryLimit, stopOnTimeout })`
+Runs testcases on CodeBox and returns normalized results in input order. Execution paths, in order of preference:
+
+1. **C / C++ — multi-case harness** (`src/utils/multiCaseHarness.js`, flag `CODEBOX_MULTICASE_ENABLED`, default on). The program is compiled **once** and every testcase runs inside **one** sandbox: a constructor (runs before `main`) forks one child per testcase with that case's input as stdin. One `POST /submissions?wait=true` per chunk (≤ 500 cases / 3 MB stdin).
+   - Isolation per case (each case behaves like a separate run):
+     - inputs live in an unmapped memfd that every child closes before user code runs; the copy buffer is zeroed before each fork; the parent is non-dumpable, so `/proc/<parent>/{fd,mem,...}` is not readable by children — a program only ever sees its own input;
+     - memory: the parent's footprint stays constant (inputs not mapped, output relayed through a fixed buffer), so each case's max-RSS does not depend on earlier cases or on the total input size;
+     - files: anything a case creates in the working directory or `/tmp` is deleted after the case;
+     - processes: own process group, SIGKILLed after the case; inherited file descriptors are closed;
+     - time: RLIMIT_CPU + an in-child timer **and** a parent-side watchdog (SIGKILL after limit + 1 s), so blocking/ignoring SIGALRM cannot outlive the limit.
+   - If the harness-wrapped source fails to compile, the plain source is re-judged on the next path, so a harness problem can never produce a false Compilation Error.
+2. **CodeBox batch API** (`POST /batches`, chunks of 20, 2 in parallel) — compile once, one sandbox per testcase.
+3. **Legacy per-testcase submissions** (`POST /submissions/batch`).
+
+Only **infrastructure** failures (`EXECUTION_UNAVAILABLE`: CodeBox down, invalid response, internal error) fall through to the next path. Verdicts about the user's code (WA/RE/TLE/MLE/CE) never do.
+
+**Verdict mapping** (`verdictForFailure`): Time Limit Exceeded → `TIME_LIMIT_EXCEEDED`, Memory Limit Exceeded → `MEMORY_LIMIT_EXCEEDED`, Runtime Error and Output Limit Exceeded (SIGXFSZ) → `RUNTIME_ERROR`, Compilation Error → `COMPILATION_ERROR`; only an output mismatch is `WRONG_ANSWER`.
+
+**Batch-path memory-limit guard** (`correctStickyMemoryLimit`): CodeBox reuses one sandbox (cgroup) per batch lane and isolate's `cg-oom-killed` flag is the cgroup's cumulative counter, so after one memory-limit kill every later case in that lane was reported as `memory_limit_exceeded`. The backend only accepts that status for a process that was actually SIGKILLed (signal 9, or exit code 137 through CodeBox's shell); a normal exit is judged by its output, a crash is a runtime error, a SIGKILL at the CPU limit is a TLE. The root cause is also fixed in CodeBox (`IsolateExecutor.buildBatchCaseResult`), pending deployment.
+
+**Early termination (`stopOnTimeout`)** — used by submissions: after the first definitive Time Limit Exceeded, remaining cases are not run and come back as `status: "Skipped"`. The harness stops internally; the batch/legacy paths stop starting new chunks. `evaluateAllTestcases` ignores skipped cases (they are neither passed nor failed), so `passedCount` counts executed cases only. Wrong Answer / Runtime Error do **not** stop a tier (unchanged semantics).
+
+Measured on the production CodeBox (1 vCPU), C++ Add Two Numbers:
+
+| Cases | Before (batch API) | After (harness) |
+|---|---|---|
+| 1 | 0.58 s | 0.78 s |
+| 100 | 2.9 s | 1.5 s |
+| 200 | 5.1 s | 1.3 s |
+| 400 | 11.0 s | 1.8 s |
+| infinite loop (TLE) | 191 s | 1.5 s |
 
 ---
 
@@ -880,3 +899,28 @@ The execution engine is verified through 6 dedicated test suites in `tests/`:
 ---
 
 *Documentation maintained by Calibr8 Core Engineering Team.*
+
+---
+
+## Empirical Complexity Profiling (accepted submissions)
+
+Source: `src/profiling/`. Flag: `COMPLEXITY_PROFILING_ENABLED` (independent of the judging flags).
+
+**Flow.** Submit → normal judging → ACCEPTED verdict is returned immediately with `complexityProfile: { status: "PENDING", url }` → a `complexity_profiles` row is created → the background worker profiles the solution → results via `GET /api/execution/submissions/:id/complexity`. Profiling can never change a verdict; failures end as `INCONCLUSIVE` or `FAILED`.
+
+**Execution (one CodeBox submission).** Program = problem header + user code + a problem-specific *profiling driver* (replaces `main`) + the generic *profiling harness* (`profileHarness.js`). Compiled once; for each input size the harness forks a fresh process per measurement (baseline ×1, solution ×3), with the same process-group / watchdog / input-unmapping isolation as the judge harness. Sizes run in ascending order; the harness stops after the first failing or too-slow run (`COMPLEXITY_PROFILING_STOP_ABOVE_MS`) and before the sandbox budget runs out.
+
+**Measurement (driver).**
+- Time: only the user's function call, `CLOCK_MONOTONIC`, timer overhead subtracted; fast calls are repeated on freshly built inputs and the median is used; the fastest of the 3 repetitions is the data point. Input parsing/building and output verification are outside the timed interval. The process CPU time from the harness is kept as an independent measurement.
+- Reference calibration: the driver times a known O(n) reference implementation on the same inputs. Raw timings decide all classes except O(n) vs O(n log n), where cache/page-fault effects mimic a log factor; there the solution/reference ratio decides (flat → O(n), log-like → O(n log n), unclear → "O(n) or O(n log n)", Low).
+- Space: heap bytes allocated during the call via counting `operator new/delete`, minus newly created output nodes (reported separately as output space), plus stack depth measured by painting the stack before the call. A baseline run (dummy solution) gives peak RSS for comparison. Labelled as an estimate; `malloc()` in C++ code is not counted.
+- Correctness: the driver verifies the result against its own reference; sizes where the solution is wrong (e.g. it assumes the original constraints) end the curve.
+
+**Classification** (`complexityFit.js`): weighted least squares of `cost ≈ a·f(n) + c` for O(1), O(log n), O(√n), O(n), O(n log n), O(n²), O(n³), O(2ⁿ), O(n!) (relative error), model selection by RMS relative residual; models within tolerance of the best are "consistent". One consistent class → High/Medium/Low by residual; two neighbours → "A or B", Low; otherwise Inconclusive. Needs ≥ 4 sizes spanning ≥ 8×; noisy repetitions or a partial curve lower confidence.
+
+**Inputs** (`problems/addTwoNumbers.js`): worst case = all-9 lists (carry at every digit, n+1 output nodes); patterns `max-carry`, `random`, `unequal`; validated before use; compact digit format to keep requests small. New problems add a definition (generator, validator, driver, sizes) to `registry.js`.
+
+**Queue** (`profilingQueue.js`): the `complexity_profiles` table is the queue (no Redis in this backend) — one row per submission (unique), atomic claim with `FOR UPDATE SKIP LOCKED`, bounded backlog (`COMPLEXITY_PROFILING_MAX_PENDING`), concurrency (`COMPLEXITY_PROFILING_CONCURRENCY`), job timeout aborting CodeBox requests (`COMPLEXITY_PROFILING_TIMEOUT_MS`), retries with backoff for infrastructure errors only (`COMPLEXITY_PROFILING_MAX_ATTEMPTS`), recovery of RUNNING rows left by a dead worker, and yielding while judging is in progress. Event-driven: no periodic database polling.
+
+**CodeBox resource note.** CodeBox keeps every request payload in Redis (`maxmemory 256mb`, `noeviction`) for `RESULT_CACHE_TTL` (1 h) plus the last 100 completed jobs. Profiling requests are therefore kept small (~85 KB at the default 16 000 max size: doubling sizes 250…16 000) and deleted from CodeBox right after the result is read. Raising `COMPLEXITY_PROFILING_MAX_INPUT_SIZE` should go together with more Redis memory on the VPS.
+

@@ -3068,6 +3068,75 @@
           (c.errorText ? '<div style="margin-top:0.5rem;"><strong style="color:#ef4444;">Error Message / Stderr:</strong><pre style="background:#1f0e13; color:#fca5a5; padding:0.5rem; border-radius:4px; margin-top:0.2rem; font-family:monospace;">' + escapeHtml(c.errorText) + '</pre></div>' : '');
       }
 
+      // Pass / fail / not-run counts for a full submission. The judge stops after
+      // the first tier that has a failure, so cases in later tiers never run and
+      // are missing from data.results.
+      function getSubmitCounts(data) {
+        const results = Array.isArray(data.results) ? data.results : [];
+        const total = Number(data.totalCount) || 0;
+        const passed = Number(data.passedCount) || 0;
+        // No per-case results (e.g. compile error): count everything not passed as failed.
+        if (!results.length) return { total, passed, failed: Math.max(0, total - passed), notRun: 0 };
+        const failed = results.filter((r) => !r.passed).length;
+        const notRun = Math.max(0, total - results.length);
+        return { total, passed, failed, notRun };
+      }
+
+      function renderSubmitCountsHtml(counts) {
+        const chip = (label, value, color, bg) =>
+          '<div style="flex:1; min-width:90px; background:' + bg + '; border:1px solid ' + color + '55; border-radius:8px; padding:0.5rem 0.7rem;">' +
+            '<div style="font-size:0.7rem; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em;">' + label + '</div>' +
+            '<div style="font-size:1.35rem; font-weight:800; color:' + color + '; font-variant-numeric:tabular-nums;">' + value + '</div>' +
+          '</div>';
+        return '<div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.75rem;">' +
+          chip("Total", counts.total, "#cbd5e1", "rgba(148,163,184,0.08)") +
+          chip("✅ Passed", counts.passed, "#34d399", "rgba(16,185,129,0.08)") +
+          chip("❌ Failed", counts.failed, "#f87171", "rgba(239,68,68,0.08)") +
+          (counts.notRun > 0 ? chip("⏭ Not Run", counts.notRun, "#fbbf24", "rgba(245,158,11,0.08)") : "") +
+        '</div>' +
+        (counts.notRun > 0
+          ? '<div style="font-size:0.75rem; color:#94a3b8; margin:-0.35rem 0 0.75rem;">Evaluation stops after the first tier with a failure, so ' + counts.notRun + ' later test case' + (counts.notRun === 1 ? ' was' : 's were') + ' not run.</div>'
+          : '');
+      }
+
+      // Measured complexity of an accepted submission: profiled in the background
+      // after the verdict, so poll until it settles (never delays the verdict).
+      async function pollMeasuredComplexity(submissionId, container) {
+        const box = document.createElement("div");
+        box.style.cssText = "margin-top:0.75rem; padding:0.6rem 0.75rem; border:1px solid rgba(56,189,248,0.35); border-radius:8px; font-size:0.85rem; color:#cbd5e1; line-height:1.6;";
+        container.appendChild(box);
+        const render = (p) => {
+          const head = '<div style="font-size:0.72rem; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em;">Measured on growing inputs</div>';
+          if (!p || p.status === "PENDING" || p.status === "RUNNING") {
+            box.innerHTML = head + "<div><strong>Time Complexity:</strong> Analyzing...</div><div><strong>Space Complexity:</strong> Analyzing...</div>";
+          } else if (p.status === "COMPLETED") {
+            box.innerHTML = head +
+              "<div><strong>Time Complexity:</strong> " + escapeHtml(p.time ? p.time.complexity : "Inconclusive") + "</div>" +
+              "<div><strong>Space Complexity:</strong> " + escapeHtml(p.space ? p.space.complexity + " auxiliary (estimate)" : "Inconclusive") + "</div>" +
+              "<div><strong>Confidence:</strong> " + escapeHtml(p.confidence || "") + "</div>";
+          } else if (p.status === "INCONCLUSIVE") {
+            box.innerHTML = head + "<div>Complexity analysis inconclusive</div>";
+          } else {
+            box.innerHTML = head + '<div style="color:#94a3b8;">Measured complexity is unavailable for this submission.</div>';
+          }
+        };
+        render(null);
+        for (let attempt = 0; attempt < 60; attempt++) {
+          try {
+            const res = await fetch("/api/execution/submissions/" + encodeURIComponent(submissionId) + "/complexity", {
+              headers: authToken ? { "Authorization": "Bearer " + authToken } : {},
+            });
+            const p = await res.json();
+            render(p);
+            if (["COMPLETED", "INCONCLUSIVE", "FAILED", "UNAVAILABLE"].includes(p.status)) return;
+          } catch (e) {
+            render({ status: "FAILED" });
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 3000));
+        }
+      }
+
       // --- SUBMIT ALL TESTCASES (MULTI-TIER EVALUATION) ---
       async function handleSubmitAllCases() {
         const code = document.getElementById("sbCodeEditor").value;
@@ -3130,8 +3199,11 @@
             ? "🎉 ACCEPTED — " + (data.tierReached || "Tier 3 (Optimal)")
             : "❌ " + (data.verdict || "WRONG ANSWER") + " — " + (data.tierReached || "Tier 0");
 
+          const counts = getSubmitCounts(data);
           document.getElementById("sbVerdictMeta").textContent =
-            "Passed: " + data.passedCount + "/" + data.totalCount + " • Time: " + (data.time || "45ms");
+            "✅ " + counts.passed + " passed • ❌ " + counts.failed + " failed" +
+            (counts.notRun > 0 ? " • ⏭ " + counts.notRun + " not run" : "") +
+            " (of " + counts.total + ") • Time: " + (data.time || "45ms");
 
           if (data.complexity) {
             renderComplexityAnalysis(data.complexity);
@@ -3143,6 +3215,7 @@
           const detail = document.getElementById("sbActiveCaseDetail");
           if (isAccepted) {
             detail.innerHTML =
+              renderSubmitCountsHtml(counts) +
               '<div style="color:#34d399; font-weight:700; font-size:1rem; margin-bottom:0.5rem;">Congratulations! All ' + data.totalCount + ' evaluation test cases passed!</div>' +
               '<div style="color:#cbd5e1; font-size:0.85rem; line-height:1.6;">' +
                 '<div>🎯 <strong>Tier Reached:</strong> <span style="color:#38bdf8;">' + escapeHtml(data.tierReached || "Tier 3 (Optimal)") + '</span></div>' +
@@ -3150,6 +3223,10 @@
                 '<div>💾 <strong>Memory Footprint:</strong> ' + (data.memory || 14000) + ' KB</div>' +
                 '<div>🧩 <strong>Submission ID:</strong> <code>' + escapeHtml(data.submissionId || "sub-completed") + '</code></div>' +
               '</div>';
+
+            if (data.complexityProfile && data.submissionId) {
+              pollMeasuredComplexity(data.submissionId, detail);
+            }
 
             if (data.dailyReward && data.dailyReward.granted) {
               showToast("🎉 Daily Problem solved! +2 coins, Streak: " + data.dailyReward.streak, "success");
@@ -3168,9 +3245,9 @@
             }
 
             detail.innerHTML =
-              '<div style="color:#f87171; font-weight:700; font-size:0.95rem; margin-bottom:0.5rem;">' + (fail.message || "Failed during verification tests.") + '</div>' +
+              renderSubmitCountsHtml(counts) +
+              '<div style="color:#f87171; font-weight:700; font-size:0.95rem; margin-bottom:0.5rem;">' + escapeHtml(fail.message || "Failed during verification tests.") + '</div>' +
               '<div style="color:#cbd5e1; font-size:0.85rem; line-height:1.6;">' +
-                '<div>📊 <strong>Tests Passed:</strong> ' + data.passedCount + ' of ' + data.totalCount + ' total test cases</div>' +
                 '<div>🎯 <strong>Tier Reached:</strong> ' + escapeHtml(data.tierReached || "Tier 0") + '</div>' +
                 (fail.input ? '<div><strong>Sample Input:</strong><pre style="background:#060913; padding:0.4rem; color:#f8fafc; font-family:monospace; margin-top:0.2rem;">' + escapeHtml(fail.input) + '</pre></div>' : '') +
                 (fail.expected ? '<div><strong>Expected Output:</strong><pre style="background:#060913; padding:0.4rem; color:#34d399; font-family:monospace; margin-top:0.2rem;">' + escapeHtml(fail.expected) + '</pre></div>' : '') +

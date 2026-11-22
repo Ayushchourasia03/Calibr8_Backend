@@ -1,32 +1,74 @@
 // src/utils/multiCaseHarness.js
 //
 // Runs many testcases in ONE CodeBox submission for compiled languages (C/C++),
-// so the program is compiled once instead of once per testcase.
+// so the program is compiled once and only one sandbox is started.
 //
 // How it works: a constructor function (runs before main) reads all testcases
 // from stdin, then for each case fork()s a child. The child gets that case's
 // input as stdin and a fresh buffer as stdout, returns from the constructor and
 // runs the problem's real main() unchanged. The parent waits, records
 // status/time/memory/output, and finally prints a framed report.
-// Each case still runs in its own process, so crashes, timeouts and global state
-// stay isolated exactly like separate submissions.
+//
+// Isolation guarantees per case (each case behaves like a separate run):
+//   - Own process: fresh globals, heap and stdio buffers.
+//   - Inputs: all testcase inputs live in an unmapped memfd that every child
+//     closes before user code runs, and the stack buffer used to copy them is
+//     zeroed before each fork. The parent is non-dumpable, so its /proc entries
+//     (fd, mem, ...) are not readable by the children. A program can only ever
+//     see its own input.
+//   - Memory: the parent's footprint stays constant (inputs are not mapped,
+//     output is relayed through a fixed buffer). Every child inherits the
+//     parent's resident memory as its starting peak, so this keeps each case's
+//     max-RSS independent of earlier cases and of the total input size.
+//   - Files: anything a case creates in the working directory or /tmp is
+//     deleted after the case, so no case sees files from an earlier one.
+//   - Processes: the child runs in its own process group, SIGKILLed after the
+//     case; the parent is a child-subreaper and reaps leftovers.
+//   - Time: enforced twice - inside the child (RLIMIT_CPU + a real-time itimer)
+//     and by a parent-side watchdog that SIGKILLs the process group, so code
+//     that blocks or ignores SIGALRM still cannot outlive its limit.
+//
+// With HARNESS_FLAG_STOP_ON_TIMEOUT the harness stops after the first case that
+// exceeds its time limit (definitive TLE) instead of running the rest.
 
-export const HARNESS_MAGIC = "C8MC1";
+export const HARNESS_MAGIC = "C8MC1"; // report header magic (output)
+export const HARNESS_INPUT_MAGIC = "C8MC2"; // stdin framing version (input)
+export const HARNESS_FLAG_STOP_ON_TIMEOUT = 1;
+
+// Parent-side watchdog grace on top of the per-case time limit.
+const WATCHDOG_GRACE_MS = 1000;
 
 const HARNESS_C = String.raw`
-/* ---- Calibr8 multi-testcase harness (compile once, fork per case) ---- */
+/* ---- Calibr8 multi-testcase harness v3 (compile once, fork per case) ---- */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <dirent.h>
+#include <ftw.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
+#include <sys/prctl.h>
 #include <errno.h>
+
+#ifndef PR_SET_CHILD_SUBREAPER
+#define PR_SET_CHILD_SUBREAPER 36
+#endif
+#ifndef PR_SET_DUMPABLE
+#define PR_SET_DUMPABLE 4
+#endif
+
+#define C8_BUF 65536
+#define C8_MAX_SNAP 1024
+
+static volatile sig_atomic_t c8__alarm = 0;
+static void c8__onalarm(int s) { (void)s; c8__alarm = 1; }
 
 static int c8__memfd(void) {
 #ifdef SYS_memfd_create
@@ -42,42 +84,146 @@ static void c8__wall(int fd, const void* buf, size_t n) {
   while (n > 0) { ssize_t w = write(fd, p, n); if (w <= 0) return; p += w; n -= (size_t)w; }
 }
 
-static char* c8__slurp(int fd, size_t* outLen, size_t cap) {
+/* Copies n bytes of fd (from offset 0) to stdout through a fixed buffer. */
+static void c8__relay(int fd, size_t n, char* buf) {
+  off_t off = 0;
+  while (n > 0) {
+    ssize_t r = pread(fd, buf, n < C8_BUF ? n : C8_BUF, off);
+    if (r <= 0) { memset(buf, 0, C8_BUF); r = (ssize_t)(n < C8_BUF ? n : C8_BUF); } /* keep framing */
+    c8__wall(1, buf, (size_t)r);
+    off += r;
+    n -= (size_t)r;
+  }
+}
+
+static size_t c8__size(int fd, size_t cap) {
   off_t len = lseek(fd, 0, SEEK_END);
   if (len < 0) len = 0;
-  size_t n = (size_t)len < cap ? (size_t)len : cap;
-  char* buf = (char*)malloc(n + 1);
-  lseek(fd, 0, SEEK_SET);
-  size_t got = 0;
-  while (got < n) { ssize_t r = read(fd, buf + got, n - got); if (r <= 0) break; got += (size_t)r; }
-  *outLen = got;
-  return buf;
+  return (size_t)len < cap ? (size_t)len : cap;
+}
+
+static void c8__arm(long ms) {
+  struct itimerval it;
+  memset(&it, 0, sizeof it);
+  it.it_value.tv_sec = ms / 1000;
+  it.it_value.tv_usec = (ms % 1000) * 1000;
+  setitimer(ITIMER_REAL, &it, NULL);
+}
+
+static void c8__close_from(int lowfd) {
+#ifdef SYS_close_range
+  if (syscall(SYS_close_range, (unsigned int)lowfd, ~0U, 0) == 0) return;
+#endif
+  for (int fd = lowfd; fd < 4096; fd++) close(fd);
+}
+
+/* Per-case filesystem isolation: entries present before the first case are
+   kept; anything created during a case (in the working directory or /tmp) is
+   removed after it. */
+static const char* const c8__dirs[2] = { ".", "/tmp" };
+static char* c8__snap[2][C8_MAX_SNAP];
+static int c8__snapN[2] = { -1, -1 };
+
+static void c8__snapshot(void) {
+  for (int d = 0; d < 2; d++) {
+    DIR* dp = opendir(c8__dirs[d]);
+    if (!dp) continue;
+    c8__snapN[d] = 0;
+    struct dirent* e;
+    while ((e = readdir(dp)) != NULL) {
+      if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+      if (c8__snapN[d] < C8_MAX_SNAP) c8__snap[d][c8__snapN[d]++] = strdup(e->d_name);
+    }
+    closedir(dp);
+  }
+}
+
+static int c8__known(int d, const char* name) {
+  for (int i = 0; i < c8__snapN[d]; i++) if (c8__snap[d][i] && !strcmp(c8__snap[d][i], name)) return 1;
+  return 0;
+}
+
+static int c8__rm(const char* p, const struct stat* sb, int flag, struct FTW* f) {
+  (void)sb; (void)f;
+  if (flag == FTW_DP || flag == FTW_DNR) rmdir(p); else unlink(p);
+  return 0;
+}
+
+static void c8__cleanup_fs(void) {
+  char path[4096];
+  for (int d = 0; d < 2; d++) {
+    if (c8__snapN[d] < 0) continue;
+    for (int pass = 0; pass < 4; pass++) {
+      DIR* dp = opendir(c8__dirs[d]);
+      if (!dp) break;
+      int removed = 0;
+      struct dirent* e;
+      while ((e = readdir(dp)) != NULL) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..") || c8__known(d, e->d_name)) continue;
+        snprintf(path, sizeof path, "%s/%s", c8__dirs[d], e->d_name);
+        nftw(path, c8__rm, 16, FTW_DEPTH | FTW_PHYS);
+        removed++;
+      }
+      closedir(dp);
+      if (!removed) break;
+    }
+  }
 }
 
 __attribute__((constructor(101))) static void c8__harness(void) {
-  /* Read all of stdin: "C8MC1 <timeLimitMs> <count>\n" then per case "<len>\n<bytes>" */
-  size_t cap = 1 << 16, len = 0;
-  char* in = (char*)malloc(cap);
-  for (;;) {
-    if (len == cap) { cap *= 2; in = (char*)realloc(in, cap); }
-    ssize_t r = read(0, in + len, cap - len);
-    if (r <= 0) break;
-    len += (size_t)r;
+  /* Header line: "C8MC2 <timeLimitMs> <count> <budgetMs> <flags> <payloadBytes>\n",
+     then per case "<len>\n<bytes>". Read byte by byte so nothing past it is consumed. */
+  char line[256];
+  size_t ll = 0;
+  while (ll < sizeof line - 1) {
+    char ch;
+    ssize_t r = read(0, &ch, 1);
+    if (r <= 0 || ch == '\n') break;
+    line[ll++] = ch;
   }
-  if (len < 6 || memcmp(in, "C8MC1 ", 6) != 0) { free(in); _exit(97); }
-  char* p = in + 6;
+  line[ll] = 0;
+  if (strncmp(line, "C8MC2 ", 6) != 0) _exit(97);
+  char* p = line + 6;
   long tl = strtol(p, &p, 10);
   long count = strtol(p, &p, 10);
   long budget = strtol(p, &p, 10); /* total wall ms allowed; 0 = unlimited */
-  if (*p == '\n') p++;
+  long flags = strtol(p, &p, 10);
+  long total = strtol(p, &p, 10);
   if (tl <= 0) tl = 2000;
+  if (total < 0) total = 0;
 
-  char hdr[160];
+  prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);       /* /proc/<pid>/{fd,mem,...} -> root only */
+  prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
+
+  static char buf[C8_BUF];
+  int pfd = c8__memfd();
+  if (pfd < 0) _exit(98);
+  off_t payloadLen = 0;
+  while (payloadLen < (off_t)total) {
+    size_t want = (size_t)((off_t)total - payloadLen);
+    ssize_t r = read(0, buf, want < C8_BUF ? want : C8_BUF);
+    if (r <= 0) break;
+    c8__wall(pfd, buf, (size_t)r);
+    payloadLen += r;
+  }
+
+  struct sigaction sa;
+  memset(&sa, 0, sizeof sa);
+  sa.sa_handler = c8__onalarm;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = 0; /* no SA_RESTART: the watchdog must interrupt wait4() */
+  sigaction(SIGALRM, &sa, NULL);
+
+  c8__snapshot();
+
+  char hdr[192];
   int n0 = snprintf(hdr, sizeof hdr, "C8MC1 %ld\n", count);
   c8__wall(1, hdr, (size_t)n0);
 
   struct timeval start;
   gettimeofday(&start, NULL);
+  int stoppedOnTimeout = 0;
+  off_t off = 0;
 
   for (long i = 0; i < count; i++) {
     if (budget > 0) {
@@ -87,65 +233,100 @@ __attribute__((constructor(101))) static void c8__harness(void) {
       /* Stop cleanly before the sandbox kills us; unreported cases are re-run. */
       if (elapsed + tl + 400 > budget) break;
     }
-    long clen = strtol(p, &p, 10);
-    if (*p == '\n') p++;
-    if (clen < 0 || p + clen > in + len) clen = 0;
+    char lb[32];
+    ssize_t g = pread(pfd, lb, sizeof lb - 1, off);
+    if (g < 0) g = 0;
+    lb[g] = 0;
+    char* ep = lb;
+    long clen = strtol(lb, &ep, 10);
+    if (ep < lb + g && *ep == '\n') ep++;
+    off += (off_t)(ep - lb);
+    if (clen < 0 || off + clen > payloadLen) clen = 0;
     int inFd = c8__memfd(), outFd = c8__memfd(), errFd = c8__memfd();
-    c8__wall(inFd, p, (size_t)clen);
+    for (off_t done = 0; done < clen;) {
+      size_t want = (size_t)(clen - done);
+      ssize_t r = pread(pfd, buf, want < C8_BUF ? want : C8_BUF, off + done);
+      if (r <= 0) break;
+      c8__wall(inFd, buf, (size_t)r);
+      done += r;
+    }
+    off += clen;
     lseek(inFd, 0, SEEK_SET);
-    p += clen;
+
+    while (waitpid(-1, NULL, WNOHANG) > 0) {} /* reap leftovers of earlier cases */
 
     struct timeval t0, t1;
+    memset(buf, 0, sizeof buf); /* no input bytes left in memory the child inherits */
     gettimeofday(&t0, NULL);
     fflush(NULL);
     pid_t pid = fork();
     if (pid == 0) {
+      setpgid(0, 0);
+      signal(SIGALRM, SIG_DFL);
       dup2(inFd, 0); dup2(outFd, 1); dup2(errFd, 2);
-      close(inFd); close(outFd); close(errFd);
+      c8__close_from(3); /* incl. the memfd holding every testcase input */
+      prctl(PR_SET_DUMPABLE, 1, 0, 0, 0); /* normal process for user code; the parent stays protected */
       struct rlimit rl;
       rl.rlim_cur = (rlim_t)((tl + 999) / 1000 + 1);
       rl.rlim_max = rl.rlim_cur + 1;
       setrlimit(RLIMIT_CPU, &rl);
-      struct itimerval it;
-      memset(&it, 0, sizeof it);
-      long wall = tl + 300;
-      it.it_value.tv_sec = wall / 1000;
-      it.it_value.tv_usec = (wall % 1000) * 1000;
-      setitimer(ITIMER_REAL, &it, NULL);
-      free(in);
+      c8__arm(tl + 300);
       return; /* continue into static initializers and the real main() */
     }
 
-    int status = 0;
+    int status = 0, killed = 0;
     struct rusage ru;
     memset(&ru, 0, sizeof ru);
-    if (pid < 0) { status = -1; }
-    else { while (wait4(pid, &status, 0, &ru) < 0 && errno == EINTR) {} }
+    if (pid < 0) {
+      status = -1;
+    } else {
+      setpgid(pid, pid); /* also set from the parent: no race with the child */
+      c8__alarm = 0;
+      c8__arm(tl + ${WATCHDOG_GRACE_MS});
+      for (;;) {
+        pid_t w = wait4(pid, &status, 0, &ru);
+        if (w == pid) break;
+        if (w < 0 && errno == EINTR) {
+          if (c8__alarm && !killed) { kill(-pid, SIGKILL); kill(pid, SIGKILL); killed = 1; }
+          continue;
+        }
+        status = -1;
+        break;
+      }
+      c8__arm(0);
+      kill(-pid, SIGKILL); /* anything the case left running in its group */
+    }
     gettimeofday(&t1, NULL);
+    while (waitpid(-1, NULL, WNOHANG) > 0) {}
+    c8__cleanup_fs();
 
     long cpuMs = ru.ru_utime.tv_sec * 1000 + ru.ru_utime.tv_usec / 1000
                + ru.ru_stime.tv_sec * 1000 + ru.ru_stime.tv_usec / 1000;
     long wallMs = (t1.tv_sec - t0.tv_sec) * 1000 + (t1.tv_usec - t0.tv_usec) / 1000;
     long memKb = ru.ru_maxrss;
     int exitCode = 0, sig = 0;
-    if (pid < 0) { exitCode = 1; }
+    if (pid < 0 || status == -1) { exitCode = 1; }
     else if (WIFEXITED(status)) exitCode = WEXITSTATUS(status);
     else if (WIFSIGNALED(status)) { sig = WTERMSIG(status); exitCode = 128 + sig; }
+    if (killed && sig == 0) { sig = SIGKILL; exitCode = 128 + SIGKILL; }
 
-    size_t olen = 0, elen = 0;
-    char* out = c8__slurp(outFd, &olen, 8u << 20);
-    char* err = c8__slurp(errFd, &elen, 4096);
-    close(inFd); close(outFd); close(errFd);
-
+    size_t olen = c8__size(outFd, 8u << 20);
+    size_t elen = c8__size(errFd, 4096);
     n0 = snprintf(hdr, sizeof hdr, "#C8 %ld %d %d %ld %ld %ld %zu %zu\n",
                   i, exitCode, sig, cpuMs, wallMs, memKb, olen, elen);
     c8__wall(1, hdr, (size_t)n0);
-    c8__wall(1, out, olen);
-    c8__wall(1, err, elen);
-    free(out); free(err);
+    c8__relay(outFd, olen, buf);
+    c8__relay(errFd, elen, buf);
+    close(inFd); close(outFd); close(errFd);
+
+    int timedOut = killed || sig == SIGXCPU || sig == SIGALRM
+                || (sig == SIGKILL && cpuMs >= tl) || cpuMs > tl;
+    if ((flags & 1) && timedOut) { stoppedOnTimeout = 1; break; }
   }
-  c8__wall(1, "#C8END\n", 7);
-  free(in);
+  while (waitpid(-1, NULL, WNOHANG) > 0) {}
+  if (stoppedOnTimeout) c8__wall(1, "#C8END TLE\n", 11);
+  else c8__wall(1, "#C8END\n", 7);
+  close(pfd);
   _exit(0);
 }
 /* ---- end harness ---- */
@@ -155,32 +336,41 @@ export function supportsMultiCase(language) {
   return language === "cpp" || language === "c";
 }
 
-/** Appends the harness to fully built source code. */
-export function wrapWithHarness(fullCode) {
-  return `${fullCode}\n${HARNESS_C}\n`;
+/**
+ * Appends the harness to fully built source code. Strict C (-std=c17) hides
+ * the POSIX/GNU declarations the harness needs, so C sources get _GNU_SOURCE
+ * (g++ always defines it, and adding it for C++ would defeat the PCH).
+ */
+export function wrapWithHarness(fullCode, language = "cpp") {
+  const prefix = language === "c" ? "#define _GNU_SOURCE 1\n" : "";
+  return `${prefix}${fullCode}\n${HARNESS_C}\n`;
 }
 
 /** Packs all testcase inputs into the harness stdin format. */
-export function buildHarnessStdin(stdins, timeLimitMs, budgetMs = 0) {
-  const parts = [
-    Buffer.from(
-      `${HARNESS_MAGIC} ${Math.round(timeLimitMs)} ${stdins.length} ${Math.max(0, Math.round(budgetMs))}\n`,
-    ),
-  ];
+export function buildHarnessStdin(stdins, timeLimitMs, budgetMs = 0, { stopOnTimeout = false } = {}) {
+  const body = [];
   for (const s of stdins) {
     const b = Buffer.from(String(s ?? ""), "utf-8");
-    parts.push(Buffer.from(`${b.length}\n`), b);
+    body.push(Buffer.from(`${b.length}\n`), b);
   }
-  return Buffer.concat(parts);
+  const payload = Buffer.concat(body);
+  const flags = stopOnTimeout ? HARNESS_FLAG_STOP_ON_TIMEOUT : 0;
+  const header = Buffer.from(
+    `${HARNESS_INPUT_MAGIC} ${Math.round(timeLimitMs)} ${stdins.length} ${Math.max(0, Math.round(budgetMs))} ${flags} ${payload.length}\n`,
+  );
+  return Buffer.concat([header, payload]);
 }
 
 /**
  * Parses the harness report. Returns an array (index -> raw case result or undefined
- * for cases that never reported, e.g. the whole run was killed).
+ * for cases that never reported, e.g. the whole run was killed), or null when the
+ * report is missing. `results.stoppedOnTimeout` is true when the harness stopped
+ * early after a definitive TLE (unreported cases were intentionally not run).
  */
 export function parseHarnessOutput(stdoutBuf, count) {
   const buf = Buffer.isBuffer(stdoutBuf) ? stdoutBuf : Buffer.from(stdoutBuf || "", "utf-8");
   const results = new Array(count);
+  results.stoppedOnTimeout = false;
   const head = `${HARNESS_MAGIC} `;
   if (buf.subarray(0, head.length).toString() !== head) return null;
   let pos = buf.indexOf(0x0a);
@@ -191,7 +381,10 @@ export function parseHarnessOutput(stdoutBuf, count) {
     const nl = buf.indexOf(0x0a, pos);
     if (nl < 0) break;
     const line = buf.subarray(pos, nl).toString();
-    if (line === "#C8END") break;
+    if (line === "#C8END" || line === "#C8END TLE") {
+      results.stoppedOnTimeout = line === "#C8END TLE";
+      break;
+    }
     const m = /^#C8 (\d+) (-?\d+) (\d+) (-?\d+) (-?\d+) (-?\d+) (\d+) (\d+)$/.exec(line);
     if (!m) break;
     const [, idx, exitCode, sig, cpuMs, wallMs, memKb, olen, elen] = m.map(Number);
@@ -225,7 +418,7 @@ export function normalizeHarnessCase(raw, { timeLimitMs, memoryLimitMb, inputByt
   const timedOut =
     raw.signal === SIGXCPU ||
     raw.signal === SIGALRM ||
-    (raw.signal === SIGKILL && raw.cpuMs >= timeLimitMs) ||
+    (raw.signal === SIGKILL && (raw.cpuMs >= timeLimitMs || raw.wallMs >= timeLimitMs + WATCHDOG_GRACE_MS)) ||
     raw.cpuMs > timeLimitMs;
   const memExceeded = memoryLimitMb > 0 && raw.memKb > memoryLimitMb * 1024;
 

@@ -7,6 +7,7 @@ import {
   stopDailyProblemScheduler,
 } from "./services/dailyProblemService.js";
 import { purgeExpiredRevokedTokens } from "./utils/tokenBlacklist.js";
+import { startProfilingWorker } from "./profiling/profilingQueue.js";
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -71,6 +72,8 @@ async function startServer() {
       purgeExpiredRevokedTokens().catch(() => {});
     }, 60 * 60 * 1000);
     purgeTimer.unref?.();
+    // Background complexity profiling (no-op unless COMPLEXITY_PROFILING_ENABLED).
+    startProfilingWorker().catch((err) => console.error("Profiling worker failed to start:", err.message));
     await checkCodeboxEngine();
   });
 

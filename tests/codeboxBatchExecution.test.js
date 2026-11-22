@@ -6,6 +6,9 @@ process.env.OAUTH_STATE_SECRET = "b".repeat(40);
 process.env.CODEBOX_URL = "https://runner.invalid";
 process.env.CODEBOX_TOKEN = "test-token";
 process.env.CODEBOX_BATCH_EXECUTION_ENABLED = "true";
+// This file covers the batch API path; C/C++ multi-case routing is tested in
+// multiCaseExecution.test.js.
+process.env.CODEBOX_MULTICASE_ENABLED = "false";
 
 const requests = [];
 const originalFetch = globalThis.fetch;
