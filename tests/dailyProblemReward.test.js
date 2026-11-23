@@ -1,184 +1,167 @@
+// Integration tests: daily-problem completion, reward, streak and decay.
+//
+// Uses the database in DATABASE_URL, but only test users and daily_problems
+// rows dated in 2099 (cleaned up afterwards). The decay test uses dates in
+// the year 2000 so it can only match test users.
 import "dotenv/config";
+import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { getISTDateString, getYesterdayIST } from "../src/services/streakService.js";
 
 const { default: prisma } = await import("../src/config/db.js");
-const { grantDailyProblemReward, grantDailyLoginReward } = await import("../src/services/coinService.js");
+const { recordDailyProblemCompletion, resetBrokenStreaks, DAILY_PROBLEM_COINS } =
+  await import("../src/services/dailyProblemService.js");
 
-console.log("Running Daily Problem Reward Integration Tests (D1 - D8)...");
+const D1 = "2099-03-01";
+const D2 = "2099-03-02";
+const D3 = "2099-03-03";
+const D4 = "2099-03-04"; // deliberately has no daily problem
+const D5 = "2099-03-05";
+const at = (istDate, time = "10:00:00") => new Date(`${istDate}T${time}+05:30`);
 
-const createdUserIds = [];
+const userIds = [];
+let A;
+let B;
 
-async function createUser(initialCoins = 100) {
-  const id = `usr-${randomUUID()}`;
-  const user = await prisma.user.create({
-    data: {
-      id,
-      email: `${id}@example.test`,
-      name: "Daily Problem Tester",
-      passwordHash: "hash123",
-      coins: initialCoins,
-      streak: 0,
-      longestStreak: 0,
-    },
+async function createUser(data = {}) {
+  const id = `usr-dpr-${randomUUID()}`;
+  userIds.push(id);
+  return prisma.user.create({
+    data: { id, email: `${id}@calibr8.test`, name: "Daily Reward Tester", passwordHash: "x", coins: 100, ...data },
   });
-  createdUserIds.push(user.id);
-  return user;
 }
 
-try {
-  const todayIST = getISTDateString();
-  const yesterdayIST = getYesterdayIST(todayIST);
+const getUser = (id) => prisma.user.findUnique({ where: { id } });
+const dailyTxs = (userId) => prisma.coinTransaction.findMany({ where: { userId, type: "DAILY_PROBLEM" } });
+const complete = (userId, problemId, submittedAt, submissionId = `sub-${randomUUID()}`) =>
+  recordDailyProblemCompletion({ userId, problemId, submissionId, submittedAt });
 
-  const twoSumProblem = await prisma.problem.findUnique({ where: { slug: "two-sum" } });
-  const addTwoNumbersProblem = await prisma.problem.findUnique({ where: { slug: "add-two-numbers" } });
-  assert.ok(twoSumProblem, "two-sum problem must exist in database (run npm run problems:seed)");
-  assert.ok(addTwoNumbersProblem, "add-two-numbers problem must exist in database (run npm run problems:seed)");
-
-  // Seed daily problem for today: 'two-sum'
-  await prisma.dailyProblem.upsert({
-    where: { istDate: todayIST },
-    update: { problemId: twoSumProblem.id },
-    create: { istDate: todayIST, problemId: twoSumProblem.id },
+before(async () => {
+  const problems = await prisma.problem.findMany({
+    where: { testcases: { some: {} } },
+    select: { id: true },
+    take: 2,
+    orderBy: { problemNumber: "asc" },
   });
+  assert.equal(problems.length, 2, "need 2 problems with testcases");
+  [A, B] = problems.map((p) => p.id);
 
-  // D1: Solve daily problem for today -> +2 coins
-  const user1 = await createUser(100);
-  const d1 = await grantDailyProblemReward(user1.id, "two-sum");
-  assert.equal(d1.awarded, true, "D1: Daily problem solve should award coins");
-  assert.equal(d1.coinsEarned, 2, "D1: Daily problem solve should give exactly +2 coins");
-  assert.equal(d1.balanceAfter, 102);
-
-  const tx1 = await prisma.coinTransaction.findMany({
-    where: { userId: user1.id, type: "DAILY_PROBLEM" },
+  await prisma.dailyProblem.deleteMany({ where: { istDate: { startsWith: "2099-03-" } } });
+  await prisma.dailyProblem.createMany({
+    data: [
+      { istDate: D1, problemId: A },
+      { istDate: D2, problemId: B },
+      { istDate: D3, problemId: A },
+      { istDate: D5, problemId: B },
+    ],
   });
-  assert.equal(tx1.length, 1);
-  assert.equal(tx1[0].amount, 2);
-  assert.equal(tx1[0].balanceAfter, 102);
-  assert.equal(tx1[0].referenceId, "two-sum");
-  console.log("✔ D1: Solving today's daily problem awards +2 coins and creates audit row");
+});
 
-  // D2: Re-solve daily problem -> 0 extra coins
-  const d2 = await grantDailyProblemReward(user1.id, "two-sum");
-  assert.equal(d2.awarded, false, "D2: Re-solving same daily problem must not reward again");
-  assert.equal(d2.coinsEarned, 0);
-
-  const tx2 = await prisma.coinTransaction.findMany({
-    where: { userId: user1.id, type: "DAILY_PROBLEM" },
-  });
-  assert.equal(tx2.length, 1, "D2: Still only 1 transaction row");
-  const storedUser1 = await prisma.user.findUnique({ where: { id: user1.id } });
-  assert.equal(storedUser1.coins, 102, "D2: User balance remains 102");
-  console.log("✔ D2: Re-solving daily problem gives 0 extra coins, idempotent");
-
-  // D3: Solve non-daily problem -> 0 daily coins
-  const user3 = await createUser(100);
-  const d3 = await grantDailyProblemReward(user3.id, "best-time-to-buy-and-sell-stock");
-  assert.equal(d3.awarded, false);
-  assert.equal(d3.coinsEarned, 0);
-  assert.equal(d3.reason, "NOT_DAILY_PROBLEM");
-
-  const tx3 = await prisma.coinTransaction.findMany({
-    where: { userId: user3.id, type: "DAILY_PROBLEM" },
-  });
-  assert.equal(tx3.length, 0);
-  console.log("✔ D3: Solving non-daily problem yields 0 daily bonus coins");
-
-  // D4: Solve daily problem next day (date mismatch)
-  // Daily problem set for yesterday: 'add-two-numbers'
-  await prisma.dailyProblem.upsert({
-    where: { istDate: yesterdayIST },
-    update: { problemId: addTwoNumbersProblem.id },
-    create: { istDate: yesterdayIST, problemId: addTwoNumbersProblem.id },
-  });
-  const user4 = await createUser(100);
-  // Solving yesterday's problem today (todayISTDate)
-  const d4 = await grantDailyProblemReward(user4.id, "add-two-numbers");
-  assert.equal(d4.awarded, false);
-  assert.equal(d4.coinsEarned, 0);
-  console.log("✔ D4: Solving yesterday's daily problem today gives 0 daily coins");
-
-  // D5: Wrong status (simulation: only call when status === ACCEPTED)
-  // Calling with non-matching problem or missing params gives 0
-  const d5 = await grantDailyProblemReward(user4.id, "");
-  assert.equal(d5.awarded, false);
-  assert.equal(d5.coinsEarned, 0);
-  console.log("✔ D5: Invalid or non-matching submission gives 0 daily coins");
-
-  // D6: Daily problem missing for a specific future date
-  const futureIST = "2029-12-31";
-  await prisma.dailyProblem.deleteMany({ where: { istDate: futureIST } });
-  const futureDate = new Date("2029-12-31T10:00:00Z");
-  const user6 = await createUser(100);
-  const d6 = await grantDailyProblemReward(user6.id, "two-sum", futureDate);
-  assert.equal(d6.awarded, false);
-  assert.equal(d6.coinsEarned, 0);
-  assert.equal(d6.reason, "NO_DAILY_PROBLEM_TODAY");
-  console.log("✔ D6: Missing daily problem row fails safely without crash");
-
-  // D7: Combined Reward (FR-07) - Login (+1) + Solve Daily Problem (+2) = +3 coins total and +1 streak
-  const user7 = await createUser(100);
-  // Setup user with 6-day streak ending yesterday
-  await prisma.user.update({
-    where: { id: user7.id },
-    data: {
-      coins: 106,
-      streak: 6,
-      longestStreak: 6,
-      lastStreakDate: new Date(Date.now() - 86400000),
-      lastLoginISTDate: yesterdayIST,
-    },
-  });
-
-  // 1. First login today: +1 coin, streak unchanged (6)
-  const loginReward = await grantDailyLoginReward(user7.id);
-  assert.equal(loginReward.coinsEarnedToday, 1, "Login grants +1 coin");
-
-  // 2. Solve daily problem today: +2 coins, streak increments to 7
-  const problemReward = await grantDailyProblemReward(user7.id, "two-sum");
-  assert.equal(problemReward.awarded, true);
-  assert.equal(problemReward.coinsEarned, 2, "Daily problem solve grants +2 coins");
-  assert.equal(problemReward.streak, 7, "Streak increments to 7 on daily problem solve");
-  assert.equal(problemReward.longestStreak, 7);
-
-  // Total coins added today: +1 (login) + 2 (daily solve) = +3 coins (106 + 3 = 109)
-  const storedUser7 = await prisma.user.findUnique({ where: { id: user7.id } });
-  assert.equal(storedUser7.coins, 109, "User coins should be 106 + 3 = 109");
-  assert.equal(storedUser7.streak, 7, "User streak should be 7");
-
-  const user7Txs = await prisma.coinTransaction.findMany({
-    where: { userId: user7.id },
-  });
-  assert.equal(user7Txs.length, 2, "Should have 2 transactions: DAILY_LOGIN (+1) and DAILY_PROBLEM (+2)");
-  console.log("✔ D7: Combined reward (login +1, daily problem +2 = +3 total, streak 6 -> 7) verified");
-
-  // D8: Daily problem concurrent submissions
-  const user8 = await createUser(100);
-  const [res8a, res8b] = await Promise.all([
-    grantDailyProblemReward(user8.id, "two-sum"),
-    grantDailyProblemReward(user8.id, "two-sum"),
-  ]);
-
-  const totalProblemCoins = (res8a.coinsEarned || 0) + (res8b.coinsEarned || 0);
-  assert.equal(totalProblemCoins, 2, "Only one +2 should be awarded across parallel requests");
-
-  const storedUser8 = await prisma.user.findUnique({ where: { id: user8.id } });
-  assert.equal(storedUser8.coins, 102);
-
-  const user8Txs = await prisma.coinTransaction.findMany({
-    where: { userId: user8.id, type: "DAILY_PROBLEM" },
-  });
-  assert.equal(user8Txs.length, 1);
-  console.log("✔ D8: Concurrent submissions safely award daily problem coins exactly once");
-
-  console.log("ALL DAILY PROBLEM REWARD TESTS PASSED! 🎉");
-} catch (err) {
-  console.error("Test failure:", err);
-  process.exitCode = 1;
-} finally {
-  if (createdUserIds.length > 0) {
-    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } }).catch(() => {});
-  }
+after(async () => {
+  await prisma.user.deleteMany({ where: { id: { in: userIds } } }).catch(() => {});
+  await prisma.dailyProblem.deleteMany({ where: { istDate: { startsWith: "2099-03-" } } }).catch(() => {});
   await prisma.$disconnect().catch(() => {});
-}
+});
+
+test("first accepted solve grants coins, streak and one audit row", async () => {
+  const user = await createUser();
+  const r = await complete(user.id, A, at(D1), "sub-first");
+  assert.deepEqual(r, { granted: true, coins: DAILY_PROBLEM_COINS, streak: 1, longestStreak: 1, balance: 102 });
+
+  const stored = await getUser(user.id);
+  assert.equal(stored.coins, 102);
+  assert.equal(stored.streak, 1);
+  assert.equal(stored.lastStreakDate.toISOString(), at(D1).toISOString());
+
+  const txs = await dailyTxs(user.id);
+  assert.equal(txs.length, 1);
+  assert.equal(txs[0].istDate, D1);
+  assert.equal(txs[0].amount, 2);
+  assert.equal(txs[0].balanceAfter, 102);
+  assert.equal(txs[0].referenceId, "sub-first");
+
+  // Same day again: nothing more.
+  const again = await complete(user.id, A, at(D1, "18:00:00"));
+  assert.deepEqual(again, { granted: false, coins: 0, reason: "ALREADY_COMPLETED" });
+  assert.equal((await getUser(user.id)).coins, 102);
+  assert.equal((await dailyTxs(user.id)).length, 1);
+});
+
+test("other problems, days without a row and bad input earn nothing", async () => {
+  const user = await createUser();
+  assert.equal((await complete(user.id, B, at(D1))).reason, "NOT_DAILY_PROBLEM");
+  assert.equal((await complete(user.id, A, at(D4))).reason, "NO_DAILY_PROBLEM");
+  assert.equal((await complete(user.id, null, at(D1))).reason, "MISSING_ARGS");
+  assert.equal((await complete(`usr-missing-${randomUUID()}`, A, at(D1))).reason, "USER_NOT_FOUND");
+  assert.equal((await getUser(user.id)).coins, 100);
+  assert.equal(await prisma.dailyProblemCompletion.count({ where: { userId: user.id } }), 0);
+});
+
+test("consecutive days extend the streak, a missed day resets it", async () => {
+  const user = await createUser();
+  assert.equal((await complete(user.id, A, at(D1))).streak, 1);
+  assert.equal((await complete(user.id, B, at(D2))).streak, 2);
+  const afterGap = await complete(user.id, B, at(D5)); // D3, D4 missed
+  assert.equal(afterGap.streak, 1);
+  assert.equal(afterGap.longestStreak, 2);
+  const stored = await getUser(user.id);
+  assert.equal(stored.coins, 106);
+  assert.equal(stored.longestStreak, 2);
+});
+
+test("a submission made before midnight counts for that day", async () => {
+  const user = await createUser({ streak: 5, longestStreak: 5, lastStreakDate: at("2099-02-28", "20:00:00") });
+  const r = await complete(user.id, A, at(D1, "23:59:59"));
+  assert.equal(r.granted, true);
+  assert.equal(r.streak, 6);
+  const [tx] = await dailyTxs(user.id);
+  assert.equal(tx.istDate, D1);
+  // The next day's solve still continues the streak.
+  assert.equal((await complete(user.id, B, at(D2, "00:00:30"))).streak, 7);
+});
+
+test("a late-judged earlier day pays coins but never moves the streak back", async () => {
+  const user = await createUser();
+  assert.equal((await complete(user.id, B, at(D2))).streak, 1);
+  const late = await complete(user.id, A, at(D1, "23:59:00"));
+  assert.equal(late.granted, true);
+  assert.equal(late.streak, 1);
+  const stored = await getUser(user.id);
+  assert.equal(stored.lastStreakDate.toISOString(), at(D2).toISOString());
+  assert.equal(stored.coins, 104);
+  assert.equal((await complete(user.id, A, at(D3))).streak, 2);
+});
+
+test("parallel submissions are rewarded exactly once", async () => {
+  const user = await createUser();
+  const results = await Promise.all(Array.from({ length: 6 }, () => complete(user.id, A, at(D1))));
+  assert.equal(results.filter((r) => r.granted).length, 1, JSON.stringify(results));
+  assert.ok(results.filter((r) => !r.granted).every((r) => r.reason === "ALREADY_COMPLETED"));
+  assert.equal((await getUser(user.id)).coins, 102);
+  assert.equal((await dailyTxs(user.id)).length, 1);
+  assert.equal(await prisma.dailyProblemCompletion.count({ where: { userId: user.id } }), 1);
+});
+
+test("the database refuses a second reward for the same day", async () => {
+  // A reward row without a completion row (as old test runs left behind).
+  const user = await createUser();
+  await prisma.coinTransaction.create({
+    data: { userId: user.id, amount: 2, type: "DAILY_PROBLEM", istDate: D1, balanceAfter: 102, referenceId: "orphan" },
+  });
+  const r = await complete(user.id, A, at(D1));
+  assert.deepEqual(r, { granted: false, coins: 0, reason: "ALREADY_COMPLETED" });
+  assert.equal((await getUser(user.id)).coins, 100, "coin increment rolled back");
+  assert.equal(await prisma.dailyProblemCompletion.count({ where: { userId: user.id } }), 0, "completion rolled back");
+});
+
+test("decay resets streaks older than yesterday and keeps the rest", async () => {
+  const now = new Date("2000-01-03T12:00:00+05:30"); // yesterday = 2000-01-02
+  const broken = await createUser({ streak: 4, longestStreak: 4, lastStreakDate: new Date("2000-01-01T23:59:00+05:30") });
+  const alive = await createUser({ streak: 2, longestStreak: 3, lastStreakDate: new Date("2000-01-02T00:00:30+05:30") });
+
+  assert.ok((await resetBrokenStreaks(now)) >= 1);
+  const b = await getUser(broken.id);
+  assert.equal(b.streak, 0);
+  assert.equal(b.longestStreak, 4, "longest streak is kept");
+  assert.equal((await getUser(alive.id)).streak, 2);
+});

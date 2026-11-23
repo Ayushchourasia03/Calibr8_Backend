@@ -87,8 +87,8 @@
 | GET | `/api/execution/submissions/:id` | Owner | – | Poll a submission |
 | GET | `/api/execution/submissions/:id/complexity` | Owner | – | Empirical complexity profile |
 | POST | `/api/execution/analyze-complexity` | Optional | run | Static complexity analysis of code |
-| GET | `/api/daily-problem` (alias `/api/coins/daily-problem`) | Optional | – | Today's daily problem + user status |
-| GET | `/api/daily-problem/history` (alias `/api/coins/daily-problem/history`) | Optional | – | Past daily problems |
+| GET | `/api/daily-problem` | Optional | – | Today's daily problem + user status |
+| GET | `/api/daily-problem/history` | Optional | – | Past daily problems (up to today) |
 | GET | `/api/coins/balance` | Protected | – | Coins and streak |
 | GET | `/api/coins/history` | Protected | – | Coin transaction log |
 | GET | `/api/themes` | Protected | – | Theme catalogue with ownership |
@@ -119,7 +119,7 @@ Every route in the execution router is mounted twice, so **every `/api/execution
 | HTTP | Express 5 ([src/app.js](src/app.js), [src/server.js](src/server.js)) |
 | Database | PostgreSQL via Prisma 6 ([prisma/schema.prisma](prisma/schema.prisma)). [src/config/db.js](src/config/db.js) uses the Neon serverless adapter when `DATABASE_URL` contains `neon.tech`, otherwise the `pg` adapter. |
 | Auth | JWT (`jsonwebtoken`), bcrypt (`bcryptjs`, 10 rounds) |
-| Scheduling | `node-cron` (daily problem at 00:00 Asia/Kolkata) |
+| Scheduling | `node-cron` (daily-problem assignment hourly, streak decay 00:05 Asia/Kolkata) |
 | Code execution | External CodeBox VPS (Judge0-compatible). See [code exec system.md](code%20exec%20system.md). |
 | Pattern | `routers/*.router.js` → middlewares → `controllers/*.controller.js` → `services/` and `utils/` → Prisma |
 
@@ -140,7 +140,7 @@ The server listens on `0.0.0.0:${PORT}` (default **3000**).
 | `/api/rankings` | [ranking.router.js](src/routers/ranking.router.js) |
 | `/api/execution` **and** `/api/execute` | [execution.router.js](src/routers/execution.router.js) |
 | `/api/coins` | [coin.router.js](src/routers/coin.router.js) |
-| `/api/daily-problem`, `/api/daily-problem/history` | handlers from [coin.controller.js](src/controllers/coin.controller.js), mounted directly |
+| `/api/daily-problem` | [dailyProblem.router.js](src/routers/dailyProblem.router.js) |
 
 ### 2.3 Global pipeline (order matters, from [src/app.js](src/app.js))
 
@@ -311,8 +311,7 @@ Default codes by status ([src/utils/ApiError.js](src/utils/ApiError.js)):
 | `EXECUTION_AUTH_FAILED` | 500 | CodeBox rejected `CODEBOX_TOKEN` (HTTP 401/403) |
 | `SUBMISSION_STORAGE_UNAVAILABLE` | 503 | submission row or verdict could not be saved (logged-in users) |
 | `SUBMISSION_NOT_FOUND` | 404 | poll / complexity of a missing or someone else's submission |
-| `NO_ELIGIBLE_PROBLEMS` | 503 | daily problem when the problems table is empty |
-| `DAILY_PROBLEM_NOT_FOUND` | 404 | daily problem lookup failure |
+| `NO_ELIGIBLE_PROBLEMS` | 503 | daily problem when no problem has testcases |
 | `ALREADY_OWNED`, `INSUFFICIENT_COINS` | 400 | theme buy |
 | `USER_NOT_FOUND` | 404 | theme buy |
 | `FORBIDDEN` | 403 | theme apply when the theme is not owned |
@@ -1177,9 +1176,9 @@ On any route, body `"wait": true` (a boolean) or query `?wait=true` forces synch
 | `firstFailure` | `null` when accepted. Otherwise `{ testIndex, status, errorText, input?, expected?, actual?, message }`. For a hidden case, `input`, `expected` and `actual` are omitted, `errorText` is `null`, and `message` is `"Failed on hidden evaluation test case #<k>."`, where `k` is the 1-based position among executed results. For a visible case, `message` is `"Failed sample test <k>: expected '<e>', got '<a>'"`. |
 | `complexity` | `ComplexitySummary` (static analysis) or `null` |
 | `complexityProfile` | `null`, or `{ "status": "PENDING", "url": "/api/execution/submissions/<id>/complexity" }` when an empirical profile was queued |
-| `reward` | `SolveReward`, or `null` (anonymous, or not accepted). On a re-solve: `{ awarded: false, points: 0, scoreDelta: 0, coinsEarned: 0, stats }`. When the daily-problem reward was granted too, `coinsEarned` includes the +2 and `stats.coins` is the new balance. |
+| `reward` | `SolveReward`, or `null` (anonymous, or not accepted). On a re-solve: `{ awarded: false, points: 0, scoreDelta: 0, coinsEarned: 0, stats }`. When the daily-problem reward was granted too, `coinsEarned` includes the +2, and `stats.coins`, `stats.streak` and `stats.longestStreak` are the new values. |
 | `rewardError` | `true` if saving the reward failed. The verdict itself is still valid. |
-| `dailyProblemReward` | `{ granted, coins }`. `granted: true, coins: 2` only on the first accepted submission of today's daily problem. |
+| `dailyProblemReward` | `{ granted, coins }`. `granted: true, coins: 2` only on the first accepted submission of the daily problem of the IST day the code was **submitted** on (judging may finish after midnight). |
 
 **Failing example** (hidden case, Wrong Answer in tier 2)
 
@@ -1333,60 +1332,60 @@ When the analyzer cannot parse the code: `{ "version": "3.0.1", "status": "unkno
 
 ## 14. Daily problem — `/api/daily-problem`
 
-Service: [src/services/dailyProblemService.js](src/services/dailyProblemService.js). Handlers: [src/controllers/coin.controller.js](src/controllers/coin.controller.js).
+Service: [src/services/dailyProblemService.js](src/services/dailyProblemService.js). Handlers: [src/controllers/dailyProblem.controller.js](src/controllers/dailyProblem.controller.js). Ops script: `node scripts/dailyProblem.js status | ensure | prune-future [--apply]`.
 
 **How it works**
 
-- One problem per IST calendar day (table `daily_problems`, unique `istDate`). It is chosen at random from all problems, avoiding yesterday's problem when at least 2 problems exist.
-- It is created by a cron job at 00:00 Asia/Kolkata, at startup, and lazily on first request. Creation is concurrency-safe.
-- The first **ACCEPTED** submission of today's problem by a logged-in user grants +2 coins and advances the streak ([§20](#20-gamification-rules)), once per user per day.
+- **One problem per IST calendar day**, the same for every user (table `daily_problems`, unique `istDate`). A row is never changed or deleted by the app once created, so history shows exactly what users saw. Problems that were a daily problem cannot be deleted (`ON DELETE RESTRICT`).
+- **Selection** (`pickDailyProblem`): only problems with at least one testcase. A problem featured in the last 7 days (or tomorrow, if already assigned) is skipped; with a small pool the window shrinks, but yesterday's problem is avoided whenever 2+ problems exist. Among the rest, the least-featured problems win, at random. So every problem is featured once, in random order, before any repeats, and new problems come up soon after they are added.
+- **Assignment**: the scheduler creates **today's and tomorrow's** rows at startup and at the top of every hour (Asia/Kolkata), so the next day's problem exists before midnight. A request for a day without a row creates it on the spot. Creation is safe across instances (`INSERT … ON CONFLICT DO NOTHING`, then read back).
+- **Refresh**: the day changes at 00:00 IST. Rows are cached in memory for 5 minutes per instance.
+- **Completion**: the first **ACCEPTED** submission of a day's problem by a logged-in user, *submitted* during that IST day, grants +2 coins and advances the streak ([§20](#20-gamification-rules)), once per user per day. Enforced by the `daily_problem_completions` primary key and the partial unique index `coin_transactions_daily_problem_unique`.
+- **Streak decay**: at 00:05 IST (and at startup), streaks whose last completion is older than yesterday are set to 0, so `users.streak` is always the live value.
 
-### 14.1 `GET /api/daily-problem` · alias `GET /api/coins/daily-problem` — Optional
+### 14.1 `GET /api/daily-problem` — Optional
 
 **200**
 
 ```json
 {
   "success": true,
-  "istDate": "2026-11-22",
-  "problem": { "id": "cm…", "slug": "two-sum", "title": "Two Sum", "difficulty": "Easy", "description": "…", "tags": ["Array"], "solvedCount": 37 },
-  "reward": { "coins": 2, "description": "+2 coins and +1 streak for your first ACCEPTED submission on today's challenge" },
+  "istDate": "2026-11-23",
+  "problem": { "id": "cm…", "slug": "two-sum", "title": "Two Sum", "difficulty": "Easy", "tags": ["Array"], "solvedCount": 37 },
+  "reward": { "coins": 2, "streak": 1 },
   "completed": false,
-  "solvedToday": false,
-  "rewardClaimed": false,
   "completedAt": null,
   "streak": 3,
   "longestStreak": 5,
-  "nextRefreshMs": 41234567,
-  "nextRefreshTime": "12:00 AM IST"
+  "nextRefreshAt": "2026-11-23T18:30:00.000Z",
+  "nextRefreshMs": 41234567
 }
 ```
 
-- `completed`, `solvedToday` and `rewardClaimed` are identical. They are true when a `daily_problem_completions` row exists for the user and today's problem, or a `DAILY_PROBLEM` coin transaction exists for today.
-- `completedAt` is the completion time, or `null`.
-- `streak` and `longestStreak` are 0 for anonymous callers.
-- `nextRefreshMs` is the milliseconds until the next 00:00 IST.
-- Use `problem.slug` to open the problem.
+- `completed` is true when the caller has a `daily_problem_completions` row for today's problem; `completedAt` is when it was recorded, or `null`.
+- `streak` and `longestStreak` are the caller's (0 for anonymous callers).
+- `nextRefreshAt` is the next 00:00 IST; `nextRefreshMs` is the milliseconds until then.
+- Use `problem.slug` to open the problem with `GET /api/problems/:slug`.
 
-**Errors**: 503 `NO_ELIGIBLE_PROBLEMS` (no problems in the database), 404 `DAILY_PROBLEM_NOT_FOUND`.
+**Errors**: 503 `NO_ELIGIBLE_PROBLEMS` (no problem has testcases).
 
-### 14.2 `GET /api/daily-problem/history` · alias `GET /api/coins/daily-problem/history` — Optional
+### 14.2 `GET /api/daily-problem/history` — Optional
 
-**Query**: `page` (default 1, minimum 1) and `limit` (default 30, range 1–100).
+**Query**: `page` (default 1, range 1–10000) and `limit` (default 30, range 1–100).
 
 **200**
 
 ```json
 {
-  "success": true, "count": 2, "total": 45, "page": 1, "totalPages": 23,
+  "success": true, "page": 1, "limit": 30, "total": 45, "totalPages": 2,
   "history": [
-    { "id": "cm…", "istDate": "2026-11-22", "createdAt": "…", "completed": true,
+    { "istDate": "2026-11-23", "completed": true, "completedAt": "…",
       "problem": { "id": "cm…", "slug": "two-sum", "title": "Two Sum", "difficulty": "Easy", "tags": ["Array"], "solvedCount": 37 } }
   ]
 }
 ```
 
-Entries are ordered newest first. `completed` is false for anonymous callers.
+Only days up to and including today are listed (tomorrow's row already exists and is never shown). Entries are ordered newest first. `completed` is false for anonymous callers.
 
 ---
 
@@ -1721,7 +1720,7 @@ Source: `computeDailyProblemStreak` in [src/services/streakService.js](src/servi
 | yesterday | streak + 1 |
 | older | reset to 1 |
 
-`longestStreak = max(longestStreak, streak)`. Logging in never changes the streak. A missed day is noticed only at the next completion: the stored `streak` is not reset at midnight.
+`longestStreak = max(longestStreak, streak)`. Logging in never changes the streak. The day is the IST day the code was **submitted** on, and `lastStreakDate` is that submission time; a late-judged completion for an earlier day earns coins but never moves the streak backwards. At 00:05 IST a job sets `streak = 0` for users whose last completion is older than yesterday, so the stored value is always current.
 
 ---
 
@@ -1745,9 +1744,9 @@ Source: [prisma/schema.prisma](prisma/schema.prisma). Table names are in parenth
 | `Submission` (`submissions`) | `id` cuid, `problemId`, `userId?`, `language`, `code`, `status`, `passedCount`, `totalCount`, `time?` ("12ms"), `memory?` (KB), `createdAt` | indexes `(problemId,status)`, `(userId,status)`, `(userId,status,createdAt)` |
 | `UserProblemProgress` (`user_problem_progress`) | PK `(userId, problemId)`, `points`, `scoreAwarded`, `coinsAwarded`=0, `solvedAt` | one row per solved problem |
 | `StudySubject` / `StudyChapter` / `StudyTopic` / `StudyMCQ` | slug/name/order hierarchy; `StudyMCQ.options` Json, `correctIndex` | default Prisma table names |
-| `CoinTransaction` (`coin_transactions`) | `userId`, `amount`, `type`, `referenceId?`, `istDate`, `balanceAfter`, `createdAt` | indexes `(userId,createdAt)`, `(userId,type,istDate)` |
+| `CoinTransaction` (`coin_transactions`) | `userId`, `amount`, `type`, `referenceId?`, `istDate`, `balanceAfter`, `createdAt` | indexes `(userId,createdAt)`, `(userId,type,istDate)`; partial unique `(userId,istDate)` for `DAILY_LOGIN` and for `DAILY_PROBLEM` (SQL-managed) |
 | `RevokedToken` (`revoked_tokens`) | `jti` PK, `userId?`, `expiresAt` | |
-| `DailyProblem` (`daily_problems`) | `istDate` unique, `problemId` | |
+| `DailyProblem` (`daily_problems`) | `istDate` unique, `problemId` (FK `ON DELETE RESTRICT`) | rows are never updated once created |
 | `DailyProblemCompletion` (`daily_problem_completions`) | PK `(userId, dailyProblemId)`, `submissionId?`, `completedAt` | |
 | `ComplexityProfile` (`complexity_profiles`) | `submissionId` unique, `status`, `language`, `problemSlug`, time/space complexity and confidence, `inputSizes`/`measurements`/`baseline`/`analysis` Json, `attempts`, `nextAttemptAt`, `failureReason?` | doubles as the profiling job queue |
 
@@ -1764,7 +1763,7 @@ From [src/server.js](src/server.js):
 | When | What |
 |---|---|
 | Boot, if `DATABASE_URL` is set | `prisma.$connect()` and upsert of the 14 calibration topics from `TOPIC_CATALOG` (warnings only, never fatal) |
-| After listen | `startDailyProblemScheduler()`: ensures today's daily problem now, then a cron job `0 0 * * *` in `Asia/Kolkata` |
+| After listen | `startDailyProblemScheduler()`: creates today's and tomorrow's daily problem now and at `0 * * * *` (hourly); resets broken streaks now (unless within 5 min after midnight) and at `5 0 * * *`. Both in `Asia/Kolkata`, idempotent, safe on several instances. |
 | After listen | Every **1 hour**: delete expired `revoked_tokens` rows |
 | After listen | `startProfilingWorker()`: no-op unless `COMPLEXITY_PROFILING_ENABLED`. Recovers stale jobs, then processes the queue. |
 | After listen | CodeBox health check: `GET ${CODEBOX_URL}/health` with a 3 s timeout. **Log only.** |
@@ -1816,7 +1815,7 @@ Every cache below is **in-process memory**. With more than one backend instance,
 | Problem catalogue | 30 s | List, categories and acceptance rates can lag by up to 30 s. |
 | Bundled `problems/*.json` topic | forever | topic fallback |
 | Submission results | 30 min / 2,000 | Per-testcase results in poll responses |
-| Daily-problem lookup | 60 s | "is this today's daily problem?" check on submit |
+| Daily-problem rows | 5 min / 8 days | `GET /api/daily-problem` and the "is this the daily problem?" check on submit. Rows never change, so the TTL only bounds how long a manual DB edit takes to show. |
 | Token revocation | revoked until expiry; not-revoked 30 s | cross-instance revocation delay of up to 30 s |
 | Theme catalogue seed | once per process | |
 | Static complexity analyzer | 500 parsed / 1,000 results | |

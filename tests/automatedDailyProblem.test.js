@@ -1,469 +1,161 @@
+// Integration tests: daily problem assignment, selection, history and API.
+//
+// Uses the database in DATABASE_URL. Every row it writes is either a test
+// user or a daily_problems row dated in 2099, and only those are cleaned up.
+// It never creates, changes or deletes a real day's row (the old version did,
+// which reassigned live daily problems and cascade-deleted users' completions).
 import "dotenv/config";
+import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+
 process.env.JWT_SECRET = "a".repeat(40);
-process.env.CODEBOX_URL = "https://codebox.internal";
-process.env.CODEBOX_TOKEN = "test-token";
-process.env.CODEBOX_BATCH_EXECUTION_ENABLED = "false";
 
 const { default: prisma } = await import("../src/config/db.js");
 const {
   ensureDailyProblem,
-  selectDailyProblemForDate,
-  getDailyProblemWithUserStatus,
   getDailyProblemHistory,
-  getAuthoritativeISTDate,
-  getMillisecondsUntilNextMidnightIST,
-  completeDailyProblemSubmission,
-  stopDailyProblemScheduler,
+  COOLDOWN_DAYS,
 } = await import("../src/services/dailyProblemService.js");
-const { grantDailyProblemReward } =
-  await import("../src/services/coinService.js");
+const { getISTDateString, addDaysToISTDate } = await import("../src/services/streakService.js");
 const { signToken } = await import("../src/utils/jwt.js");
 const { default: app } = await import("../src/app.js");
 
-// Mock fetch for CodeBox
-const originalFetch = globalThis.fetch;
+const TEST_DATE_PREFIX = "2099-";
+const runId = randomUUID();
+const users = [];
+let server;
+let baseUrl;
+let eligibleIds;
 
-let lastSubmitted = [];
-globalThis.fetch = async (input, options = {}) => {
-  const urlStr = typeof input === "string" ? input : input.toString();
+before(async () => {
+  server = app.listen(0);
+  baseUrl = `http://localhost:${server.address().port}`;
 
-  if (urlStr.startsWith("https://codebox.internal")) {
-    const url = new URL(urlStr);
-    if (options.method === "POST") {
-      const payload = JSON.parse(options.body || "{}");
-      lastSubmitted = payload.submissions || [];
-      return new Response(
-        JSON.stringify(
-          lastSubmitted.map((_, idx) => ({
-            token: `tok-${idx}-${Date.now()}`,
-          })),
-        ),
-        { status: 201 },
-      );
-    }
-    const tokens = (url.searchParams.get("tokens") || "").split(",");
-    return new Response(
-      JSON.stringify({
-        submissions: tokens.map((token, idx) => {
-          const sub = lastSubmitted[idx] || {};
-          const stdin = String(sub.stdin || "");
-          let stdout = "0 1";
-          if (stdin.includes("3 6") || stdin.includes("4 10")) stdout = "1 2";
-          else if (stdin.includes("5 13")) stdout = "1 3";
-          return {
-            token,
-            status: { id: 3 }, // Accepted
-            stdout,
-            time: "0.01",
-            memory: 1200,
-          };
-        }),
-      }),
-      { status: 200 },
-    );
+  const eligible = await prisma.problem.findMany({ where: { testcases: { some: {} } }, select: { id: true } });
+  eligibleIds = new Set(eligible.map((p) => p.id));
+  assert.ok(eligibleIds.size >= 2, "need at least 2 problems with testcases");
+
+  for (const n of [1, 2]) {
+    users.push(await prisma.user.create({
+      data: {
+        id: `usr_daily_${n}_${runId}`,
+        email: `daily-${n}-${runId}@calibr8.test`,
+        passwordHash: "test-hash-not-for-login",
+        name: `Daily Tester ${n}`,
+        streak: 4,
+        longestStreak: 9,
+      },
+    }));
   }
-  return originalFetch(input, options);
-};
+  await prisma.dailyProblem.deleteMany({ where: { istDate: { startsWith: TEST_DATE_PREFIX } } });
+});
 
-async function runDailyProblemTests() {
-  console.log("=== Calibr8 Automated Daily Problem System Test Suite ===");
-  const server = app.listen(0);
-  const port = server.address().port;
-  const baseUrl = `http://localhost:${port}`;
+after(async () => {
+  await prisma.user.deleteMany({ where: { id: { in: users.map((u) => u.id) } } }).catch(() => {});
+  await prisma.dailyProblem.deleteMany({ where: { istDate: { startsWith: TEST_DATE_PREFIX } } }).catch(() => {});
+  await new Promise((resolve) => server.close(resolve));
+  await prisma.$disconnect().catch(() => {});
+});
 
-  const createdUserIds = [];
-  const createdSimDates = ["2029-12-31"];
-  for (let day = 1; day <= 15; day++) {
-    createdSimDates.push(`2035-01-${String(day).padStart(2, "0")}`);
+test("concurrent ensure calls converge on one row", async () => {
+  const date = "2099-01-01";
+  const results = await Promise.all(Array.from({ length: 10 }, () => ensureDailyProblem(date)));
+  assert.equal(new Set(results.map((r) => r.id)).size, 1);
+  assert.equal(await prisma.dailyProblem.count({ where: { istDate: date } }), 1);
+  assert.ok(eligibleIds.has(results[0].problemId), "picked problem has testcases");
+  assert.equal(results[0].problem.id, results[0].problemId);
+});
+
+test("an assigned day never changes", async () => {
+  const first = await ensureDailyProblem("2099-01-01");
+  const again = await ensureDailyProblem("2099-01-01");
+  assert.equal(again.id, first.id);
+  assert.equal(again.problemId, first.problemId);
+});
+
+test("invalid dates are rejected", async () => {
+  await assert.rejects(ensureDailyProblem("2099-13-01"), { code: "INVALID_IST_DATE" });
+  await assert.rejects(ensureDailyProblem("tomorrow"), { code: "INVALID_IST_DATE" });
+});
+
+test("consecutive days respect the cooldown", async () => {
+  const window = Math.min(COOLDOWN_DAYS, eligibleIds.size - 1);
+  const picks = [];
+  for (let d = 1; d <= 20; d++) {
+    const row = await ensureDailyProblem(`2099-02-${String(d).padStart(2, "0")}`);
+    assert.ok(eligibleIds.has(row.problemId));
+    picks.push(row.problemId);
   }
-
-  try {
-    const todayIST = getAuthoritativeISTDate();
-    console.log(`[Test Setup] Current IST Date: ${todayIST}`);
-
-    const runId = randomUUID();
-    // Create 2 test users
-    const user1 = {
-      id: `usr_daily_test_1_${runId}`,
-      email: `user1-${runId}@calibr8.test`,
-      passwordHash: "test-hash-not-for-login",
-      name: "User One",
-      coins: 100,
-      tier: "Prism I",
-    };
-    const user2 = {
-      id: `usr_daily_test_2_${runId}`,
-      email: `user2-${runId}@calibr8.test`,
-      passwordHash: "test-hash-not-for-login",
-      name: "User Two",
-      coins: 100,
-      tier: "Prism I",
-    };
-
-    await prisma.user.create({ data: user1 });
-    await prisma.user.create({ data: user2 });
-    createdUserIds.push(user1.id, user2.id);
-
-    const token1 = signToken(user1);
-    const token2 = signToken(user2);
-
-    // Clean up daily problem records for today and future test dates
-    await prisma.dailyProblem.deleteMany({
-      where: {
-        istDate: todayIST,
-      },
-    });
-
-    // -------------------------------------------------------------------------
-    // 1. Generation & Consistency Across Requests & Users
-    // -------------------------------------------------------------------------
-    console.log(
-      "\n[Test 1 & 2 & 3] Lazy Generation, Consistency & Multi-User Identity",
-    );
-    const res1 = await fetch(`${baseUrl}/api/daily-problem`, {
-      headers: { Authorization: `Bearer ${token1}` },
-    });
-    assert.strictEqual(res1.status, 200, "Must return 200 OK");
-    const data1 = await res1.json();
-    assert.strictEqual(data1.success, true);
-    assert.strictEqual(data1.istDate, todayIST);
-    assert.ok(data1.problem && data1.problem.id, "Must include problem object");
-    assert.strictEqual(data1.reward.coins, 2);
-    assert.strictEqual(data1.completed, false);
-
-    // Repeated request by User 2 must return the identical problem
-    const res2 = await fetch(`${baseUrl}/api/daily-problem`, {
-      headers: { Authorization: `Bearer ${token2}` },
-    });
-    const data2 = await res2.json();
-    assert.strictEqual(
-      data2.problem.id,
-      data1.problem.id,
-      "User 2 must receive the identical daily problem as User 1",
-    );
-    assert.strictEqual(data2.istDate, data1.istDate);
-
-    // Public request (no token) also receives identical problem
-    const resPublic = await fetch(`${baseUrl}/api/daily-problem`);
-    const dataPublic = await resPublic.json();
-    assert.strictEqual(
-      dataPublic.problem.id,
-      data1.problem.id,
-      "Public client must receive the same daily problem",
-    );
-    console.log(
-      "✔ Lazy generation, repeated consistency, and multi-user parity verified",
-    );
-
-    // -------------------------------------------------------------------------
-    // 4. Midnight Scheduling & Asia/Kolkata Day Boundary
-    // -------------------------------------------------------------------------
-    console.log("\n[Test 4 & 5] Asia/Kolkata Timezone & Midnight Calculation");
-    const msLeft = getMillisecondsUntilNextMidnightIST();
-    assert.ok(
-      msLeft > 0 && msLeft <= 86400000,
-      "msLeft must be between 0 and 24 hours in ms",
-    );
-    assert.ok(data1.nextRefreshMs > 0, "nextRefreshMs must be positive");
-    assert.strictEqual(data1.nextRefreshTime, "12:00 AM IST");
-    console.log(
-      `✔ IST midnight countdown verified (${Math.round(msLeft / 3600000)}h remaining until 12:00 AM IST)`,
-    );
-
-    // -------------------------------------------------------------------------
-    // 6. Concurrency Protection (Prevent Conflicting Daily Assignments)
-    // -------------------------------------------------------------------------
-    console.log("\n[Test 6 & 7] Concurrency Safety Under Parallel Generation");
-    const testDate = "2029-12-31";
-    await prisma.dailyProblem.deleteMany({ where: { istDate: testDate } });
-
-    // Fire 10 parallel generation requests simultaneously for testDate
-    const parallelRequests = Array.from({ length: 10 }, () =>
-      ensureDailyProblem(testDate),
-    );
-    const parallelResults = await Promise.all(parallelRequests);
-    const assignedIds = new Set(parallelResults.map((r) => r.problemId));
-    assert.strictEqual(
-      assignedIds.size,
-      1,
-      "Concurrent parallel generation must converge on exactly 1 problemId without error",
-    );
-    console.log(
-      "✔ 10 simultaneous parallel generation calls safely converged on single assignment",
-    );
-
-    // -------------------------------------------------------------------------
-    // 8 & 9. Repetition Policy: Avoid Selecting Yesterday's Problem (FR-01)
-    // -------------------------------------------------------------------------
-    console.log(
-      "\n[Test 8 & 9] Repetition Policy: Avoid Selecting Yesterday's Problem (FR-01)",
-    );
-    // Get all eligible problems in database
-    const allProblems = await prisma.problem.findMany({ select: { id: true } });
-    const totalProblemCount = allProblems.length;
-    console.log(`Total eligible problems in DB: ${totalProblemCount}`);
-
-    // Create a mock simulation over sequential simulated days
-    const simPrefix = "2035-01-";
-    let lastSimProblemId = null;
-
-    for (let day = 1; day <= 15; day++) {
-      const simDate = `${simPrefix}${String(day).padStart(2, "0")}`;
-      await prisma.dailyProblem.deleteMany({ where: { istDate: simDate } });
-
-      const selection = await selectDailyProblemForDate(simDate);
-      assert.ok(
-        selection.problem && selection.problem.id,
-        "Must select an eligible problem",
-      );
-
-      await prisma.dailyProblem.create({
-        data: {
-          istDate: simDate,
-          problemId: selection.problem.id,
-        },
-      });
-
-      // When total eligible problems >= 2, must never pick yesterday's problem
-      if (day > 1 && totalProblemCount >= 2) {
-        assert.notStrictEqual(
-          selection.problem.id,
-          lastSimProblemId,
-          `Day ${day} (${simDate}) must not repeat day ${day - 1} problem`,
-        );
-      }
-      lastSimProblemId = selection.problem.id;
+  for (let i = 0; i < picks.length; i++) {
+    for (let back = 1; back <= window && i - back >= 0; back++) {
+      assert.notEqual(picks[i], picks[i - back], `day ${i + 1} repeats day ${i + 1 - back}`);
     }
-    console.log(
-      "✔ Avoid-yesterday repetition policy verified across consecutive IST dates",
-    );
-
-    // -------------------------------------------------------------------------
-    // 10, 11, 12. Submission & Reward Pipeline Integration
-    // -------------------------------------------------------------------------
-    // -------------------------------------------------------------------------
-    // 10, 11, 12. Submission & Reward Pipeline Integration
-    // -------------------------------------------------------------------------
-    console.log(
-      "\n[Test 10, 11, 12] Submission, Completion Tracking & Idempotent Rewards",
-    );
-    await prisma.dailyProblemCompletion.deleteMany({
-      where: { userId: user1.id },
-    });
-    await prisma.coinTransaction.deleteMany({ where: { userId: user1.id } });
-    const twoSumProblem = await prisma.problem.findFirst({
-      where: { slug: "two-sum" },
-    });
-    if (twoSumProblem) {
-      await prisma.dailyProblem.upsert({
-        where: { istDate: todayIST },
-        update: { problemId: twoSumProblem.id },
-        create: { istDate: todayIST, problemId: twoSumProblem.id },
-      });
-    }
-    const targetDaily = await ensureDailyProblem(todayIST);
-    const targetProblemSlug = targetDaily.problem.slug;
-    const initialUser1Coins = 100;
-
-    // 1. Submit ACCEPTED solution for today's daily problem
-    const submitAcceptedRes = await fetch(`${baseUrl}/api/execution/submit`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token1}`,
-      },
-      body: JSON.stringify({
-        slug: targetProblemSlug,
-        language: "python",
-        code: `class Solution:\n    def twoSum(self, nums, target):\n        return [0, 1]`,
-        wait: true,
-      }),
-    });
-
-    assert.strictEqual(submitAcceptedRes.status, 200);
-    const submitAcceptedData = await submitAcceptedRes.json();
-    assert.strictEqual(submitAcceptedData.verdict, "ACCEPTED");
-
-    // Verify dailyProblemReward field is populated
-    assert.ok(
-      submitAcceptedData.dailyProblemReward,
-      "Must include dailyProblemReward",
-    );
-    assert.strictEqual(submitAcceptedData.dailyProblemReward.granted, true);
-    assert.strictEqual(submitAcceptedData.dailyProblemReward.coins, 2);
-
-    // Verify User 1 coin balance increased by 2
-    const user1After = await prisma.user.findUnique({
-      where: { id: user1.id },
-    });
-    assert.strictEqual(
-      user1After.coins,
-      initialUser1Coins + 2,
-      "Coins must increase by exactly 2",
-    );
-
-    // Verify DailyProblemCompletion record was created in database
-    const completionRecord = await prisma.dailyProblemCompletion.findUnique({
-      where: {
-        userId_dailyProblemId: {
-          userId: user1.id,
-          dailyProblemId: targetDaily.id,
-        },
-      },
-    });
-    assert.ok(
-      completionRecord,
-      "DailyProblemCompletion record must exist in database",
-    );
-
-    // 2. User 1 submits AGAIN on the same day -> Must NOT grant duplicate coins
-    const secondSubmitRes = await fetch(`${baseUrl}/api/execution/submit`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token1}`,
-      },
-      body: JSON.stringify({
-        slug: targetProblemSlug,
-        language: "python",
-        code: `class Solution:\n    def twoSum(self, nums, target):\n        return [0, 1]`,
-        wait: true,
-      }),
-    });
-    const secondSubmitData = await secondSubmitRes.json();
-    assert.strictEqual(
-      secondSubmitData.dailyProblemReward.granted,
-      false,
-      "Second submission must NOT grant duplicate reward",
-    );
-    assert.strictEqual(secondSubmitData.dailyProblemReward.coins, 0);
-
-    const user1SecondCheck = await prisma.user.findUnique({
-      where: { id: user1.id },
-    });
-    assert.strictEqual(
-      user1SecondCheck.coins,
-      initialUser1Coins + 2,
-      "Coins must NOT increase on duplicate submission",
-    );
-
-    // 3. User 1 checks daily problem API -> Must show completed and reward claimed
-    const statusRes = await fetch(`${baseUrl}/api/daily-problem`, {
-      headers: { Authorization: `Bearer ${token1}` },
-    });
-    const statusData = await statusRes.json();
-    assert.strictEqual(
-      statusData.completed,
-      true,
-      "Must reflect completed status",
-    );
-    assert.strictEqual(
-      statusData.rewardClaimed,
-      true,
-      "Must reflect rewardClaimed status",
-    );
-
-    // 4. User 2 has NOT submitted -> Must show NOT completed
-    const user2StatusRes = await fetch(`${baseUrl}/api/daily-problem`, {
-      headers: { Authorization: `Bearer ${token2}` },
-    });
-    const user2StatusData = await user2StatusRes.json();
-    assert.strictEqual(
-      user2StatusData.completed,
-      false,
-      "User 2 must still show not completed",
-    );
-
-    // 5. Submit non-daily problem -> Must NOT grant daily problem reward
-    const otherProblem = await prisma.problem.findFirst({
-      where: { id: { not: targetDaily.problemId } },
-    });
-    if (otherProblem) {
-      const nonDailyRes = await fetch(`${baseUrl}/api/execution/submit`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token2}`,
-        },
-        body: JSON.stringify({
-          slug: otherProblem.slug,
-          language: "python",
-          code: `class Solution:\n    def solve(self):\n        pass`,
-          wait: true,
-        }),
-      });
-      const nonDailyData = await nonDailyRes.json();
-      assert.strictEqual(
-        nonDailyData.dailyProblemReward.granted,
-        false,
-        "Non-daily problem submission must not grant daily problem reward",
-      );
-    }
-
-    console.log(
-      "✔ Daily completion record created, reward granted once, duplicate prevented",
-    );
-
-    // -------------------------------------------------------------------------
-    // 13. Historical Daily Problem Retrieval API
-    // -------------------------------------------------------------------------
-    console.log(
-      "\n[Test 13] Historical Daily Problem Retrieval (/api/daily-problem/history)",
-    );
-    const historyRes = await fetch(
-      `${baseUrl}/api/daily-problem/history?limit=10&page=1`,
-      {
-        headers: { Authorization: `Bearer ${token1}` },
-      },
-    );
-    assert.strictEqual(historyRes.status, 200);
-    const historyData = await historyRes.json();
-    assert.strictEqual(historyData.success, true);
-    assert.ok(Array.isArray(historyData.history), "Must return history array");
-    assert.ok(
-      historyData.total >= 1,
-      "Must have at least 1 historical daily record",
-    );
-
-    // Verify ordering: first entry should be the latest IST date
-    const firstHist = historyData.history[0];
-    assert.ok(firstHist.istDate);
-    assert.ok(firstHist.problem);
-
-    // Verify user completion status is populated in history
-    const todayHistEntry = historyData.history.find(
-      (h) => h.istDate === todayIST,
-    );
-    if (todayHistEntry) {
-      assert.strictEqual(
-        todayHistEntry.completed,
-        true,
-        "User 1 should be marked completed on today's entry",
-      );
-    }
-    console.log(
-      "✔ Historical daily problems retrieved with pagination and user completion",
-    );
-
-    console.log("\n=======================================================");
-    console.log("✔ ALL 15 AUTOMATED DAILY PROBLEM TEST SCENARIOS PASSED!");
-    console.log("=======================================================\n");
-  } finally {
-    stopDailyProblemScheduler();
-    globalThis.fetch = originalFetch;
-    await prisma.dailyProblem
-      .deleteMany({ where: { istDate: { in: createdSimDates } } })
-      .catch(() => {});
-    if (createdUserIds.length > 0) {
-      await prisma.user
-        .deleteMany({ where: { id: { in: createdUserIds } } })
-        .catch(() => {});
-    }
-    await prisma.$disconnect().catch(() => {});
-    await new Promise((resolve) => server.close(resolve));
   }
-}
+});
 
-await runDailyProblemTests();
+test("history stops at today and reports the user's completions", async () => {
+  const now = new Date("2099-02-10T12:00:00+05:30");
+  const day = await ensureDailyProblem("2099-02-09");
+  await prisma.dailyProblemCompletion.create({ data: { userId: users[0].id, dailyProblemId: day.id } });
+
+  const page = await getDailyProblemHistory({ userId: users[0].id, limit: 5, now });
+  assert.deepEqual(page.history.map((h) => h.istDate), ["2099-02-10", "2099-02-09", "2099-02-08", "2099-02-07", "2099-02-06"]);
+  assert.equal(page.history[1].completed, true);
+  assert.ok(page.history[1].completedAt instanceof Date);
+  assert.equal(page.history[0].completed, false);
+  assert.equal(page.limit, 5);
+  assert.ok(page.total >= 10);
+
+  const anonymous = await getDailyProblemHistory({ limit: 5, now });
+  assert.equal(anonymous.history[1].completed, false);
+
+  const clamped = await getDailyProblemHistory({ page: "-3", limit: "1000", now });
+  assert.equal(clamped.page, 1);
+  assert.equal(clamped.limit, 100);
+});
+
+test("GET /api/daily-problem: same problem for everyone, with caller status", async () => {
+  const today = getISTDateString();
+  const [anon, user1, user2] = await Promise.all([
+    fetch(`${baseUrl}/api/daily-problem`),
+    fetch(`${baseUrl}/api/daily-problem`, { headers: { Authorization: `Bearer ${signToken(users[0])}` } }),
+    fetch(`${baseUrl}/api/daily-problem`, { headers: { Authorization: `Bearer ${signToken(users[1])}` } }),
+  ]);
+  for (const res of [anon, user1, user2]) assert.equal(res.status, 200);
+  const [a, b, c] = await Promise.all([anon.json(), user1.json(), user2.json()]);
+
+  assert.equal(a.success, true);
+  assert.equal(a.istDate, today);
+  assert.ok(a.problem.slug && a.problem.title && a.problem.difficulty);
+  assert.equal(b.problem.id, a.problem.id);
+  assert.equal(c.problem.id, a.problem.id);
+  assert.deepEqual(a.reward, { coins: 2, streak: 1 });
+
+  assert.equal(a.completed, false);
+  assert.equal(a.streak, 0);
+  assert.equal(b.completed, false);
+  assert.equal(b.streak, 4);
+  assert.equal(b.longestStreak, 9);
+
+  const refreshAt = new Date(a.nextRefreshAt);
+  assert.equal(getISTDateString(refreshAt), addDaysToISTDate(today, 1));
+  assert.equal(getISTDateString(new Date(refreshAt.getTime() - 1)), today);
+  assert.ok(a.nextRefreshMs > 0 && a.nextRefreshMs <= 86_400_000);
+});
+
+test("GET /api/daily-problem/history never shows future days", async () => {
+  const res = await fetch(`${baseUrl}/api/daily-problem/history?limit=10`);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.success, true);
+  const today = getISTDateString();
+  const dates = body.history.map((h) => h.istDate);
+  assert.ok(dates.every((d) => d <= today), `future dates leaked: ${dates.join(",")}`);
+  assert.deepEqual([...dates].sort().reverse(), dates, "newest first");
+});
+
+test("old /api/coins/daily-problem aliases are gone", async () => {
+  const res = await fetch(`${baseUrl}/api/coins/daily-problem`);
+  assert.equal(res.status, 404);
+});

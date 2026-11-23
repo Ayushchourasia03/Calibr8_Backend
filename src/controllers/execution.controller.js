@@ -27,7 +27,7 @@ import {
 import { getUserHeaderStats } from "../utils/userHeaderStats.js";
 import { publicTestResults } from "../utils/testcaseResults.js";
 import { analyzeComplexity } from "../services/complexityAnalyzer.service.js";
-import { grantDailyProblemReward } from "../services/coinService.js";
+import { recordDailyProblemCompletion } from "../services/dailyProblemService.js";
 import {
   supportsMultiCase,
   wrapWithHarness,
@@ -1523,6 +1523,7 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
  * Returns: { passed, total, results: [{input, expected, actual, passed, time, memory}] }
  */
 export const submitSolution = async (req, res, next) => {
+  const submittedAt = new Date();
   try {
     const slug =
       req.params?.slug ||
@@ -1740,29 +1741,19 @@ export const submitSolution = async (req, res, next) => {
             );
           }
 
-          let dpGranted = false;
-          let dpCoins = 0;
-          try {
-            const dpReward = await grantDailyProblemReward(
-              userId,
-              problem.id,
-              submission.id,
-            );
-            if (dpReward) {
-              dpGranted = Boolean(dpReward.granted);
-              dpCoins = Number(dpReward.coins) || 0;
-              dailyProblemReward = { granted: dpGranted, coins: dpCoins };
-              if (dpGranted && reward?.stats) {
-                reward.stats.coins = dpReward.balance || dpReward.balanceAfter;
-                reward.coinsEarned =
-                  (Number(reward.coinsEarned) || 0) + dpCoins;
-              }
-            } else {
-              dailyProblemReward = { granted: false, coins: 0 };
-            }
-          } catch (dpErr) {
-            console.error("[Daily Problem Reward Error]:", dpErr.message);
-            dailyProblemReward = { granted: false, coins: 0 };
+          // Never throws; counts for the IST day the code was submitted on.
+          const dpReward = await recordDailyProblemCompletion({
+            userId,
+            problemId: problem.id,
+            submissionId: submission.id,
+            submittedAt,
+          });
+          dailyProblemReward = { granted: dpReward.granted, coins: dpReward.coins };
+          if (dpReward.granted && reward?.stats) {
+            reward.stats.coins = dpReward.balance;
+            reward.stats.streak = dpReward.streak;
+            reward.stats.longestStreak = dpReward.longestStreak;
+            reward.coinsEarned = (Number(reward.coinsEarned) || 0) + dpReward.coins;
           }
         }
         return { reward, rewardError, dailyProblemReward };
