@@ -1,4 +1,4 @@
-import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
+import { cleanupTestUsers } from "./helpers/dbCleanup.js"; // keep first: snapshots the DB before this test writes
 // tests/coinReward.integration.test.js
 // Calibr8: Daily Problem, Streak & Coin Reward System Integration Tests
 
@@ -199,9 +199,8 @@ async function main() {
 
   } finally {
     console.log("\n[Cleanup] Deleting test user and its transactions...");
-    await prisma.coinTransaction.deleteMany({ where: { userId } });
-    await prisma.dailyProblemCompletion.deleteMany({ where: { userId } });
-    await prisma.user.delete({ where: { id: userId } }).catch(() => {});
+    // Removes the user, its coins/completions and today's daily row if this test created it.
+    await cleanupTestUsers({ id: userId });
     await prisma.$disconnect().catch(() => {});
     console.log("Cleanup done. Test user removed.");
   }

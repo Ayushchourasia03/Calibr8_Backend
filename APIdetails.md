@@ -1870,8 +1870,6 @@ See [.env.example](.env.example).
 | `JUDGE_MAX_CONCURRENT` / `JUDGE_MAX_QUEUE` / `JUDGE_QUEUE_TIMEOUT_MS` | 4 / 20 / 30000 | backend-wide judge admission control |
 | `COMPLEXITY_WORKERS` / `COMPLEXITY_TIMEOUT_MS` / `COMPLEXITY_MAX_QUEUE` | 1 / 2000 / 50 | static analyzer worker pool |
 | `SERVE_API_CONSOLE` | false | serve the `public/` API explorer in production |
-| `TEST_DATABASE_URL` (tests only) | – | database for DB-backed tests; tests refuse to use the `.env` `DATABASE_URL` ([tests/helpers/testEnv.js](tests/helpers/testEnv.js)) |
-| `TEST_CODEBOX_URL`, `TEST_CODEBOX_TOKEN` (tests only) | – | judge for tests that need a real CodeBox; otherwise CodeBox is blanked in tests |
 | `CODEBOX_URL`, `CODEBOX_TOKEN` | – | **required** for Run and Submit (otherwise 503) |
 | `CODEBOX_ALLOW_INSECURE_HTTP` | false | allow an `http://` CodeBox URL. ⚠ Sends the CodeBox token and all code unencrypted; logged as an error at startup in production. |
 | `CODEBOX_MULTICASE_ENABLED` | true | C/C++ multi-case harness |

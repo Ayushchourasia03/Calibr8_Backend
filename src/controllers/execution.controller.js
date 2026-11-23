@@ -130,10 +130,11 @@ export async function drainEvaluations(timeoutMs = 25_000) {
 const STALE_PROCESSING_MS = 15 * 60 * 1000;
 
 /** Marks abandoned PROCESSING submissions as ERROR. Safe on every instance. */
-export async function recoverStaleSubmissions(now = Date.now()) {
+export async function recoverStaleSubmissions(now = Date.now(), { userId } = {}) {
   try {
     const { count } = await prisma.submission.updateMany({
-      where: { status: "PROCESSING", createdAt: { lt: new Date(now - STALE_PROCESSING_MS) } },
+      // userId narrows the sweep (tests run against the real database).
+      where: { status: "PROCESSING", createdAt: { lt: new Date(now - STALE_PROCESSING_MS) }, ...(userId ? { userId } : {}) },
       data: { status: "ERROR" },
     });
     if (count) console.warn(`[Submissions] Marked ${count} abandoned PROCESSING submission(s) as ERROR.`);

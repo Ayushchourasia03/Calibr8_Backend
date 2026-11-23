@@ -1,8 +1,11 @@
-import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
+import { cleanupTestUsers } from "./helpers/dbCleanup.js"; // keep first: snapshots the DB before this test writes
+// Unique far-future year per run (non-leap, like 2099), so concurrent runs
+// never touch each other's daily_problems rows.
+const TEST_YEAR = 2103 + 4 * Math.floor(Math.random() * 200);
 // Integration tests: daily-problem completion, reward, streak and decay.
 //
 // Uses the database in DATABASE_URL, but only test users and daily_problems
-// rows dated in 2099 (cleaned up afterwards). The decay test uses dates in
+// rows dated in a per-run far-future year (cleaned up afterwards). The decay test uses dates in
 // the year 2000 so it can only match test users.
 import "dotenv/config";
 import test, { after, before } from "node:test";
@@ -13,11 +16,11 @@ const { default: prisma } = await import("../src/config/db.js");
 const { recordDailyProblemCompletion, resetBrokenStreaks, DAILY_PROBLEM_COINS } =
   await import("../src/services/dailyProblemService.js");
 
-const D1 = "2099-03-01";
-const D2 = "2099-03-02";
-const D3 = "2099-03-03";
-const D4 = "2099-03-04"; // deliberately has no daily problem
-const D5 = "2099-03-05";
+const D1 = `${TEST_YEAR}-03-01`;
+const D2 = `${TEST_YEAR}-03-02`;
+const D3 = `${TEST_YEAR}-03-03`;
+const D4 = `${TEST_YEAR}-03-04`; // deliberately has no daily problem
+const D5 = `${TEST_YEAR}-03-05`;
 const at = (istDate, time = "10:00:00") => new Date(`${istDate}T${time}+05:30`);
 
 const userIds = [];
@@ -47,7 +50,7 @@ before(async () => {
   assert.equal(problems.length, 2, "need 2 problems with testcases");
   [A, B] = problems.map((p) => p.id);
 
-  await prisma.dailyProblem.deleteMany({ where: { istDate: { startsWith: "2099-03-" } } });
+  await prisma.dailyProblem.deleteMany({ where: { istDate: { startsWith: `${TEST_YEAR}-03-` } } });
   await prisma.dailyProblem.createMany({
     data: [
       { istDate: D1, problemId: A },
@@ -59,8 +62,8 @@ before(async () => {
 });
 
 after(async () => {
-  await prisma.user.deleteMany({ where: { id: { in: userIds } } }).catch(() => {});
-  await prisma.dailyProblem.deleteMany({ where: { istDate: { startsWith: "2099-03-" } } }).catch(() => {});
+  await cleanupTestUsers({ id: { in: userIds } });
+  await prisma.dailyProblem.deleteMany({ where: { istDate: { startsWith: `${TEST_YEAR}-03-` } } }).catch(() => {});
   await prisma.$disconnect().catch(() => {});
 });
 
@@ -111,7 +114,7 @@ test("consecutive days extend the streak, a missed day resets it", async () => {
 });
 
 test("a submission made before midnight counts for that day", async () => {
-  const user = await createUser({ streak: 5, longestStreak: 5, lastStreakDate: at("2099-02-28", "20:00:00") });
+  const user = await createUser({ streak: 5, longestStreak: 5, lastStreakDate: at(`${TEST_YEAR}-02-28`, "20:00:00") });
   const r = await complete(user.id, A, at(D1, "23:59:59"));
   assert.equal(r.granted, true);
   assert.equal(r.streak, 6);

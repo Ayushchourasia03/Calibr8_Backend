@@ -1,4 +1,4 @@
-import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
+import { cleanupTestUsers } from "./helpers/dbCleanup.js"; // keep first: snapshots the DB before this test writes
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -227,7 +227,7 @@ try {
   console.log("ALL DAILY LOGIN REWARD INTEGRATION TESTS PASSED! 🎉");
 } finally {
   if (createdUserIds.length > 0) {
-    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } }).catch(() => {});
+    await cleanupTestUsers({ id: { in: createdUserIds } });
   }
   await prisma.$disconnect().catch(() => {});
   await new Promise((resolve) => server.close(resolve));

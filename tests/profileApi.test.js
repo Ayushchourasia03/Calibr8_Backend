@@ -1,4 +1,7 @@
-import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
+import { cleanupTestUsers } from "./helpers/dbCleanup.js"; // keep first: snapshots the DB before this test writes
+// Unique per run: tests share the real database, so a run only creates and
+// deletes rows carrying its own tag (concurrent runs cannot delete each other's).
+const RUN_TAG = `${process.pid.toString(36)}${Date.now().toString(36)}`;
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -9,7 +12,7 @@ const server = app.listen(0);
 const baseUrl = `http://127.0.0.1:${server.address().port}/api`;
 
 try {
-  const email = `profile-${randomUUID()}@example.com`;
+  const email = `profile-${RUN_TAG}-${randomUUID()}@example.com`;
   const registerResponse = await fetch(`${baseUrl}/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -104,7 +107,7 @@ try {
 
   console.log("Profile API, role removal, and retired admin route tests passed.");
 } finally {
-  await prisma.user.deleteMany({ where: { email: { startsWith: "profile-" } } }).catch(() => {});
+  await cleanupTestUsers({ email: { startsWith: `profile-${RUN_TAG}-` } });
   await prisma.$disconnect().catch(() => {});
   await new Promise((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));

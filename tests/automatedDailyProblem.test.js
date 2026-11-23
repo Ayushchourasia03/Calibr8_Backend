@@ -1,8 +1,11 @@
-import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
+import { cleanupTestUsers } from "./helpers/dbCleanup.js"; // keep first: snapshots the DB before this test writes
+// Unique far-future year per run (non-leap, like 2099), so concurrent runs
+// never touch each other's daily_problems rows.
+const TEST_YEAR = 2103 + 4 * Math.floor(Math.random() * 200);
 // Integration tests: daily problem assignment, selection, history and API.
 //
 // Uses the database in DATABASE_URL. Every row it writes is either a test
-// user or a daily_problems row dated in 2099, and only those are cleaned up.
+// user or a daily_problems row dated in a per-run far-future year, and only those are cleaned up.
 // It never creates, changes or deletes a real day's row (the old version did,
 // which reassigned live daily problems and cascade-deleted users' completions).
 import "dotenv/config";
@@ -23,7 +26,7 @@ const { signSessionToken } = await import("../src/utils/jwt.js");
 const signToken = (user) => signSessionToken({ id: user.id, tokenVersion: user.tokenVersion ?? 0 });
 const { default: app } = await import("../src/app.js");
 
-const TEST_DATE_PREFIX = "2099-";
+const TEST_DATE_PREFIX = `${TEST_YEAR}-`;
 const runId = randomUUID();
 const users = [];
 let server;
@@ -54,14 +57,14 @@ before(async () => {
 });
 
 after(async () => {
-  await prisma.user.deleteMany({ where: { id: { in: users.map((u) => u.id) } } }).catch(() => {});
+  await cleanupTestUsers({ id: { in: users.map((u) => u.id) } });
   await prisma.dailyProblem.deleteMany({ where: { istDate: { startsWith: TEST_DATE_PREFIX } } }).catch(() => {});
   await new Promise((resolve) => server.close(resolve));
   await prisma.$disconnect().catch(() => {});
 });
 
 test("concurrent ensure calls converge on one row", async () => {
-  const date = "2099-01-01";
+  const date = `${TEST_YEAR}-01-01`;
   const results = await Promise.all(Array.from({ length: 10 }, () => ensureDailyProblem(date)));
   assert.equal(new Set(results.map((r) => r.id)).size, 1);
   assert.equal(await prisma.dailyProblem.count({ where: { istDate: date } }), 1);
@@ -70,14 +73,14 @@ test("concurrent ensure calls converge on one row", async () => {
 });
 
 test("an assigned day never changes", async () => {
-  const first = await ensureDailyProblem("2099-01-01");
-  const again = await ensureDailyProblem("2099-01-01");
+  const first = await ensureDailyProblem(`${TEST_YEAR}-01-01`);
+  const again = await ensureDailyProblem(`${TEST_YEAR}-01-01`);
   assert.equal(again.id, first.id);
   assert.equal(again.problemId, first.problemId);
 });
 
 test("invalid dates are rejected", async () => {
-  await assert.rejects(ensureDailyProblem("2099-13-01"), { code: "INVALID_IST_DATE" });
+  await assert.rejects(ensureDailyProblem(`${TEST_YEAR}-13-01`), { code: "INVALID_IST_DATE" });
   await assert.rejects(ensureDailyProblem("tomorrow"), { code: "INVALID_IST_DATE" });
 });
 
@@ -85,7 +88,7 @@ test("consecutive days respect the cooldown", async () => {
   const window = Math.min(COOLDOWN_DAYS, eligibleIds.size - 1);
   const picks = [];
   for (let d = 1; d <= 20; d++) {
-    const row = await ensureDailyProblem(`2099-02-${String(d).padStart(2, "0")}`);
+    const row = await ensureDailyProblem(`${TEST_YEAR}-02-${String(d).padStart(2, "0")}`);
     assert.ok(eligibleIds.has(row.problemId));
     picks.push(row.problemId);
   }
@@ -97,12 +100,12 @@ test("consecutive days respect the cooldown", async () => {
 });
 
 test("history stops at today and reports the user's completions", async () => {
-  const now = new Date("2099-02-10T12:00:00+05:30");
-  const day = await ensureDailyProblem("2099-02-09");
+  const now = new Date(`${TEST_YEAR}-02-10T12:00:00+05:30`);
+  const day = await ensureDailyProblem(`${TEST_YEAR}-02-09`);
   await prisma.dailyProblemCompletion.create({ data: { userId: users[0].id, dailyProblemId: day.id } });
 
   const page = await getDailyProblemHistory({ userId: users[0].id, limit: 5, now });
-  assert.deepEqual(page.history.map((h) => h.istDate), ["2099-02-10", "2099-02-09", "2099-02-08", "2099-02-07", "2099-02-06"]);
+  assert.deepEqual(page.history.map((h) => h.istDate), [`${TEST_YEAR}-02-10`, `${TEST_YEAR}-02-09`, `${TEST_YEAR}-02-08`, `${TEST_YEAR}-02-07`, `${TEST_YEAR}-02-06`]);
   assert.equal(page.history[1].completed, true);
   assert.ok(page.history[1].completedAt instanceof Date);
   assert.equal(page.history[0].completed, false);

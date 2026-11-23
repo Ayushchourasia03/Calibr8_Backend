@@ -1,4 +1,3 @@
-import "./helpers/noDatabase.js"; // must stay first
 import assert from "node:assert/strict";
 
 process.env.NODE_ENV = "test";

@@ -1,4 +1,7 @@
-import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
+import { cleanupTestUsers } from "./helpers/dbCleanup.js"; // keep first: snapshots the DB before this test writes
+// Unique per run: tests share the real database, so a run only creates and
+// deletes rows carrying its own tag (concurrent runs cannot delete each other's).
+const RUN_TAG = `${process.pid.toString(36)}${Date.now().toString(36)}`;
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -17,7 +20,7 @@ try {
   // 1. Seed users with distinct scores and academic profiles
   const users = [
     {
-      id: `usr_rank_1_${randomUUID()}`,
+      id: `usr_rank_${RUN_TAG}_1_${randomUUID()}`,
       email: `rank1-${randomUUID()}@example.com`,
       name: "Top Scorer",
       score: 5000,
@@ -28,7 +31,7 @@ try {
       country: "India",
     },
     {
-      id: `usr_rank_2_${randomUUID()}`,
+      id: `usr_rank_${RUN_TAG}_2_${randomUUID()}`,
       email: `rank2-${randomUUID()}@example.com`,
       name: "Mid Scorer",
       score: 3000,
@@ -39,7 +42,7 @@ try {
       country: "India",
     },
     {
-      id: `usr_rank_3_${randomUUID()}`,
+      id: `usr_rank_${RUN_TAG}_3_${randomUUID()}`,
       email: `rank3-${randomUUID()}@example.com`,
       name: "Other College Scorer",
       score: 4000,
@@ -97,7 +100,7 @@ try {
   assert.equal((await fetch(`${baseUrl}/rankings?scope=bogus`)).status, 400);
 
   // Signed-in viewer
-  const viewerEmail = `rank-viewer-${randomUUID()}@example.com`;
+  const viewerEmail = `rank-viewer-${RUN_TAG}-${randomUUID()}@example.com`;
   const viewer = await (await fetch(`${baseUrl}/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -150,8 +153,8 @@ try {
 
   console.log("✔ Rankings & Leaderboard tests passed successfully!");
 } finally {
-  await prisma.user.deleteMany({ where: { id: { startsWith: "usr_rank_" } } }).catch(() => {});
-  await prisma.user.deleteMany({ where: { email: { startsWith: "rank-viewer-" } } }).catch(() => {});
+  await cleanupTestUsers({ id: { startsWith: `usr_rank_${RUN_TAG}_` } });
+  await cleanupTestUsers({ email: { startsWith: `rank-viewer-${RUN_TAG}-` } });
   await prisma.$disconnect().catch(() => {});
   await new Promise((resolve) => server.close(resolve));
 }

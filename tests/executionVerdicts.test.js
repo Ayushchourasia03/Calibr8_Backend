@@ -1,4 +1,7 @@
-import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
+import { cleanupTestUsers } from "./helpers/dbCleanup.js"; // keep first: snapshots the DB before this test writes
+// Unique per run: tests share the real database, so a run only creates and
+// deletes rows carrying its own tag (concurrent runs cannot delete each other's).
+const RUN_TAG = `${process.pid.toString(36)}${Date.now().toString(36)}`;
 import "dotenv/config";
 import assert from "node:assert/strict";
 
@@ -77,16 +80,16 @@ const signToken = (user) => signSessionToken({ id: user.id, tokenVersion: user.t
 
 const server = app.listen(0);
 const baseUrl = `http://127.0.0.1:${server.address().port}/api`;
-const token = signToken({ id: "user-exec-1", userId: "user-exec-1", email: "runner@calibr8.test" });
+const token = signToken({ id: `user-exec-${RUN_TAG}`, userId: `user-exec-${RUN_TAG}`, email: `runner-${RUN_TAG}@calibr8.test` });
 
 try {
   // Auth requires the token's user to exist (deleted/unknown users get 401).
   await prisma.user.upsert({
-    where: { id: "user-exec-1" },
+    where: { id: `user-exec-${RUN_TAG}` },
     update: {},
     create: {
-      id: "user-exec-1",
-      email: "runner@calibr8.test",
+      id: `user-exec-${RUN_TAG}`,
+      email: `runner-${RUN_TAG}@calibr8.test`,
       passwordHash: "test-only-not-a-real-hash",
       name: "Execution Verdicts Test",
     },
@@ -375,7 +378,7 @@ def twoSum(nums, target):
   console.log("=== All Execution Verdicts Tests Passed Successfully ===");
 } finally {
   globalThis.fetch = originalFetch;
-  await prisma.user.deleteMany({ where: { id: "user-exec-1" } }).catch(() => {});
+  await cleanupTestUsers({ id: `user-exec-${RUN_TAG}` });
   await prisma.$disconnect().catch(() => {});
   await new Promise((resolve) => server.close(resolve));
 }

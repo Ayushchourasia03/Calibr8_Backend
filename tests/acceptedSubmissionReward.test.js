@@ -1,4 +1,4 @@
-import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
+import { cleanupTestUsers } from "./helpers/dbCleanup.js"; // keep first: snapshots the DB before this test writes
 import assert from "node:assert/strict";
 import { applyAcceptedSubmissionReward } from "../src/utils/acceptedSubmissionReward.js";
 
@@ -159,7 +159,7 @@ if (process.env.DATABASE_URL) {
     assert.equal(fallbackDuplicateReward.stats.coins, 120);
   } finally {
     await fallbackPrisma.userProblemProgress.deleteMany({ where: { userId: testUserId } }).catch(() => {});
-    await fallbackPrisma.user.deleteMany({ where: { id: testUserId } }).catch(() => {});
+    await cleanupTestUsers({ id: testUserId });
     if (createdProblemId) {
       await fallbackPrisma.problem.deleteMany({ where: { id: createdProblemId } }).catch(() => {});
     }

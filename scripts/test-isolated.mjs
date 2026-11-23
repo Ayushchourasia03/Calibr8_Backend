@@ -55,6 +55,12 @@ const run = (args, label) => {
   }
 };
 
+const SQL_MANAGED_MIGRATIONS = [
+  "20261119000000_unique_daily_login_tx",
+  "20261123000000_daily_problem_hardening",
+  "20261124000000_session_token_version",
+];
+
 const args = process.argv.slice(2);
 if (args.includes("--setup")) {
   const admin = new pg.Client({ connectionString: sourceUrl });
@@ -65,6 +71,13 @@ if (args.includes("--setup")) {
   console.log(`Test database '${testDb}' ${exists.rowCount ? "exists" : "created"}.`);
   const prisma = path.resolve("node_modules/prisma/build/index.js");
   run([prisma, "db", "push", "--skip-generate", "--accept-data-loss"], "prisma db push (test database)");
+  // Objects Prisma cannot express (partial unique indexes, FK RESTRICT): idempotent SQL.
+  for (const migration of SQL_MANAGED_MIGRATIONS) {
+    run(
+      [prisma, "db", "execute", "--file", `prisma/migrations/${migration}/migration.sql`, "--schema", "prisma/schema.prisma"],
+      `apply ${migration}`,
+    );
+  }
   run(["prisma/seed.js"], "seed topics and themes");
   run(["scripts/seedProblems.js"], "seed problems");
   run(["scripts/upload-study.js"], "seed study material");

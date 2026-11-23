@@ -1,4 +1,7 @@
-import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
+import { cleanupTestUsers } from "./helpers/dbCleanup.js"; // keep first: snapshots the DB before this test writes
+// Unique per run: tests share the real database, so a run only creates and
+// deletes rows carrying its own tag (concurrent runs cannot delete each other's).
+const RUN_TAG = `${process.pid.toString(36)}${Date.now().toString(36)}`;
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -23,7 +26,7 @@ const post = (path, body, token) =>
 const me = (token) => fetch(`${baseUrl}/auth/me`, { headers: json(token) });
 
 try {
-  const email = `session-sec-${randomUUID()}@example.com`;
+  const email = `session-sec-${RUN_TAG}-${randomUUID()}@example.com`;
   const password = "SessionPassword123";
   const reg = await (await post("/auth/register", { name: "Session Tester", email, password })).json();
   const tokenA = reg.token;
@@ -132,7 +135,7 @@ try {
     const fresh = await prisma.submission.create({
       data: { problemId: problem.id, userId: user.id, language: "python", code: "x", status: "PROCESSING" },
     });
-    await recoverStaleSubmissions();
+    await recoverStaleSubmissions(Date.now(), { userId: user.id });
     assert.equal((await prisma.submission.findUnique({ where: { id: stale.id } })).status, "ERROR");
     assert.equal((await prisma.submission.findUnique({ where: { id: fresh.id } })).status, "PROCESSING");
   }
@@ -147,7 +150,7 @@ try {
 
   console.log("✔ Session & data-integrity hardening tests passed");
 } finally {
-  await prisma.user.deleteMany({ where: { email: { startsWith: "session-sec-" } } }).catch(() => {});
+  await cleanupTestUsers({ email: { startsWith: `session-sec-${RUN_TAG}-` } });
   await closeComplexityPool();
   await prisma.$disconnect().catch(() => {});
   await new Promise((resolve) => server.close(resolve));

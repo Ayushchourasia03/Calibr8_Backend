@@ -1,4 +1,7 @@
-import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
+import { cleanupTestUsers } from "./helpers/dbCleanup.js"; // keep first: snapshots the DB before this test writes
+// Unique per run: tests share the real database, so a run only creates and
+// deletes rows carrying its own tag (concurrent runs cannot delete each other's).
+const RUN_TAG = `${process.pid.toString(36)}${Date.now().toString(36)}`;
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -14,7 +17,7 @@ async function registerAndGetToken() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: "Theme Purchase Test",
-      email: `theme-${randomUUID()}@example.test`,
+      email: `theme-${RUN_TAG}-${randomUUID()}@example.test`,
       password: "theme-purchase-test-password",
     }),
   });
@@ -108,7 +111,7 @@ try {
 
   console.log("Theme purchase persistence tests passed.");
 } finally {
-  await prisma.user.deleteMany({ where: { email: { startsWith: "theme-" } } }).catch(() => {});
+  await cleanupTestUsers({ email: { startsWith: `theme-${RUN_TAG}-` } });
   await prisma.$disconnect().catch(() => {});
   await new Promise((resolve) => server.close(resolve));
 }

@@ -1,4 +1,7 @@
-import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
+import { cleanupTestUsers } from "./helpers/dbCleanup.js"; // keep first: snapshots the DB before this test writes
+// Unique per run: tests share the real database, so a run only creates and
+// deletes rows carrying its own tag (concurrent runs cannot delete each other's).
+const RUN_TAG = `${process.pid.toString(36)}${Date.now().toString(36)}`;
 import "dotenv/config";
 import assert from "node:assert/strict";
 
@@ -132,7 +135,7 @@ try {
   const reg = await (await fetch(`${baseUrl}/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: "Endpoint Tester", email: `problem-endpoints-${Date.now()}@example.com`, password: "EndpointTester123" }),
+    body: JSON.stringify({ name: "Endpoint Tester", email: `problem-endpoints-${RUN_TAG}-${Date.now()}@example.com`, password: "EndpointTester123" }),
   })).json();
   const authJson = { "Content-Type": "application/json", Authorization: `Bearer ${reg.token}` };
 
@@ -170,7 +173,7 @@ try {
   console.log("✔ Problem Endpoints & Templates tests passed successfully!");
 } finally {
   globalThis.fetch = originalFetch;
-  await prisma.user.deleteMany({ where: { email: { startsWith: "problem-endpoints-" } } }).catch(() => {});
+  await cleanupTestUsers({ email: { startsWith: `problem-endpoints-${RUN_TAG}-` } });
   await prisma.$disconnect().catch(() => {});
   await new Promise((resolve) => server.close(resolve));
 }

@@ -1,4 +1,7 @@
-import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
+import { cleanupTestUsers } from "./helpers/dbCleanup.js"; // keep first: snapshots the DB before this test writes
+// Unique per run: tests share the real database, so a run only creates and
+// deletes rows carrying its own tag (concurrent runs cannot delete each other's).
+const RUN_TAG = `${process.pid.toString(36)}${Date.now().toString(36)}`;
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -20,7 +23,7 @@ try {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: "Onboarding Test",
-      email: `onboarding-${randomUUID()}@example.com`,
+      email: `onboarding-${RUN_TAG}-${randomUUID()}@example.com`,
       password: "onboarding-test-password",
     }),
   });
@@ -87,7 +90,7 @@ try {
 
   console.log("Onboarding topics, calibration, and language APIs passed.");
 } finally {
-  await prisma.user.deleteMany({ where: { email: { startsWith: "onboarding-" } } }).catch(() => {});
+  await cleanupTestUsers({ email: { startsWith: `onboarding-${RUN_TAG}-` } });
   await prisma.$disconnect().catch(() => {});
   await new Promise((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));

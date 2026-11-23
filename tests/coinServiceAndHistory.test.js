@@ -1,4 +1,7 @@
-import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
+import { cleanupTestUsers } from "./helpers/dbCleanup.js"; // keep first: snapshots the DB before this test writes
+// Unique per run: tests share the real database, so a run only creates and
+// deletes rows carrying its own tag (concurrent runs cannot delete each other's).
+const RUN_TAG = `${process.pid.toString(36)}${Date.now().toString(36)}`;
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -18,7 +21,7 @@ try {
   console.log("=== Running Coin Service, Balance & History Test Suite ===");
 
   // 1. Setup user
-  const email = `coin-audit-${randomUUID()}@example.com`;
+  const email = `coin-audit-${RUN_TAG}-${randomUUID()}@example.com`;
   const regRes = await fetch(`${baseUrl}/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -101,7 +104,7 @@ try {
 
   console.log("✔ Coin Service, Balance & History tests passed successfully!");
 } finally {
-  await prisma.user.deleteMany({ where: { email: { startsWith: "coin-audit-" } } }).catch(() => {});
+  await cleanupTestUsers({ email: { startsWith: `coin-audit-${RUN_TAG}-` } });
   await prisma.$disconnect().catch(() => {});
   await new Promise((resolve) => server.close(resolve));
 }

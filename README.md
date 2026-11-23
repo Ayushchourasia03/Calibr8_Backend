@@ -180,10 +180,20 @@ The server will start on `http://localhost:3000`. Navigate to `http://localhost:
 
 ## 🧪 Testing Suite
 
-Calibr8 includes an automated test suite using Node.js's native test runner (`node --test`). Unit tests (`npm run test:unit`) run without a database; integration tests connect to the configured PostgreSQL / Neon `DATABASE_URL`.
+Calibr8 includes an automated test suite using Node.js's native test runner (`node --test`). Unit tests (`npm run test:unit`) run without a database; integration tests use the `DATABASE_URL` and `CODEBOX_URL` from `.env` (the real database and judge).
+
+`npm test` runs **every** test file: `tests/*.test.js` and `tests/*.e2e.js`. The CodeBox comparison (`tests/codeboxComparison.e2e.js`) sends about 140 executions to the real CodeBox, one at a time; its local-CodeBox target only runs when `LOCAL_CODEBOX_URL` is set.
+
+Because tests share the real database, every test that writes to it **removes everything it wrote**:
+
+- It imports [`tests/helpers/dbCleanup.js`](tests/helpers/dbCleanup.js) **first**. The helper snapshots the database when the file starts.
+- In its cleanup, it calls `cleanupTestUsers(where)` for the users it created. That deletes the users with all their rows (cascade) and their `revoked_tokens`, restores `problems.solvedCount` (and `updatedAt`), and deletes a today's daily-problem row the test created.
+- It only creates rows tagged with a per-run id (emails, user ids, and a per-run far-future year for daily problems), so concurrent runs cannot delete each other's data.
+
+New tests must follow the same rules: import the helper first, clean up through it, and never clean up by a bare prefix or a fixed id or date.
 
 ```bash
-# Run all 38 test suites (full test suite)
+# Run every test file (unit, integration and the CodeBox e2e)
 npm test
 
 # Run isolated unit tests

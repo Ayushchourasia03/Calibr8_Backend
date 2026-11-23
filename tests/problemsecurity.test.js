@@ -1,4 +1,7 @@
-import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
+import { cleanupTestUsers } from "./helpers/dbCleanup.js"; // keep first: snapshots the DB before this test writes
+// Unique per run: tests share the real database, so a run only creates and
+// deletes rows carrying its own tag (concurrent runs cannot delete each other's).
+const RUN_TAG = `${process.pid.toString(36)}${Date.now().toString(36)}`;
 import "dotenv/config";
 import assert from "node:assert";
 
@@ -97,7 +100,7 @@ async function runTests() {
   const regRes = await fetch(`${baseUrl}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: "Exec Security", email: `exec-security-${Date.now()}@example.com`, password: "ExecSecurity123" }),
+    body: JSON.stringify({ name: "Exec Security", email: `exec-security-${RUN_TAG}-${Date.now()}@example.com`, password: "ExecSecurity123" }),
   });
   const { token: execToken } = await regRes.json();
   const authJson = { "Content-Type": "application/json", Authorization: `Bearer ${execToken}` };
@@ -244,7 +247,7 @@ async function runTests() {
     console.log("\nALL EXECUTION & REGRESSION TESTS PASSED! 🎉");
   } finally {
     globalThis.fetch = originalFetch;
-    await prisma.user.deleteMany({ where: { email: { startsWith: "exec-security-" } } }).catch(() => {});
+    await cleanupTestUsers({ email: { startsWith: `exec-security-${RUN_TAG}-` } });
     await prisma.$disconnect().catch(() => {});
     await new Promise((resolve) => server.close(resolve));
   }

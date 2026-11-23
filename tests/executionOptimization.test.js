@@ -1,4 +1,4 @@
-import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
+import { cleanupTestUsers } from "./helpers/dbCleanup.js"; // keep first: snapshots the DB before this test writes
 import "dotenv/config";
 import assert from "node:assert/strict";
 import {
@@ -402,9 +402,7 @@ async function runOptimizationTests() {
     console.log("=======================================================\n");
   } finally {
     globalThis.fetch = originalFetch;
-    await prisma.user
-      .deleteMany({ where: { id: { in: [testUser.id, otherUser.id] } } })
-      .catch(() => {});
+    await cleanupTestUsers({ id: { in: [testUser.id, otherUser.id] } });
     await prisma.$disconnect().catch(() => {});
     await new Promise((resolve) => server.close(resolve));
   }

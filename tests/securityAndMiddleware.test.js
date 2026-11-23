@@ -1,4 +1,3 @@
-import "./helpers/noDatabase.js"; // must stay first
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { createRateLimiter, inFlightLimiter } from "../src/middlewares/rateLimit.middleware.js";

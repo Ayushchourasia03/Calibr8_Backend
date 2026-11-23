@@ -14,7 +14,8 @@
 //   COMPARE_LANGS=cpp,java        only these languages (default: all five)
 //   COMPARE_TARGETS=vps,local     only these targets (default: both)
 //
-// Not part of `npm test` on purpose: it sends ~140 executions to real servers.
+// Part of `npm test`: it sends ~140 executions to the real CodeBox (VPS), one at a
+// time. The local target only runs when LOCAL_CODEBOX_URL (or COMPARE_TARGETS) is set.
 //
 // What is covered, for C++, C, Java, Python and JavaScript:
 //   Run path (executeCodeBatch, what the Run button uses)
@@ -198,9 +199,14 @@ async function runWorker() {
     python: (n, body) => `if int(a, 2) == ${n}:\n            ${body}`,
     javascript: (n, body) => `if (parseInt(a, 2) === ${n}) { ${body} }`,
   };
+  const usesHarness = (lang) =>
+    (lang === "cpp" || lang === "c") && String(process.env.CODEBOX_MULTICASE_ENABLED ?? "true").toLowerCase() !== "false";
   const SUBMIT_SCENARIOS = [
     { id: "submit-ok", label: "Submit: accepted (20 cases)", trigger: null, expect: { status: "ACCEPTED", tier: "Tier 3 (Optimal)", passed: 20, reported: 20 } },
-    { id: "submit-tle", label: "Submit: TLE in tier 1 (#3)", trigger: [4, "tle"], expect: { status: "TIME_LIMIT_EXCEEDED", tier: "Tier 0 (Failed)", passed: 6, reported: 7 } },
+    // C/C++ are judged by the multi-case harness, which stops at the first
+    // definitive TLE (later cases are not run, see multiCaseExecution.test.js);
+    // the batch path used by the other languages runs the whole tier.
+    { id: "submit-tle", label: "Submit: TLE in tier 1 (#3)", trigger: [4, "tle"], expect: (lang) => ({ status: "TIME_LIMIT_EXCEEDED", tier: "Tier 0 (Failed)", ...(usesHarness(lang) ? { passed: 3, reported: 4 } : { passed: 6, reported: 7 }) }) },
     { id: "submit-crash", label: "Submit: crash in tier 2 (#9)", trigger: [10, "runtime"], expect: { status: "RUNTIME_ERROR", tier: "Tier 1 (Brute Force)", passed: 13, reported: 14 } },
     { id: "submit-wa", label: "Submit: wrong answer tier 3 (#16)", trigger: [17, "wrong"], expect: { status: "WRONG_ANSWER", tier: "Tier 2 (Better)", passed: 19, reported: 20 } },
   ];
@@ -246,9 +252,10 @@ async function runWorker() {
     }
 
     for (const sc of SUBMIT_SCENARIOS) {
+      const expect = typeof sc.expect === "function" ? sc.expect(lang) : sc.expect;
       const record = {
         lang, kind: "submit", id: sc.id, label: sc.label, cases: tiered.length,
-        expected: `${sc.expect.status} / ${sc.expect.tier} / ${sc.expect.passed}/20`,
+        expected: `${expect.status} / ${expect.tier} / ${expect.passed}/20`,
       };
       try {
         const pre = sc.trigger ? triggerPre[lang](sc.trigger[0], sol.pre[sc.trigger[1]]) : "";
@@ -261,8 +268,8 @@ async function runWorker() {
         record.firstFailure = out.firstFailure ? `#${out.firstFailure.testIndex} ${out.firstFailure.status}` : "-";
         record.maxCpuMs = out.maxTimeMs;
         record.maxMemKb = out.maxMemoryKb;
-        record.ok = out.status === sc.expect.status && out.tierReached === sc.expect.tier &&
-          out.passedCount === sc.expect.passed && out.results.length === sc.expect.reported;
+        record.ok = out.status === expect.status && out.tierReached === expect.tier &&
+          out.passedCount === expect.passed && out.results.length === expect.reported;
       } catch (err) {
         record.ok = false;
         record.error = `${err.code || ""} ${err.message}`.trim();
@@ -287,7 +294,9 @@ function targets() {
       token: process.env.LOCAL_CODEBOX_TOKEN || "local-dev-token",
     },
   ];
-  const wanted = (process.env.COMPARE_TARGETS || "vps,local").split(",");
+  // The local CodeBox is a developer-only server: compared only when configured.
+  const defaultTargets = process.env.LOCAL_CODEBOX_URL ? "vps,local" : "vps";
+  const wanted = (process.env.COMPARE_TARGETS || defaultTargets).split(",");
   return all.filter((t) => wanted.includes(t.key));
 }
 
@@ -412,14 +421,15 @@ if (process.argv.includes("--worker")) {
   const results = [];
 
   for (const target of targets()) {
-    test(`${target.label} CodeBox (${target.url || "not configured"}): every scenario returns the expected verdict`, { timeout: 30 * 60 * 1000 }, async (t) => {
+    // The server address is kept out of test names and logs.
+    test(`${target.label} CodeBox (${target.url ? "configured" : "not configured"}): every scenario returns the expected verdict`, { timeout: 30 * 60 * 1000 }, async (t) => {
       if (!target.url || !target.token) return t.skip(`${target.label} CodeBox URL/token not configured`);
       const down = await healthCheck(target.url);
       if (down) {
         const hint = target.key === "local" ? " (start it: cd ../codebox && docker compose -f docker-compose.local.yml up -d)" : "";
         return t.skip(`${target.label} CodeBox unreachable: ${down}${hint}`);
       }
-      process.stderr.write(`\n▶ ${target.label}: ${target.url}\n`);
+      process.stderr.write(`\n▶ ${target.label} CodeBox\n`);
       const records = await runTarget(target);
       results.push({ label: target.label, records });
       printDetails(target.label, records);

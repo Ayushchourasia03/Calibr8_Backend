@@ -1,5 +1,4 @@
 // DB-free tests for the production-audit fixes (BACKEND_PRODUCTION_AUDIT.md).
-import "./helpers/noDatabase.js"; // must stay first
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { areOutputsEqual, normalizeOutput } from "../src/utils/outputComparator.js";

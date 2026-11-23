@@ -1,4 +1,3 @@
-import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
 import assert from "node:assert/strict";
 import app from "../src/app.js";
 
