@@ -3,11 +3,12 @@ import {
   getISTDateString,
   getYesterdayIST,
   computeDailyProblemStreak,
-  nextStreak,
   calcLoginReward,
 } from "../src/services/streakService.js";
 
 console.log("Running Streak Service Unit Tests (FR-04 & FR-05)...");
+
+const nextStreak = (last, today, cur) => computeDailyProblemStreak(last, today, cur).newStreak;
 
 // U1: First Daily Problem completion
 const u1 = nextStreak(null, "2026-11-07", 0);
@@ -29,15 +30,11 @@ const u4 = nextStreak("2026-11-05", "2026-11-07", 5);
 assert.strictEqual(u4, 1, "U4 failed: missed day must reset streak to 1");
 console.log("✔ U4: Missed day resets streak to 1 (5 -> 1)");
 
-// U5: Object form nextStreak
-const u5 = nextStreak({
-  lastStreakDate: "2026-11-06",
-  todayISTDate: "2026-11-07",
-  currentStreak: 2,
-});
+// U5: A stored timestamp is converted to its IST date (18:45 UTC = next day IST)
+const u5 = computeDailyProblemStreak(new Date("2026-11-05T18:45:00.000Z"), "2026-11-07", 2);
 assert.strictEqual(u5.newStreak, 3);
 assert.strictEqual(u5.isNewDay, true);
-console.log("✔ U5: Object parameter structure supported for nextStreak");
+console.log("✔ U5: Timestamp last-streak dates are read as IST dates");
 
 // U6: Login reward calculation (FR-05: +1 coin, no streak modification)
 const u6a = calcLoginReward({ lastLoginISTDate: "2026-11-06" }, "2026-11-07");

@@ -74,7 +74,18 @@ try {
     } catch (e) {
       if (e.code === 'P2002') {
         console.log(`⚠️  ${slug} exists, deleting and re-creating...`);
-        await prisma.problem.delete({ where: { slug } });
+        try {
+          await prisma.problem.delete({ where: { slug } });
+        } catch (deleteErr) {
+          // daily_problems references it (ON DELETE RESTRICT): deleting would
+          // erase daily history and users' completions.
+          if (deleteErr.code !== 'P2003') throw deleteErr;
+          console.error(
+            `❌ Skipped ${slug}: it has been a daily problem, so it cannot be deleted. ` +
+              `Update it in place with: node scripts/upload-problem.js <file> --update (or --testcases-only)`,
+          );
+          continue;
+        }
         const created = await prisma.problem.create({
           data: createData,
           include: includeCounts,

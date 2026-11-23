@@ -1,13 +1,9 @@
 // src/services/coinService.js
-// Sole authority for updating User.coins and recording CoinTransactions.
+// Coin balance, login reward, theme debits and the coin audit log.
+// The daily-problem reward lives in dailyProblemService.js.
 
 import prisma from "../config/db.js";
 import { getISTDateString, toISTDateString } from "./streakService.js";
-import {
-  ensureDailyProblem,
-  completeDailyProblemSubmission,
-  getDailyProblemWithUserStatus,
-} from "./dailyProblemService.js";
 
 function safeNumber(v, fallback = 0) {
   const n = Number(v);
@@ -140,37 +136,6 @@ export async function grantDailyLoginReward(userId) {
 }
 
 /**
- * Grants daily problem reward (+2 coins, +1 streak) by delegating to
- * the authoritative completeDailyProblemSubmission transaction (FR-03, FR-04, FR-06).
- */
-export async function grantDailyProblemReward(
-  userId,
-  problemId,
-  submissionIdOrDate = null,
-) {
-  let todayIST = getISTDateString(new Date());
-  let submissionId = null;
-
-  if (
-    submissionIdOrDate instanceof Date ||
-    (typeof submissionIdOrDate === "string" &&
-      /^\d{4}-\d{2}-\d{2}$/.test(submissionIdOrDate))
-  ) {
-    todayIST = getISTDateString(submissionIdOrDate);
-  } else if (typeof submissionIdOrDate === "string") {
-    submissionId = submissionIdOrDate;
-  }
-
-  return await completeDailyProblemSubmission({
-    userId,
-    problemId,
-    submissionId,
-    isAccepted: true,
-    targetISTDate: todayIST,
-  });
-}
-
-/**
  * Returns coin balance and streak details for user.
  */
 export async function getBalance(userId) {
@@ -223,16 +188,6 @@ export async function getCoinHistory(userId, { limit = 20, offset = 0 } = {}) {
   });
 
   return { transactions };
-}
-
-/**
- * Returns today's active DailyProblem, problem metadata, and user's claim status.
- */
-export async function getDailyProblem(
-  istDate = getISTDateString(),
-  userId = null,
-) {
-  return await getDailyProblemWithUserStatus(istDate, userId);
 }
 
 /**

@@ -1,71 +1,63 @@
 /**
  * Streak Service - Calibr8
- * Authoritative Asia/Kolkata (IST) Timezone calculations for Daily Problem & Login Rewards.
- * Day boundary starts at 00:00 IST.
+ * Authoritative Asia/Kolkata (IST) date helpers for the Daily Problem and
+ * login rewards. A day starts at 00:00 IST. IST is a fixed UTC+05:30 offset
+ * (no daylight saving), so plain arithmetic is exact and needs no ICU data.
  */
 
-// Constructing Intl.DateTimeFormat is expensive; build it once and reuse.
-let istDateFormatter = null;
-function getISTDateFormatter() {
-  if (!istDateFormatter) {
-    istDateFormatter = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Kolkata",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
+const IST_OFFSET_MS = 330 * 60 * 1000;
+const IST_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function toValidDate(value) {
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+  if (typeof value === "string" || typeof value === "number") {
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
   }
-  return istDateFormatter;
+  return null;
 }
 
+/** IST calendar date ("YYYY-MM-DD") of an instant. Invalid input means "now". */
 export function getISTDateString(date = new Date()) {
-  try {
-    let d = date;
-    if (d === null || d === undefined || d === "") d = new Date();
-    else if (typeof d === "string" || typeof d === "number") d = new Date(d);
-    if (!(d instanceof Date) || isNaN(d.getTime())) d = new Date();
-    return getISTDateFormatter().format(d);
-  } catch {
-    // Fallback: manual offset UTC+5:30
-    const now = new Date();
-    const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
-    const y = ist.getUTCFullYear();
-    const m = String(ist.getUTCMonth() + 1).padStart(2, "0");
-    const dd = String(ist.getUTCDate()).padStart(2, "0");
-    return `${y}-${m}-${dd}`;
-  }
+  const d = toValidDate(date) ?? new Date();
+  return new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
+/** True for a real calendar date written as "YYYY-MM-DD". */
+export function isISTDateString(value) {
+  if (typeof value !== "string" || !IST_DATE_RE.test(value)) return false;
+  const d = new Date(`${value}T00:00:00.000Z`);
+  return !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+}
+
+/** IST date of a stored value; "YYYY-MM-DD" strings pass through. */
 export function toISTDateString(value) {
   if (!value) return null;
-  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-  try {
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return null;
-    return getISTDateString(d);
-  } catch {
-    return null;
-  }
+  if (typeof value === "string" && IST_DATE_RE.test(value)) return value;
+  const d = toValidDate(value);
+  return d ? getISTDateString(d) : null;
 }
 
 export function addDaysToISTDate(istDateString, days) {
-  if (!istDateString || typeof istDateString !== "string") istDateString = getISTDateString(new Date());
-  const [y, m, d] = istDateString.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  if (!isISTDateString(istDateString)) istDateString = getISTDateString();
+  const dt = new Date(`${istDateString}T00:00:00.000Z`);
   dt.setUTCDate(dt.getUTCDate() + days);
-  const yy = dt.getUTCFullYear();
-  const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(dt.getUTCDate()).padStart(2, "0");
-  return `${yy}-${mm}-${dd}`;
+  return dt.toISOString().slice(0, 10);
 }
-export const addDaysToIST = addDaysToISTDate;
-export const addDays = addDaysToISTDate;
 
 export function getYesterdayIST(todayISTDate) {
-  if (!todayISTDate || typeof todayISTDate !== "string") todayISTDate = getISTDateString(new Date());
   return addDaysToISTDate(todayISTDate, -1);
 }
-export const getYesterdayISTDate = getYesterdayIST;
+
+/** The instant 00:00 IST starts the given IST date. */
+export function startOfISTDay(istDateString) {
+  return new Date(Date.parse(`${istDateString}T00:00:00.000Z`) - IST_OFFSET_MS);
+}
+
+/** The next 00:00 IST strictly after `now`. */
+export function nextISTMidnight(now = new Date()) {
+  return startOfISTDay(addDaysToISTDate(getISTDateString(now), 1));
+}
 
 /**
  * Computes Daily Problem streak advancement according to FR-04:
@@ -77,7 +69,6 @@ export const getYesterdayISTDate = getYesterdayIST;
 export function computeDailyProblemStreak(lastStreakDate, todayIST = getISTDateString(), currentStreak = 0) {
   const lastIST = toISTDateString(lastStreakDate);
   const cur = Number(currentStreak) || 0;
-  const yesterdayIST = getYesterdayIST(todayIST);
 
   if (!lastIST) {
     return { newStreak: 1, isNewDay: true };
@@ -85,29 +76,10 @@ export function computeDailyProblemStreak(lastStreakDate, todayIST = getISTDateS
   if (lastIST === todayIST) {
     return { newStreak: cur, isNewDay: false };
   }
-  if (lastIST === yesterdayIST) {
+  if (lastIST === getYesterdayIST(todayIST)) {
     return { newStreak: cur + 1, isNewDay: true };
   }
   return { newStreak: 1, isNewDay: true };
-}
-
-/**
- * Supports both:
- *  nextStreak("2026-11-06", "2026-11-07", 3) -> 4 (number)
- *  nextStreak({ lastStreakDate, currentStreak, todayISTDate }) -> { newStreak, isNewDay } (object)
- */
-export function nextStreak(a, b, c) {
-  if (a !== null && typeof a === "object" && !(a instanceof Date) && !Array.isArray(a)) {
-    const lastIST = toISTDateString(a.lastStreakDate ?? a.lastDate ?? null);
-    const todayIST = a.todayISTDate || a.todayIST || getISTDateString(new Date());
-    const cur = a.currentStreak ?? a.streak ?? 0;
-    return computeDailyProblemStreak(lastIST, todayIST, cur);
-  }
-  const lastIST = toISTDateString(a);
-  const todayIST = typeof b === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b) ? b : getISTDateString(b || new Date());
-  const streakVal = typeof c === "number" ? c : (typeof b === "number" ? b : 0);
-  const res = computeDailyProblemStreak(lastIST, todayIST, streakVal);
-  return res.newStreak;
 }
 
 /**

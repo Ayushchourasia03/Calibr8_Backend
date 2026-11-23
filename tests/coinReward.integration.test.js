@@ -2,8 +2,12 @@
 // Calibr8: Daily Problem, Streak & Coin Reward System Integration Tests
 
 import prisma from "../src/config/db.js";
-import { grantDailyLoginReward, grantDailyProblemReward } from "../src/services/coinService.js";
+import { grantDailyLoginReward } from "../src/services/coinService.js";
+import { ensureDailyProblem, recordDailyProblemCompletion } from "../src/services/dailyProblemService.js";
 import { getISTDateString, getYesterdayIST } from "../src/services/streakService.js";
+
+const grantDailyProblemReward = (userId, problemId, submissionId) =>
+  recordDailyProblemCompletion({ userId, problemId, submissionId });
 
 function addDaysToISTDate(istDateString, days) {
   const [y, m, d] = istDateString.split("-").map(Number);
@@ -118,30 +122,9 @@ async function main() {
 
     // --- Test 5: Daily problem solve grants +2 coins and +1 streak (FR-03, FR-04, FR-06) ---
     console.log("\n[Test 5] Daily problem +2 and streak increment");
-    let todayDaily = await prisma.dailyProblem.findUnique({
-      where: { istDate: todayIST },
-      include: { problem: true },
-    });
-    if (!todayDaily) {
-      let anyProblem = await prisma.problem.findFirst();
-      if (!anyProblem) {
-        anyProblem = await prisma.problem.create({
-          data: {
-            slug: "two-sum",
-            title: "Two Sum",
-            difficulty: "Easy",
-            description: "Find two numbers",
-            tags: ["Array"],
-          },
-        });
-      }
-      todayDaily = await prisma.dailyProblem.upsert({
-        where: { istDate: todayIST },
-        update: { problemId: anyProblem.id },
-        create: { istDate: todayIST, problemId: anyProblem.id },
-        include: { problem: true },
-      });
-    }
+    // Today's real daily problem (created the same way the server would if
+    // missing); never reassigned by this test.
+    const todayDaily = await ensureDailyProblem(todayIST);
     const targetProblemId = todayDaily.problemId;
 
     const beforeCoins = (await getUser(userId)).coins;

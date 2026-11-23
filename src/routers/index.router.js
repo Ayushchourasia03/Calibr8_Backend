@@ -12,11 +12,7 @@ import executionRouter from "./execution.router.js";
 import themeRouter from "./theme.router.js";
 import rankingRouter from "./ranking.router.js";
 import coinRouter from "./coin.router.js";
-import {
-  getTodayDailyProblem,
-  getDailyProblemHistoryController,
-} from "../controllers/coin.controller.js";
-import { optionalAuth } from "../middlewares/auth.middleware.js";
+import dailyProblemRouter from "./dailyProblem.router.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,8 +44,7 @@ router.use("/api/rankings", rankingRouter);
 router.use('/api/execution', executionRouter);
 router.use('/api/execute', executionRouter);
 router.use('/api/coins', coinRouter);
-router.get('/api/daily-problem', optionalAuth, getTodayDailyProblem);
-router.get('/api/daily-problem/history', optionalAuth, getDailyProblemHistoryController);
+router.use('/api/daily-problem', dailyProblemRouter);
 
 router.get("/", (req, res) => {
   if (req.accepts(["html", "json"]) === "html") {
@@ -84,6 +79,8 @@ router.get("/", (req, res) => {
         study: "/api/study",
         themes: "/api/themes",
         rankings: "/api/rankings",
+        coins: "/api/coins",
+        dailyProblem: "/api/daily-problem",
       },
       endpoints: [
         { method: "GET", path: "/health", description: "Health check" },
@@ -135,6 +132,8 @@ router.get("/", (req, res) => {
         { method: "POST", path: "/api/themes/:slug/buy", description: "Purchase a theme with coins (Protected)" },
         { method: "PUT", path: "/api/themes/apply", description: "Apply an owned theme as active (Protected)" },
         { method: "GET", path: "/api/rankings", description: "Get public leaderboard rankings with scope/pagination filters (Public)" },
+        { method: "GET", path: "/api/daily-problem", description: "Today's daily problem with caller completion & streak (Optional auth)" },
+        { method: "GET", path: "/api/daily-problem/history", description: "Past daily problems up to today, newest first (Optional auth)" },
       ],
     });
   }

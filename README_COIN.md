@@ -32,11 +32,12 @@ npx prisma generate
 # 2. Seed Base Coding Problems (into problems table)
 node scripts/seedProblems.js
 
-# 3. Seed Daily Problems for Today + Next 34 Days (35 rows, starting i=0)
-node scripts/seedDailyProblems.js
+# 3. Daily problems need no seeding: the server creates today's and tomorrow's
+#    row at startup and hourly. To create them by hand:
+node scripts/dailyProblem.js ensure
 
-# 4. Diagnostic Check for Daily Problems (Must show TODAY FOUND)
-node scripts/checkDailyProblems.js
+# 4. Diagnostic Check for Daily Problems (today/tomorrow, last 14 days, repeats)
+node scripts/dailyProblem.js status
 
 # 5. Verify Coin Rewards Setup (Imports, checks DB, verifies exports)
 node scripts/verifyCoinSetup.js
@@ -80,11 +81,11 @@ npm test
 - `POST /api/auth/login` → Returns `user`, `stats`, `token`, and `rewards: { coinsEarnedToday, loginCoins, streak, longestStreak, isNewDay }`.
 - `GET /api/coins/balance` (Bearer) → `{ coins, streak, longestStreak, lastLoginISTDate }`.
 - `GET /api/coins/history?limit=20&offset=0` (Bearer) → `{ transactions: [...] }`.
-- `GET /api/daily-problem` → `{ istDate, problem: { id, slug, title, difficulty }, reward: { coins: 2, streak: 1 }, streak, longestStreak, completed }`.
-- `GET /api/daily-problem/history?page=1&limit=20` → Returns historical daily problem records and user solve status.
+- `GET /api/daily-problem` → `{ istDate, problem: { id, slug, title, difficulty, tags, solvedCount }, reward: { coins: 2, streak: 1 }, completed, completedAt, streak, longestStreak, nextRefreshAt, nextRefreshMs }`.
+- `GET /api/daily-problem/history?page=1&limit=20` → Daily problems up to today (newest first) with the caller's `completed` status.
 - `GET /api/themes` → Returns all themes, user ownership, and coin prices.
 - `POST /api/themes/:slug/buy` (Bearer) → Deducts coins and unlocks theme.
 - `PUT /api/themes/apply` (Bearer) → Activates an owned theme.
-- `POST /api/execution/submissions` → Response includes `dailyReward: { granted, coinsEarned, streak, longestStreak }`.
+- `POST /api/execution/submissions` → Response includes `dailyProblemReward: { granted, coins }`; when granted, `reward.stats` carries the new coins and streak.
 
-Full documentation: see `API_DOC.md` and `APIdetails.md`.
+Full documentation: see `APIdetails.md`.

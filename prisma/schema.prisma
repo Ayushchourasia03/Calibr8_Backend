@@ -290,6 +290,9 @@ model StudyMCQ {
   topic        StudyTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
 }
 
+// Partial unique indexes managed in SQL (Prisma cannot express them):
+//   coin_transactions_daily_login_unique   ("userId","istDate") WHERE type = 'DAILY_LOGIN'
+//   coin_transactions_daily_problem_unique ("userId","istDate") WHERE type = 'DAILY_PROBLEM'
 model CoinTransaction {
   id           String   @id @default(cuid())
   userId       String   @map("userId")
@@ -316,12 +319,15 @@ model RevokedToken {
   @@map("revoked_tokens")
 }
 
+// One row per IST day ("YYYY-MM-DD"). Rows are never updated once created.
+// Restrict: deleting a featured problem would otherwise silently erase the
+// day's history and every user's completion of it.
 model DailyProblem {
   id          String                   @id @default(cuid())
   istDate     String                   @unique @map("istDate")
   problemId   String                   @map("problemId")
   createdAt   DateTime                 @default(now())
-  problem     Problem                  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  problem     Problem                  @relation(fields: [problemId], references: [id], onDelete: Restrict)
   completions DailyProblemCompletion[]
 
   @@index([problemId])
