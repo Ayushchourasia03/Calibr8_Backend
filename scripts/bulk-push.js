@@ -2,6 +2,9 @@ import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import prisma from '../src/config/db.js';
+import { requireDestructiveConfirmation } from './lib/dbGuard.js';
+
+requireDestructiveConfirmation('delete and re-create every problem found in problems/');
 
 const files = process.argv.slice(2);
 if (files.length === 0) {

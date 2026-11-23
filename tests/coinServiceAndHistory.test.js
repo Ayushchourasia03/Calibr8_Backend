@@ -1,3 +1,4 @@
+import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -51,8 +52,8 @@ try {
   assert.equal(fallbackBal.streak, 0);
   assert.equal(fallbackBal.longestStreak, 0);
 
-  // 4. Record multiple coin transactions for the user
-  const todayIST = "2026-11-09";
+  // 4. Record multiple coin transactions for the user (one daily-problem
+  // reward per IST day: a partial unique index enforces it)
   for (let i = 1; i <= 5; i++) {
     await prisma.coinTransaction.create({
       data: {
@@ -60,7 +61,7 @@ try {
         amount: 2,
         type: "DAILY_PROBLEM",
         referenceId: `test-ref-${i}`,
-        istDate: todayIST,
+        istDate: `2026-11-0${i}`,
         balanceAfter: 100 + i * 2,
       },
     });

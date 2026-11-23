@@ -336,6 +336,65 @@ export function supportsMultiCase(language) {
   return language === "cpp" || language === "c";
 }
 
+// libc functions the harness parent calls. A user definition with C linkage
+// would be called by the harness itself, i.e. user code running in the parent.
+const HARNESS_LIBC_FUNCTIONS = [
+  "_exit", "close", "closedir", "dup", "dup2", "fflush", "fileno", "fork",
+  "gettimeofday", "kill", "lseek", "memset", "nftw", "opendir", "prctl",
+  "pread", "read", "readdir", "rmdir", "setitimer", "setpgid", "setrlimit",
+  "sigaction", "sigemptyset", "signal", "snprintf", "strcmp", "strdup",
+  "strncmp", "strtol", "syscall", "tmpfile", "unlink", "wait4", "waitpid",
+  "write", "exit", "abort", "malloc", "free", "calloc", "realloc",
+];
+const LIBC_DEFINITION = new RegExp(
+  `\\b(?:${HARNESS_LIBC_FUNCTIONS.join("|")})\\s*\\([^;{}()]*\\)\\s*(?:noexcept\\s*)?\\{`,
+);
+
+/**
+ * The harness is compiled into the same binary as the user's code, after it.
+ * Anything that lets user code run in the harness parent process (before or
+ * instead of the harness) could read every testcase input and forge the
+ * per-case report: constructors / init priorities / ifunc via attributes,
+ * inline assembly, C-linkage overrides of the libc calls the harness makes,
+ * or macros that rewrite the harness source that follows the user's code.
+ * Submissions using any of these are judged on the batch path instead, where
+ * every testcase runs in its own sandbox without the harness. This only
+ * affects speed, never verdicts.
+ *
+ * @param {string} userCode the user's submitted code (not the full template)
+ * @returns {boolean} true when the multi-case harness may be used
+ */
+export function isHarnessSafeUserCode(userCode) {
+  if (typeof userCode !== "string") return false;
+  // Translation phases 1-2: trigraphs (ISO modes) and line splicing.
+  const code = userCode
+    .replace(/\?\?=/g, "#")
+    .replace(/\?\?\//g, "\\")
+    .replace(/\\\r?\n/g, "");
+
+  // Any preprocessor directive except #include and "#pragma GCC optimize/target"
+  // (digraph %: is '#').
+  const directive = /^[ \t]*(?:#|%:)[ \t]*([A-Za-z_]+)(.*)$/gm;
+  for (const [, name, rest] of code.matchAll(directive)) {
+    if (name === "include") continue;
+    if (name === "pragma" && /^\s*GCC\s+(?:optimize|target)\b/.test(rest)) continue;
+    return false;
+  }
+  const forbidden = [
+    /__attribute/, // constructor, init_priority, ifunc, alias, section, ...
+    /\b(?:__)?gnu(?:__)?\s*::/, // [[gnu::constructor]]
+    /\busing\s+(?:__)?gnu(?:__)?\b/, // [[using gnu: constructor]]
+    /\b(?:__)?asm(?:__)?\b/,
+    /\b_Pragma\b/,
+    /\bextern\s*"C"/,
+    /\\[uU][0-9a-fA-F]{4}/, // universal character names in identifiers
+    /\bc8__/, // harness namespace
+    /\.(?:pre)?init_array|\.ctors\b/,
+  ];
+  if (forbidden.some((pattern) => pattern.test(code))) return false;
+  return !LIBC_DEFINITION.test(code);
+}
+
 /**
  * Appends the harness to fully built source code. Strict C (-std=c17) hides
  * the POSIX/GNU declarations the harness needs, so C sources get _GNU_SOURCE

@@ -1,3 +1,4 @@
+import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -82,18 +83,43 @@ try {
     assert.ok("score" in row);
     assert.ok("rating" in row);
     assert.ok("tier" in row);
+    assert.ok(Number.isInteger(row.rank));
+    // Privacy: no internal ids, account dates or regional data for guests.
+    for (const hidden of ["id", "email", "createdAt", "college", "branch", "batch", "state", "country"]) {
+      assert.equal(hidden in row, false, `${hidden} must not be public`);
+    }
+    assert.equal(row.isCurrentUser, false);
   }
+
+  // Regional scopes require login.
+  const anonScoped = await fetch(`${baseUrl}/rankings?scope=college&college=IIT%20Delhi`);
+  assert.equal(anonScoped.status, 401);
+  assert.equal((await fetch(`${baseUrl}/rankings?scope=bogus`)).status, 400);
+
+  // Signed-in viewer
+  const viewerEmail = `rank-viewer-${randomUUID()}@example.com`;
+  const viewer = await (await fetch(`${baseUrl}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Rank Viewer", email: viewerEmail, password: "ViewerPassword123" }),
+  })).json();
+  const auth = { headers: { Authorization: `Bearer ${viewer.token}` } };
+  const signedInAll = await (await fetch(`${baseUrl}/rankings?limit=100`, auth)).json();
+  assert.ok(signedInAll.data.some((row) => "college" in row), "signed-in users see regional fields");
+  assert.ok(signedInAll.data.every((row) => !("id" in row)));
+  assert.equal(signedInAll.data.filter((row) => row.isCurrentUser).length, 1, "own row is flagged");
 
   // 3. College scope filter
   const collegeRes = await fetch(
     `${baseUrl}/rankings?scope=college&college=IIT%20Delhi`,
+    auth,
   );
   assert.equal(collegeRes.status, 200);
   const collegeData = await collegeRes.json();
   assert.ok(collegeData.data.every((u) => u.college === "IIT Delhi"));
 
   // 4. Batch scope filter
-  const batchRes = await fetch(`${baseUrl}/rankings?scope=batch&batch=2024`);
+  const batchRes = await fetch(`${baseUrl}/rankings?scope=batch&batch=2024`, auth);
   assert.equal(batchRes.status, 200);
   const batchData = await batchRes.json();
   assert.ok(batchData.data.every((u) => u.batch === "2024"));
@@ -101,6 +127,7 @@ try {
   // 5. State scope filter
   const stateRes = await fetch(
     `${baseUrl}/rankings?scope=state&state=Maharashtra`,
+    auth,
   );
   assert.equal(stateRes.status, 200);
   const stateData = await stateRes.json();
@@ -109,6 +136,7 @@ try {
   // 6. Country scope filter
   const countryRes = await fetch(
     `${baseUrl}/rankings?scope=country&country=India`,
+    auth,
   );
   assert.equal(countryRes.status, 200);
   const countryData = await countryRes.json();
@@ -123,6 +151,7 @@ try {
   console.log("✔ Rankings & Leaderboard tests passed successfully!");
 } finally {
   await prisma.user.deleteMany({ where: { id: { startsWith: "usr_rank_" } } }).catch(() => {});
+  await prisma.user.deleteMany({ where: { email: { startsWith: "rank-viewer-" } } }).catch(() => {});
   await prisma.$disconnect().catch(() => {});
   await new Promise((resolve) => server.close(resolve));
 }

@@ -1,4 +1,8 @@
 import { PrismaClient } from '@prisma/client';
+import 'dotenv/config';
+import { requireDestructiveConfirmation } from './lib/dbGuard.js';
+
+requireDestructiveConfirmation('create fake rank*@test.com users on the leaderboard');
 const prisma = new PrismaClient();
 
 async function main() {

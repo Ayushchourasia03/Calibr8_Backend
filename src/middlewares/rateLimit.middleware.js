@@ -1,7 +1,14 @@
 import { ApiError } from "../utils/ApiError.js";
+import { clientIpKey } from "../utils/clientIp.js";
+
+// NOTE: counters live in this process. With several backend instances each
+// instance enforces its own budget, so put an edge/WAF rate limit in front of
+// the API as well (see BACKEND_PRODUCTION_AUDIT.md, M3).
+
+const MAX_TRACKED_KEYS = 100_000;
 
 /**
- * Creates an in-memory sliding window rate limiter middleware.
+ * Creates an in-memory fixed-window rate limiter middleware.
  * @param {object} options
  * @param {number} options.windowMs - Window time in milliseconds
  * @param {number} options.max - Maximum requests allowed per window
@@ -13,14 +20,14 @@ export function createRateLimiter(options) {
   const {
     windowMs = 60 * 1000,
     max = 60,
-    keyGenerator = (req) => req.ip || req.connection.remoteAddress || "unknown",
+    keyGenerator = (req) => clientIpKey(req),
     message = "Too many requests. Please wait a moment before trying again.",
     code = "RATE_LIMITED",
   } = options;
 
   const hits = new Map();
 
-  // Periodic cleanup of stale entries every 60 seconds
+  // Periodic cleanup of stale entries
   setInterval(
     () => {
       const now = Date.now();
@@ -39,6 +46,10 @@ export function createRateLimiter(options) {
     let record = hits.get(key);
 
     if (!record || now > record.resetTime) {
+      // Bound memory when flooded with distinct keys: evict the oldest.
+      if (!record && hits.size >= MAX_TRACKED_KEYS) {
+        hits.delete(hits.keys().next().value);
+      }
       record = {
         count: 1,
         resetTime: now + windowMs,
@@ -68,15 +79,69 @@ export function createRateLimiter(options) {
 
 /**
  * Per-IP rate limiter for auth endpoints (register, login)
- * 30 attempts per 15 minutes per IP.
+ * 30 attempts per 15 minutes per IP (IPv6: per /64).
  */
 export const authLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 30,
-  keyGenerator: (req) => `auth:${req.ip || "ip"}`,
+  keyGenerator: (req) => `auth:${clientIpKey(req)}`,
   message:
     "Too many login or registration attempts. Please try again in a few minutes.",
   code: "AUTH_RATE_LIMITED",
+});
+
+/**
+ * Per-account login throttle: distributed credential stuffing against one
+ * account is slowed regardless of how many IPs are used. Only failed logins
+ * count (see recordFailedLogin / clearFailedLogins).
+ */
+const LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_FAILURE_MAX = 10;
+const loginFailures = new Map(); // email -> { count, resetTime }
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, record] of loginFailures) if (now > record.resetTime) loginFailures.delete(key);
+}, 60_000).unref?.();
+
+export function assertLoginAllowed(email) {
+  const record = loginFailures.get(email);
+  if (record && Date.now() <= record.resetTime && record.count >= LOGIN_FAILURE_MAX) {
+    const retryAfterSeconds = Math.ceil((record.resetTime - Date.now()) / 1000);
+    throw new ApiError(
+      429,
+      "Too many failed login attempts for this account. Please try again later.",
+      "ACCOUNT_LOGIN_LOCKED",
+      { retryAfterSeconds },
+    );
+  }
+}
+
+export function recordFailedLogin(email) {
+  const now = Date.now();
+  let record = loginFailures.get(email);
+  if (!record || now > record.resetTime) {
+    if (!record && loginFailures.size >= MAX_TRACKED_KEYS) {
+      loginFailures.delete(loginFailures.keys().next().value);
+    }
+    record = { count: 0, resetTime: now + LOGIN_FAILURE_WINDOW_MS };
+    loginFailures.set(email, record);
+  }
+  record.count += 1;
+}
+
+export function clearFailedLogins(email) {
+  loginFailures.delete(email);
+}
+
+/**
+ * Per-user limiter for token refresh and other session endpoints.
+ */
+export const sessionLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyGenerator: (req) => `session:${req.user?.id || clientIpKey(req)}`,
+  message: "Too many session requests. Please try again in a few minutes.",
+  code: "RATE_LIMITED",
 });
 
 /**
@@ -86,7 +151,7 @@ export const authLimiter = createRateLimiter({
 export const runLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   max: 10,
-  keyGenerator: (req) => `run:${req.user?.id || req.ip}`,
+  keyGenerator: (req) => `run:${req.user?.id || clientIpKey(req)}`,
   message:
     "Run rate limit exceeded. You can perform at most 10 runs per minute.",
   code: "RATE_LIMITED",
@@ -99,9 +164,21 @@ export const runLimiter = createRateLimiter({
 export const submitLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   max: 6,
-  keyGenerator: (req) => `submit:${req.user?.id || req.ip}`,
+  keyGenerator: (req) => `submit:${req.user?.id || clientIpKey(req)}`,
   message:
     "Submission rate limit exceeded. You can submit at most 6 times per minute.",
+  code: "RATE_LIMITED",
+});
+
+/**
+ * Per-user limiter for standalone complexity analysis (runs in a worker pool
+ * with a hard timeout, so it is cheaper than a judged run).
+ */
+export const analyzeLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: (req) => `analyze:${req.user?.id || clientIpKey(req)}`,
+  message: "Analysis rate limit exceeded. Please wait a moment.",
   code: "RATE_LIMITED",
 });
 
@@ -114,7 +191,7 @@ const activeJobsPerUser = new Map();
 export const inFlightLimiter = (req, res, next) => {
   const identity = req.user?.id
     ? `user:${req.user.id}`
-    : `ip:${req.ip || req.connection.remoteAddress || "unknown"}`;
+    : `ip:${clientIpKey(req)}`;
 
   const currentCount = activeJobsPerUser.get(identity) || 0;
   if (currentCount >= 2) {

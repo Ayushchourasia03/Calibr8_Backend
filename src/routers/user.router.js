@@ -10,6 +10,8 @@ import {
   updateAcademicProfile,
 } from "../controllers/user.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
+import { sessionLimiter } from "../middlewares/rateLimit.middleware.js";
+import { deleteAccount } from "../controllers/auth.controller.js";
 
 const router = Router();
 
@@ -21,6 +23,7 @@ router.put("/me", protect, updateMe);
 router.patch("/me", protect, updateProfile);
 router.patch("/me/language", protect, updateLanguage);
 router.patch("/me/academic", protect, updateAcademicProfile);
+router.delete("/me", protect, sessionLimiter, deleteAccount);
 
 // Root aliases
 router.get("/", protect, getMe);

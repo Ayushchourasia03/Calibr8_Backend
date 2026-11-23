@@ -2,6 +2,9 @@ import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import prisma from '../src/config/db.js';
+import { requireDestructiveConfirmation } from './lib/dbGuard.js';
+
+requireDestructiveConfirmation('TRUNCATE problems, examples, testcases, code_templates and submissions (CASCADE: also daily problems, completions, solve progress and complexity profiles)');
 
 console.log('🔥 Step 1: Deleting all old problems, examples, testcases & resetting...');
 

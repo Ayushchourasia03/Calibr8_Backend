@@ -17,7 +17,7 @@ router.get('/subjects/:subjectSlug/chapters', getChaptersBySubject);
 router.get('/chapters/:chapterId/topics', getTopicsByChapter);
 router.get('/topics/:topicSlug', getTopicBySlug);
 
-// Submitting MCQ answers requires user authentication to save progress
+// Submitting MCQ answers requires authentication (scores are not persisted yet)
 router.post('/topics/:topicSlug/submit', protect, submitMCQs);
 
 export default router;

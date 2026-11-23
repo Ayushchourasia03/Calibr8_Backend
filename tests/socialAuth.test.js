@@ -1,3 +1,4 @@
+import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -6,6 +7,22 @@ import jwt from "jsonwebtoken";
 process.env.JWT_SECRET = "test-jwt-secret-key-that-is-at-least-32-chars-long";
 process.env.OAUTH_STATE_SECRET = "test-oauth-state-secret-key-at-least-32-chars-long";
 process.env.FRONTEND_URL = "http://localhost:5173";
+process.env.GITHUB_CLIENT_ID = "test-client-id";
+process.env.GITHUB_CLIENT_SECRET = "test-client-secret";
+process.env.BACKEND_URL = "http://localhost:3000";
+
+// Mock GitHub (token exchange, profile, emails); every other request is real.
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (input, options) => {
+  const url = String(typeof input === "string" ? input : input.url ?? input);
+  const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+  if (url.startsWith("https://github.com/login/oauth/access_token")) return json({ access_token: "gh-test-token" });
+  if (url.startsWith("https://api.github.com/user/emails")) return json([{ email: "eve-private@example.com", primary: true, verified: true }]);
+  if (url.startsWith("https://api.github.com/user")) {
+    return json({ id: Math.floor(Math.random() * 1e9), login: "eve-gh", name: "Eve GH", email: null, avatar_url: "https://a.example/x.png", html_url: "https://github.com/eve-gh", bio: null, public_repos: 1, followers: 2, following: 3 });
+  }
+  return realFetch(input, options);
+};
 
 const { default: app } = await import("../src/app.js");
 const { default: prisma } = await import("../src/config/db.js");
@@ -99,6 +116,64 @@ try {
     "Must not redirect to unallowed evil.com origin",
   );
   assert.ok(safeLoc.startsWith("http://localhost:5173"));
+
+  // 3e. Full flow: the callback never links by itself; it hands the frontend
+  // a one-time link_code that only the account that started the flow can use.
+  const flowCb = await fetch(
+    `${baseUrl}/social/github/callback?code=gh-code&state=${encodeURIComponent(stateParam)}`,
+    { redirect: "manual" },
+  );
+  assert.equal(flowCb.status, 302);
+  const flowLoc = new URL(flowCb.headers.get("location"));
+  assert.equal(flowLoc.origin, "http://localhost:5173");
+  const linkCode = flowLoc.searchParams.get("link_code");
+  assert.ok(linkCode, "callback returns a link_code");
+  assert.equal(flowLoc.searchParams.get("provider"), "github");
+  assert.equal(await prisma.socialAccount.count({ where: { userId: regData.user.id } }), 0, "not linked by the callback");
+  assert.ok(!flowLoc.search.includes("eve-private"), "profile data is encrypted in the code");
+
+  // Link CSRF: a different signed-in user cannot complete someone else's flow.
+  const otherReg = await (await fetch(`${baseUrl}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Mallory", email: `social-test-${randomUUID()}@example.com`, password: "MalloryPassword123" }),
+  })).json();
+  const mismatch = await fetch(`${baseUrl}/social/github/complete`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${otherReg.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ code: linkCode }),
+  });
+  assert.equal(mismatch.status, 403);
+  assert.equal((await mismatch.json()).code, "LINK_ACCOUNT_MISMATCH");
+
+  // Tampered codes are rejected.
+  const flipped = linkCode.slice(0, 20) + (linkCode[20] === "A" ? "B" : "A") + linkCode.slice(21);
+  const tampered = await fetch(`${baseUrl}/social/github/complete`, {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({ code: flipped }),
+  });
+  assert.equal(tampered.status, 400);
+
+  // The owner completes the link.
+  const completeRes = await fetch(`${baseUrl}/social/github/complete`, {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({ code: linkCode }),
+  });
+  assert.equal(completeRes.status, 200);
+  const completeData = await completeRes.json();
+  assert.equal(completeData.linked, "github");
+  assert.equal(completeData.account.username, "eve-gh");
+  assert.equal(completeData.account.email, "eve-private@example.com");
+
+  // Single use.
+  const replay = await fetch(`${baseUrl}/social/github/complete`, {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({ code: linkCode }),
+  });
+  assert.equal(replay.status, 400);
 
   // 4. DELETE /api/social/:provider (unlink provider)
   const unlinkRes = await fetch(`${baseUrl}/social/github`, {

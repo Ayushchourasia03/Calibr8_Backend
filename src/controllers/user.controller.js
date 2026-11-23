@@ -1,5 +1,6 @@
 import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
+import { requireText, optionalText } from "../utils/validation.js";
 import { getSuccessfulSubmissionActivity } from "../utils/successfulSubmissionActivity.js";
 
 async function getActivitySummary(userId) {
@@ -173,15 +174,11 @@ export const getMyActivity = async (req, res, next) => {
  */
 export const updateMe = async (req, res, next) => {
   try {
-    const { name } = req.body;
-
-    if (!name || !name.trim()) {
-      throw new ApiError(400, "Name cannot be empty.");
-    }
+    const name = requireText(req.body?.name, "name");
 
     const updated = await prisma.user.update({
       where: { id: req.user.id },
-      data: { name: name.trim() },
+      data: { name },
       select: {
         id: true,
         email: true,
@@ -321,15 +318,10 @@ export const getAllProblems = async (req, res, next) => {
  */
 export const updateProfile = async (req, res, next) => {
   try {
-    const { name, college, branch, batch, state, country } = req.body;
+    const { name, college, branch, batch, state, country } = req.body ?? {};
     const data = {};
 
-    if (name !== undefined) {
-      if (typeof name !== "string" || !name.trim()) {
-        throw new ApiError(400, "Name cannot be empty.");
-      }
-      data.name = name.trim();
-    }
+    if (name !== undefined) data.name = requireText(name, "name");
 
     for (const [field, value] of Object.entries({
       college,
@@ -338,7 +330,8 @@ export const updateProfile = async (req, res, next) => {
       state,
       country,
     })) {
-      if (value !== undefined) data[field] = String(value ?? "").trim();
+      const cleaned = optionalText(value, field);
+      if (cleaned !== undefined) data[field] = cleaned;
     }
 
     if (Object.keys(data).length === 0) {
@@ -385,14 +378,13 @@ export const updateProfile = async (req, res, next) => {
  */
 export const updateAcademicProfile = async (req, res, next) => {
   try {
-    const { college, branch, batch, state, country } = req.body;
+    const { college, branch, batch, state, country } = req.body ?? {};
 
     const data = {};
-    if (college !== undefined) data.college = String(college).trim();
-    if (branch !== undefined) data.branch = String(branch).trim();
-    if (batch !== undefined) data.batch = String(batch).trim();
-    if (state !== undefined) data.state = String(state).trim();
-    if (country !== undefined) data.country = String(country).trim();
+    for (const [field, value] of Object.entries({ college, branch, batch, state, country })) {
+      const cleaned = optionalText(value, field);
+      if (cleaned !== undefined) data[field] = cleaned;
+    }
 
     if (Object.keys(data).length === 0) {
       throw new ApiError(

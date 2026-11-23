@@ -34,6 +34,10 @@ model User {
   lastStreakDate   DateTime?
   longestStreak    Int       @default(0)
   lastLoginISTDate String?   @map("lastLoginISTDate")
+  // Session generation: every JWT carries the version it was issued under.
+  // Incrementing it (password change, "log out everywhere") revokes all of
+  // the user's tokens at once.
+  tokenVersion     Int       @default(0) @map("tokenVersion")
 
   socialAccounts                       SocialAccount[]
   problemProgress                      UserProblemProgress[]

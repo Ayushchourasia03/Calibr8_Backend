@@ -7,8 +7,9 @@ import {
   getComplexityAnalysis,
   getSubmissionComplexity,
 } from "../controllers/execution.controller.js";
-import { protect, optionalAuth } from "../middlewares/auth.middleware.js";
+import { protect } from "../middlewares/auth.middleware.js";
 import {
+  analyzeLimiter,
   inFlightLimiter,
   runLimiter,
   submitLimiter,
@@ -33,7 +34,8 @@ router.get("/submissions/:id", protect, getSubmissionStatus);
 router.get("/submissions/:id/complexity", protect, getSubmissionComplexity);
 
 // POST /api/execution/analyze-complexity - standalone static & empirical complexity analysis
-router.post("/analyze-complexity", optionalAuth, runLimiter, getComplexityAnalysis);
+// Authenticated: the analyzer is CPU-heavy (it runs in a worker pool with a hard timeout).
+router.post("/analyze-complexity", protect, analyzeLimiter, getComplexityAnalysis);
 
 // ==========================================
 // BACKWARD-COMPATIBLE ALIASES

@@ -1,3 +1,4 @@
+import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
 import "dotenv/config";
 import assert from "node:assert/strict";
 import {
@@ -75,7 +76,8 @@ globalThis.fetch = async (input, options = {}) => {
 
 const app = (await import("../src/app.js")).default;
 const prisma = (await import("../src/config/db.js")).default;
-const { signToken } = await import("../src/utils/jwt.js");
+const { signSessionToken } = await import("../src/utils/jwt.js");
+const signToken = (user) => signSessionToken({ id: user.id, tokenVersion: user.tokenVersion ?? 0 });
 
 async function runOptimizationTests() {
   console.log("=== Calibr8 Execution API Optimization Test Suite ===");

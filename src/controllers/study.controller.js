@@ -101,11 +101,14 @@ export const getTopicBySlug = async (req, res, next) => {
 export const submitMCQs = async (req, res, next) => {
   try {
     if (!req.user?.id) {
-      throw new ApiError(401, "Authentication required to submit quiz answers and save progress.", "UNAUTHORIZED");
+      throw new ApiError(401, "Authentication required to submit quiz answers.", "UNAUTHORIZED");
     }
 
     const { topicSlug } = req.params;
-    const { answers = {} } = req.body;
+    const answers = req.body?.answers;
+    if (!answers || typeof answers !== "object" || Array.isArray(answers)) {
+      throw new ApiError(400, "answers must be an object of { mcqId: optionIndex }.", "INVALID_ANSWERS");
+    }
 
     const topic = await prisma.studyTopic.findFirst({
       where: { slug: topicSlug },
@@ -115,10 +118,18 @@ export const submitMCQs = async (req, res, next) => {
       throw new ApiError(404, "Topic not found.", "NOT_FOUND");
     }
 
+    // Correct answers are only revealed for questions the user answered, so
+    // the quiz cannot be read out by submitting an empty answer sheet.
+    const answered = (topic.mcqs || []).filter((mcq) =>
+      Object.prototype.hasOwnProperty.call(answers, mcq.id) && Number.isInteger(answers[mcq.id]),
+    );
+    if (answered.length === 0) {
+      throw new ApiError(400, "Answer at least one question before submitting.", "NO_ANSWERS");
+    }
+
     let score = 0;
-    const result = (topic.mcqs || []).map((mcq) => {
-      const userAns = answers[mcq.id];
-      const isCorrect = userAns === mcq.correctIndex;
+    const result = answered.map((mcq) => {
+      const isCorrect = answers[mcq.id] === mcq.correctIndex;
       if (isCorrect) score++;
       return {
         mcqId: mcq.id,
@@ -133,6 +144,7 @@ export const submitMCQs = async (req, res, next) => {
       userId: req.user.id,
       topicSlug,
       score,
+      answered: answered.length,
       total: (topic.mcqs || []).length,
       result,
     });

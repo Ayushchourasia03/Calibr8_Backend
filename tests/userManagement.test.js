@@ -1,3 +1,4 @@
+import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";

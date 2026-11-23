@@ -1,3 +1,4 @@
+import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -123,10 +124,24 @@ try {
     assert.equal(typeof submitData.score, "number");
     assert.equal(submitData.total, mcqs.length);
     assert.ok(Array.isArray(submitData.result));
-    assert.equal(submitData.result.length, mcqs.length);
+    // Answers are only revealed for the questions that were answered.
+    assert.equal(submitData.answered, 1);
+    assert.equal(submitData.result.length, 1);
+    assert.equal(submitData.result[0].mcqId, sampleMCQ.id);
     assert.ok("isCorrect" in submitData.result[0]);
     assert.ok("correctIndex" in submitData.result[0]);
     assert.ok("explanation" in submitData.result[0]);
+  }
+
+  // 6b2. An empty answer sheet cannot read out the answer key.
+  if (mcqs && mcqs.length > 0) {
+    const emptyRes = await fetch(`${baseUrl}/study/topics/${topicSlug}/submit`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ answers: {} }),
+    });
+    assert.equal(emptyRes.status, 400);
+    assert.equal((await emptyRes.json()).code, "NO_ANSWERS");
   }
 
   // 6c. Submitting to non-existent topic returns 404

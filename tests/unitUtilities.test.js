@@ -9,7 +9,7 @@ import {
   buildFinalCode,
   SUPPORTED_LANGUAGES,
 } from "../src/utils/codeBuilder.js";
-import { signToken, verifyToken, decodeToken } from "../src/utils/jwt.js";
+import { signSessionToken, verifyToken, decodeToken } from "../src/utils/jwt.js";
 import { hashPassword, comparePassword } from "../src/utils/bcrypt.js";
 import { getUserHeaderStats } from "../src/utils/userHeaderStats.js";
 import { getSuccessfulSubmissionActivity } from "../src/utils/successfulSubmissionActivity.js";
@@ -55,21 +55,21 @@ test("Unit Utilities: outputComparator normalizeOutput and areOutputsEqual", () 
   assert.equal(normalizeOutput(true), "true");
   assert.equal(normalizeOutput("true"), "true");
   assert.equal(normalizeOutput("TRUE"), "true");
-  assert.equal(normalizeOutput("yes"), "true");
+  assert.equal(normalizeOutput("yes"), "yes"); // yes/no are not booleans
   assert.equal(normalizeOutput("false"), "false");
-  assert.equal(normalizeOutput("no"), "false");
+  assert.equal(normalizeOutput("no"), "no");
 
   // Space-separated & Comma-separated numbers
-  assert.equal(normalizeOutput("7 0 8"), JSON.stringify([7, 0, 8]));
-  assert.equal(normalizeOutput("7, 0, 8"), JSON.stringify([7, 0, 8]));
-  assert.equal(normalizeOutput("[7, 0, 8]"), JSON.stringify([7, 0, 8]));
+  assert.equal(normalizeOutput("7 0 8"), normalizeOutput("[7, 0, 8]"));
+  assert.equal(normalizeOutput("7, 0, 8"), normalizeOutput("[7,0,8]"));
+  assert.notEqual(normalizeOutput("[7, 0, 8]"), normalizeOutput("[7, 0, 9]"));
 
   // areOutputsEqual comparisons
   assert.ok(areOutputsEqual("7 0 8\n", "7 0 8"));
   assert.ok(areOutputsEqual("7, 0, 8", "[7, 0, 8]"));
   assert.ok(areOutputsEqual("true", "True"));
-  assert.ok(areOutputsEqual("YES", "true"));
-  assert.ok(areOutputsEqual("no", "false"));
+  assert.equal(areOutputsEqual("YES", "true"), false);
+  assert.equal(areOutputsEqual("no", "false"), false);
   assert.ok(areOutputsEqual("[42]", "42"));
   assert.ok(areOutputsEqual("42", "[42]"));
   assert.ok(areOutputsEqual("  hello world  \n", "hello world"));
@@ -136,17 +136,17 @@ test("Unit Utilities: codeBuilder normalization and template generation", () => 
 });
 
 test("Unit Utilities: JWT token generation, verification, and decoding", () => {
-  const payload = { userId: "user-123", email: "coder@calibr8.test" };
-  const token = signToken(payload, "1h");
+  const token = signSessionToken({ id: "user-123", tokenVersion: 0 }, { expiresIn: "1h" });
   assert.ok(typeof token === "string" && token.split(".").length === 3);
 
   const decoded = verifyToken(token);
-  assert.equal(decoded.userId, "user-123");
-  assert.equal(decoded.email, "coder@calibr8.test");
+  assert.equal(decoded.id, "user-123");
+  assert.equal(decoded.tv, 0);
+  assert.equal(decoded.email, undefined); // no PII in tokens
   assert.ok(decoded.jti);
 
   const parsed = decodeToken(token);
-  assert.equal(parsed.userId, "user-123");
+  assert.equal(parsed.id, "user-123");
 
   assert.throws(() => verifyToken("invalid.token.signature"), (err) => err instanceof Error);
 });

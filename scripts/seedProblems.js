@@ -3,6 +3,11 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import prisma from '../src/config/db.js';
+import { requireDestructiveConfirmation } from './lib/dbGuard.js';
+
+if (process.argv.includes('--update') || process.argv.includes('--force')) {
+  requireDestructiveConfirmation('replace the examples, testcases and templates of every problem in problems/');
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

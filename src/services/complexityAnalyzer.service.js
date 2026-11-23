@@ -1605,7 +1605,9 @@ function getEntry(code, language) {
   const fam = /^(?:js|jsx|javascript|node|nodejs|ts|tsx|typescript)$/.test(lang)
     ? JS
     : /^(?:py|python|python2|python3|pypy|pypy3)$/.test(lang) ? PY : BRACE;
-  const key = `${fam}\u0001${/^t/.test(lang) ? "t" : ""}\u0001${norm}`;
+  // Keyed by a hash, not the source itself: entries would otherwise retain
+  // up to MAX_CACHE_ENTRIES full copies of (large) submitted code.
+  const key = `${fam}\u0001${/^t/.test(lang) ? "t" : ""}\u0001${crypto.createHash("sha256").update(norm).digest("hex")}`;
   const hit = cache.get(key);
   if (hit) {
     cache.delete(key);

@@ -1,3 +1,4 @@
+import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
 import "dotenv/config";
 import assert from "node:assert/strict";
 
@@ -9,6 +10,21 @@ process.env.CODEBOX_BATCH_EXECUTION_ENABLED = "false";
 
 let currentBehavior = null;
 let tokenCounter = 0;
+const stdinByToken = new Map();
+
+// Correct two-sum answer for a testcase stdin ("n target\nnums"), so the
+// submission test does not depend on how many testcases the problem has.
+function solveTwoSum(stdin = "") {
+  const [head = "", nums = ""] = String(stdin).trim().split(/\n/);
+  const target = Number(head.trim().split(/\s+/)[1]);
+  const values = nums.trim().split(/\s+/).map(Number);
+  const seen = new Map();
+  for (let j = 0; j < values.length; j++) {
+    if (seen.has(target - values[j])) return `${seen.get(target - values[j])} ${j}`;
+    if (!seen.has(values[j])) seen.set(values[j], j);
+  }
+  return "";
+}
 const originalFetch = globalThis.fetch;
 
 globalThis.fetch = async (input, options = {}) => {
@@ -21,9 +37,11 @@ globalThis.fetch = async (input, options = {}) => {
     const payload = JSON.parse(options.body);
     return new Response(
       JSON.stringify(
-        payload.submissions.map(() => ({
-          token: `tok-${tokenCounter++}`,
-        }))
+        payload.submissions.map((sub) => {
+          const token = `tok-${tokenCounter++}`;
+          stdinByToken.set(token, sub.stdin);
+          return { token };
+        })
       ),
       { status: 201 }
     );
@@ -54,7 +72,8 @@ globalThis.fetch = async (input, options = {}) => {
 
 const { default: app } = await import("../src/app.js");
 const { default: prisma } = await import("../src/config/db.js");
-const { signToken } = await import("../src/utils/jwt.js");
+const { signSessionToken } = await import("../src/utils/jwt.js");
+const signToken = (user) => signSessionToken({ id: user.id, tokenVersion: user.tokenVersion ?? 0 });
 
 const server = app.listen(0);
 const baseUrl = `http://127.0.0.1:${server.address().port}/api`;
@@ -256,13 +275,8 @@ try {
 
   // 5. Multi-Tier Submission: POST /api/execution/submit & Polling
   // Full Accepted Submission across all 3 tiers
-  const outputs = ["0 1", "1 2", "0 1", "1 2", "1 3"];
-  let callCount = 0;
-  currentBehavior = () => {
-    const val = outputs[callCount % outputs.length];
-    callCount++;
-    return { statusId: 3, stdout: val, time: "0.015", memory: 2048 };
-  };
+  const twoSumCount = await prisma.testcase.count({ where: { problem: { slug: "two-sum" } } });
+  currentBehavior = (tok) => ({ statusId: 3, stdout: solveTwoSum(stdinByToken.get(tok)), time: "0.015", memory: 2048 });
 
   const resSubmit = await fetch(`${baseUrl}/execution/submit`, {
     method: "POST",
@@ -281,8 +295,8 @@ try {
   assert.equal(dataSubmit.success, true);
   assert.equal(dataSubmit.verdict, "ACCEPTED");
   assert.equal(dataSubmit.tierReached, "Tier 3 (Optimal)");
-  assert.equal(dataSubmit.passedCount, 5);
-  assert.equal(dataSubmit.totalCount, 5);
+  assert.equal(dataSubmit.passedCount, twoSumCount);
+  assert.equal(dataSubmit.totalCount, twoSumCount);
   const submissionId = dataSubmit.submissionId;
   assert.ok(submissionId);
 
@@ -321,21 +335,21 @@ try {
   const shortData = await resShort.json();
   assert.equal(shortData.verdict, "WRONG_ANSWER");
   assert.equal(shortData.tierReached, "Tier 0 (Failed)");
-  assert.equal(shortData.totalCount, 5);
-  assert.ok(shortData.results.length < 5, "Tier 2 and Tier 3 should be short-circuited");
+  assert.equal(shortData.totalCount, twoSumCount);
+  assert.ok(shortData.results.length < twoSumCount, "Tier 2 and Tier 3 should be short-circuited");
   console.log("Tier short-circuiting verified.");
 
   // 7. POST /api/execution/analyze-complexity Standalone Endpoint
   const noCompCode = await fetch(`${baseUrl}/execution/analyze-complexity`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ language: "python" }),
   });
   assert.equal(noCompCode.status, 400);
 
   const compRes = await fetch(`${baseUrl}/execution/analyze-complexity`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({
       language: "python",
       code: `

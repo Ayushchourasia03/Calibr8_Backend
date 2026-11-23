@@ -19,20 +19,57 @@ const AUTH_USER_SELECT = {
   coins: true,
   onboarded: true,
   preferredLanguage: true,
+  lastLoginISTDate: true,
+  tokenVersion: true,
   createdAt: true,
   updatedAt: true,
 };
 
 function extractBearerToken(req) {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) return null;
   return authHeader.slice(7).trim() || null;
+}
+
+/**
+ * Verifies the token and loads its user. Returns null for a valid token whose
+ * account no longer exists. Throws for invalid, expired or revoked tokens.
+ */
+async function authenticate(token) {
+  const decoded = verifyToken(token);
+  if (typeof decoded?.id !== 'string' || !decoded.id) {
+    throw new ApiError(401, 'Invalid token. Please log in again.', 'INVALID_TOKEN');
+  }
+
+  // Revocation check and user lookup are independent: run them together.
+  // DB errors propagate to the error handler (503); revocation fails closed.
+  const [revoked, user] = await Promise.all([
+    isTokenBlacklisted(token, decoded),
+    prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: AUTH_USER_SELECT,
+    }),
+  ]);
+  if (revoked) {
+    throw new ApiError(401, 'Token has been revoked. Please log in again.', 'TOKEN_REVOKED');
+  }
+  if (!user) return { decoded, user: null };
+
+  // Every token carries the tokenVersion it was issued under (legacy tokens
+  // without the claim count as version 0). Password changes and "log out
+  // everywhere" bump the version, revoking all earlier tokens at once.
+  const { tokenVersion, ...safeUser } = user;
+  if ((Number(decoded.tv) || 0) !== (Number(tokenVersion) || 0)) {
+    throw new ApiError(401, 'Your session was ended. Please log in again.', 'TOKEN_REVOKED');
+  }
+  return { decoded, user: safeUser, tokenVersion: Number(tokenVersion) || 0 };
 }
 
 /**
  * Middleware to protect routes.
  * Expects: Authorization: Bearer <token>
- * Attaches the user object to req.user and the token to req.token.
+ * Attaches the user object to req.user, the token to req.token and the
+ * verified claims to req.auth.
  */
 export const protect = async (req, res, next) => {
   try {
@@ -41,21 +78,7 @@ export const protect = async (req, res, next) => {
       throw new ApiError(401, 'No token provided. Please log in.', 'UNAUTHORIZED');
     }
 
-    const decoded = verifyToken(token);
-
-    // Revocation check and user lookup are independent: run them together
-    // (one database round trip instead of two when the revocation check is
-    // not cached). DB errors propagate to the error handler (503).
-    const [revoked, user] = await Promise.all([
-      isTokenBlacklisted(token, decoded),
-      prisma.user.findUnique({
-        where: { id: decoded.id },
-        select: AUTH_USER_SELECT,
-      }),
-    ]);
-    if (revoked) {
-      throw new ApiError(401, 'Token has been revoked. Please log in again.', 'TOKEN_REVOKED');
-    }
+    const { decoded, user, tokenVersion } = await authenticate(token);
 
     // A valid signature is not enough: the account must still exist. Never
     // recreate a deleted account from token claims.
@@ -65,6 +88,7 @@ export const protect = async (req, res, next) => {
 
     req.token = token;
     req.user = user;
+    req.auth = { decoded, tokenVersion };
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
@@ -79,27 +103,19 @@ export const protect = async (req, res, next) => {
 
 /**
  * Optional authentication middleware: attaches user if valid token present,
- * but allows unauthenticated playground/sandbox access.
+ * but allows unauthenticated access to public resources.
  */
 export const optionalAuth = async (req, res, next) => {
   try {
     const token = extractBearerToken(req);
     if (!token) return next();
 
-    const decoded = verifyToken(token);
-    const [revoked, user] = await Promise.all([
-      isTokenBlacklisted(token, decoded),
-      prisma.user.findUnique({
-        where: { id: decoded.id },
-        select: AUTH_USER_SELECT,
-      }),
-    ]);
-    if (revoked) return next();
-
+    const { decoded, user, tokenVersion } = await authenticate(token);
     // Unknown users are treated as anonymous rather than trusted from claims.
     if (user) {
       req.token = token;
       req.user = user;
+      req.auth = { decoded, tokenVersion };
     }
     next();
   } catch (_) {

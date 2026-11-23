@@ -1,3 +1,4 @@
+import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
 // tests/coinReward.integration.test.js
 // Calibr8: Daily Problem, Streak & Coin Reward System Integration Tests
 

@@ -1,3 +1,4 @@
+import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
 import "dotenv/config";
 import assert from "node:assert/strict";
 
@@ -120,10 +121,24 @@ try {
   const badLangStarterRes = await fetch(`${baseUrl}/problems/${slug}/starter?language=haskell`);
   assert.equal(badLangStarterRes.status, 404);
 
-  // 4. POST /api/problems/:slug/run (optional auth playground execution)
-  const runRes = await fetch(`${baseUrl}/problems/${slug}/run`, {
+  // 4. POST /api/problems/:slug/run (requires an account: the judge is shared)
+  const anonRunRes = await fetch(`${baseUrl}/problems/${slug}/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ language: "python", code: "class Solution:\n    def solve(self):\n        pass" }),
+  });
+  assert.equal(anonRunRes.status, 401);
+
+  const reg = await (await fetch(`${baseUrl}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Endpoint Tester", email: `problem-endpoints-${Date.now()}@example.com`, password: "EndpointTester123" }),
+  })).json();
+  const authJson = { "Content-Type": "application/json", Authorization: `Bearer ${reg.token}` };
+
+  const runRes = await fetch(`${baseUrl}/problems/${slug}/run`, {
+    method: "POST",
+    headers: authJson,
     body: JSON.stringify({
       language: "python",
       code: "class Solution:\n    def solve(self):\n        pass",
@@ -136,10 +151,10 @@ try {
   assert.ok("results" in runData);
   assert.ok(runData.results.every((r) => r.isVisible === true));
 
-  // 5. POST /api/problems/:slug/submit (optional auth submission execution)
+  // 5. POST /api/problems/:slug/submit (requires an account)
   const submitRes = await fetch(`${baseUrl}/problems/${slug}/submit`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authJson,
     body: JSON.stringify({
       language: "python",
       code: "class Solution:\n    def solve(self):\n        pass",
@@ -155,6 +170,7 @@ try {
   console.log("✔ Problem Endpoints & Templates tests passed successfully!");
 } finally {
   globalThis.fetch = originalFetch;
+  await prisma.user.deleteMany({ where: { email: { startsWith: "problem-endpoints-" } } }).catch(() => {});
   await prisma.$disconnect().catch(() => {});
   await new Promise((resolve) => server.close(resolve));
 }

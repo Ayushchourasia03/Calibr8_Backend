@@ -13,8 +13,15 @@ const originalFetch = globalThis.fetch;
 let requests = [];
 let handler = null;
 
+// Result cleanup (DELETE /submissions/:token after reading) is recorded
+// separately so request counts only cover execution traffic.
+const cleanupDeletes = [];
 globalThis.fetch = async (input, options = {}) => {
   const url = new URL(input);
+  if (options.method === "DELETE") {
+    cleanupDeletes.push(url.pathname);
+    return new Response(null, { status: 204 });
+  }
   const entry = { url, options, body: options.body ? JSON.parse(options.body) : null };
   requests.push(entry);
   return handler(entry);
@@ -196,4 +203,9 @@ test("Python never uses the harness", async () => {
   const results = await run("python", [{ stdin: "7" }]);
   assert.equal(results[0].actual, "7!");
   assert.deepEqual(requests.map((r) => r.url.pathname), ["/batches"]);
+});
+
+test("harness results are deleted from CodeBox after they are read", () => {
+  assert.ok(cleanupDeletes.length > 0, "at least one DELETE /submissions/:token was sent");
+  assert.ok(cleanupDeletes.every((path) => path.startsWith("/submissions/")));
 });

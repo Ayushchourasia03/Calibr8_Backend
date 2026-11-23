@@ -45,19 +45,22 @@
 - **Protected**: requires a valid, non-revoked `Authorization: Bearer <token>` for a user that still exists.
 - **Owner**: Protected, and the resource must belong to the caller. Otherwise the response is 404.
 
-**Limit legend**: `auth` = 30 per 15 min per IP · `run` = 10 per min · `submit` = 6 per min · `2⇉` = at most 2 execution jobs in flight per user/IP (see [§5](#5-rate-limiting-and-execution-concurrency)).
+**Limit legend**: `auth` = 30 per 15 min per IP (IPv6: per /64), plus 10 failed logins per 15 min per account · `session` = 20 per 15 min per user · `run` = 10 per min · `submit` = 6 per min · `analyze` = 20 per min · `2⇉` = at most 2 execution jobs in flight per user, and every run/submit also takes a backend-wide judge slot (see [§5](#5-rate-limiting-and-execution-concurrency)).
 
 | Method | Path | Auth | Limits | Purpose |
 |---|---|---|---|---|
 | GET | `/` | Public | – | HTML landing page or JSON service info (content-negotiated) |
-| GET | `/health`, `/api/health` | Public | – | Health check JSON |
+| GET | `/health`, `/api/health` | Public | – | Liveness check JSON |
+| GET | `/health/ready`, `/api/health/ready` | Public | – | Readiness: database (and CodeBox) reachable, judge queue stats; 503 when degraded |
 | GET | `/ping`, `/api/ping` | Public | – | Plain-text `pong` |
 | POST | `/api/auth/register` | Public | auth | Create account, returns token |
 | POST | `/api/auth/login` | Public | auth | Log in, returns token |
 | POST | `/api/auth/logout` | Protected | – | Revoke current token |
-| POST | `/api/auth/refresh` | Protected | – | New token, old one revoked |
+| POST | `/api/auth/logout-all` | Protected | session | End every session of the account (all devices) |
+| POST | `/api/auth/refresh` | Protected | session | New token, old one revoked; at most `SESSION_MAX_AGE_DAYS` (30) after login |
 | GET | `/api/auth/me`, `/api/auth/verify` | Protected | – | Current user + header stats (+ daily login coin) |
-| POST | `/api/auth/change-password` | Protected | – | Change password |
+| POST | `/api/auth/change-password` | Protected | session | Change password; ends all other sessions, returns a new `token` |
+| DELETE | `/api/users/me` | Protected | session | Delete the account (`{ password, confirm: "DELETE" }`) |
 | GET | `/api/users/me` (alias `GET /api/users`) | Protected | – | Profile |
 | GET | `/api/users/me/overview` | Protected | – | Profile + submission activity heatmap |
 | GET | `/api/users/me/activity` | Protected | – | Submission activity heatmap only |
@@ -78,15 +81,15 @@
 | GET | `/api/problems` | Optional | – | Problem catalogue with filters |
 | GET | `/api/problems/:slug` | Public | – | Problem detail, visible testcases, starter code |
 | GET | `/api/problems/:slug/starter` (alias `/template`) | Public | – | Starter template(s) |
-| POST | `/api/problems/:slug/run` | **Optional** | run, 2⇉ | Run visible testcases |
-| POST | `/api/problems/:slug/submit` | **Optional** | submit, 2⇉ | Submit (async 202 by default) |
+| POST | `/api/problems/:slug/run` | Protected | run, 2⇉ | Run visible testcases |
+| POST | `/api/problems/:slug/submit` | Protected | submit, 2⇉ | Submit (async 202 by default) |
 | GET | `/api/execution/languages` | Public | – | Supported languages |
 | POST | `/api/execution/run` (alias `/runs`) | Protected | run, 2⇉ | Run visible testcases / custom stdin |
 | POST | `/api/execution/submit` | Protected | submit, 2⇉ | Submit, **synchronous** 200 |
 | POST | `/api/execution/submissions` | Protected | submit, 2⇉ | Submit, **asynchronous** 202 |
 | GET | `/api/execution/submissions/:id` | Owner | – | Poll a submission |
 | GET | `/api/execution/submissions/:id/complexity` | Owner | – | Empirical complexity profile |
-| POST | `/api/execution/analyze-complexity` | Optional | run | Static complexity analysis of code |
+| POST | `/api/execution/analyze-complexity` | Protected | analyze | Static complexity analysis of code (≤ 64 KB, worker thread, 2 s budget) |
 | GET | `/api/daily-problem` | Optional | – | Today's daily problem + user status |
 | GET | `/api/daily-problem/history` | Optional | – | Past daily problems (up to today) |
 | GET | `/api/coins/balance` | Protected | – | Coins and streak |
@@ -95,14 +98,15 @@
 | GET | `/api/themes/me` | Protected | – | Active and owned themes |
 | POST | `/api/themes/:slug/buy` | Protected | – | Buy a theme (also applies it) |
 | PUT | `/api/themes/apply` | Protected | – | Apply an owned theme |
-| GET | `/api/rankings` | Public | – | Leaderboard |
+| GET | `/api/rankings` | Optional | 60/min | Leaderboard; regional fields and scopes need a token |
 | GET | `/api/study/subjects` | Public | – | Study subjects |
 | GET | `/api/study/subjects/:subjectSlug` (alias `/chapters`) | Public | – | Subject with chapters |
 | GET | `/api/study/chapters/:chapterId/topics` | Public | – | Topics of a chapter |
 | GET | `/api/study/topics/:topicSlug` | Public | – | Topic content + MCQs |
 | POST | `/api/study/topics/:topicSlug/submit` | Protected | – | Grade MCQ answers |
 | GET | `/api/social/:provider/link-url` | Protected | – | GitHub OAuth authorize URL |
-| GET | `/api/social/:provider/callback` | Public | – | OAuth redirect target (browser) |
+| GET | `/api/social/:provider/callback` | Public | – | OAuth redirect target (browser); redirects with a one-time `link_code` |
+| POST | `/api/social/:provider/complete` | Protected | session | Link the provider using the `link_code` (must be the user who started) |
 | DELETE | `/api/social/:provider` | Protected | – | Unlink provider |
 
 Every route in the execution router is mounted twice, so **every `/api/execution/...` path also works as `/api/execute/...`** (for example `/api/execute/run` and `/api/execute/submissions/:id`).
@@ -144,18 +148,20 @@ The server listens on `0.0.0.0:${PORT}` (default **3000**).
 
 ### 2.3 Global pipeline (order matters, from [src/app.js](src/app.js))
 
-1. **`trust proxy`**: from `TRUST_PROXY` (a hop count, `true`/`false`, or an Express trust string). The default is `1` in production and off elsewhere. This decides `req.ip`, which keys the IP-based rate limits.
-2. **Security headers** on every response:
-   - `Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' https:; frame-ancestors 'self' https://*.run.app https://*.google.com https://*.aistudio.google.com https://*.googleusercontent.com;`
-   - `X-Content-Type-Options: nosniff`
+1. **`trust proxy`**: from `TRUST_PROXY` (a hop count, `true`/`false`, or an Express trust string). The default is `1` in production and off elsewhere. This decides `req.ip`, which keys the IP-based rate limits. It must equal the number of proxies in front of the app.
+2. **Request id**: every response carries `X-Request-Id` (a valid incoming one is reused). Error logs include it.
+3. **Security headers** on every response (`X-Powered-By` is disabled):
+   - `Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`
+   - `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cross-Origin-Opener-Policy: same-origin`
    - `Referrer-Policy: strict-origin-when-cross-origin`
+   - In production: `Strict-Transport-Security: max-age=31536000; includeSubDomains`
 3. **CORS** (`cors` package, `credentials: true`):
    - Allowed origins are every comma-separated entry of `FRONTEND_URL`, each normalised to its origin. Outside production, `http://localhost:5173` and `http://127.0.0.1:5173` are also allowed.
    - Requests without an `Origin` header (curl, server-to-server) are allowed.
    - A disallowed origin gets no CORS headers, so the browser blocks the response. The server still runs the handler.
-4. **Body parsing**: `express.json({ limit: "1mb" })` and `express.urlencoded({ extended: true, limit: "1mb" })`.
-5. **Logging**: `morgan` logs `:method :path :status :response-time ms` **only for responses with status ≥ 400**. Request bodies (submitted code) are never logged.
-6. **Static files**: `public/` is served with `index: false` (for example `GET /index.html`).
+4. **Body parsing**: `express.json({ limit: "1mb" })` and `express.urlencoded({ extended: false, limit: "1mb" })`.
+5. **Logging**: `morgan` logs `:method :path :status :response-time ms :request-id` **only for responses with status ≥ 400**. Request bodies (submitted code) are never logged.
+6. **Static files**: the API explorer in `public/` is served (with `index: false`) only outside production, or when `SERVE_API_CONSOLE=true`.
 7. **Routers** (above).
 8. **Error handler**: [src/middlewares/error.middleware.js](src/middlewares/error.middleware.js) (see [§4](#4-response-and-error-conventions)).
 9. **Unknown routes**: there is no JSON catch-all. Express's default handler answers with **404 and an HTML body** (`Cannot GET /x`), not the JSON error shape.
@@ -169,15 +175,15 @@ The server listens on `0.0.0.0:${PORT}` (default **3000**).
 | Property | Value |
 |---|---|
 | Transport | `Authorization: Bearer <token>` header. No cookies are set or read. |
-| Algorithm | HS256 (jsonwebtoken default), signed with `JWT_SECRET` |
-| Payload | `{ id: <userId>, email, jti: <random UUID>, iat, exp }` |
-| Lifetime | `JWT_EXPIRES_IN`, default `"1d"` |
-| Issued by | `register`, `login`, `refresh` |
-| Revoked by | `logout`, `refresh` (the old token) |
+| Algorithm | HS256 only (pinned on sign and verify), signed with `JWT_SECRET` |
+| Payload | `{ id: <userId>, tv: <tokenVersion>, auth_time: <login time, s>, jti: <random UUID>, iat, exp }`. No email. |
+| Lifetime | `JWT_EXPIRES_IN`, default `"1d"`. A session can be refreshed for at most `SESSION_MAX_AGE_DAYS` (default 30) after login. |
+| Issued by | `register`, `login`, `refresh`, `change-password` |
+| Revoked by | `logout`, `refresh` (the old token); **all** tokens of a user by `change-password`, `logout-all` and account deletion (`users.tokenVersion` is incremented) |
 
 **Secret handling** ([src/config/jwt.js](src/config/jwt.js)):
 
-- In production `JWT_SECRET` must be at least 32 characters. If it is not, the server logs a warning and generates a **random secret per process**. Every token then becomes invalid on restart, and tokens are not portable between instances.
+- In production `JWT_SECRET` must be at least 32 characters. If it is not, **the server refuses to start**.
 - Outside production the minimum is 24 characters, otherwise a built-in development fallback is used.
 - `OAUTH_STATE_SECRET` follows the same rules and **must differ from `JWT_SECRET`**. The process throws at startup if they are equal.
 
@@ -187,7 +193,8 @@ The server listens on `0.0.0.0:${PORT}` (default **3000**).
 2. `jwt.verify`. An expired token gives **401 `TOKEN_EXPIRED`**. A malformed, badly signed or not-yet-valid token gives **401 `INVALID_TOKEN`**.
 3. In parallel, it runs the revocation check and the user lookup.
 4. A revoked token gives **401 `TOKEN_REVOKED`**. A deleted user gives **401 `UNAUTHORIZED`** "Account no longer exists. Please log in again." Accounts are never recreated from token claims.
-5. It sets `req.token` and sets `req.user` to `{ id, email, name, difficulty, rating, score, streak, longestStreak, tier, coins, onboarded, preferredLanguage, createdAt, updatedAt }`.
+5. A token whose `tv` claim (missing = 0) differs from the user's current `tokenVersion` gives **401 `TOKEN_REVOKED`** "Your session was ended. Please log in again."
+6. It sets `req.token`, `req.auth = { decoded, tokenVersion }` and `req.user` to `{ id, email, name, difficulty, rating, score, streak, longestStreak, tier, coins, onboarded, preferredLanguage, lastLoginISTDate, createdAt, updatedAt }`.
 
 Database errors propagate to the error handler, which returns 503 `DATABASE_UNAVAILABLE` or 500.
 
@@ -200,9 +207,10 @@ Same checks, but **never fails**. If anything is wrong (no header, bad or expire
 - Revoked tokens are stored in table `revoked_tokens`, keyed by `jti`, or by `sha256:<hash>` for legacy tokens without a `jti`, together with the token's expiry. The raw token is never stored.
 - In-memory caches:
   - **revoked**: entries are kept until the token expires.
-  - **confirmed not revoked**: entries live 30 seconds (at most 50,000 entries).
+  - **confirmed not revoked**: entries live 10 seconds (at most 50,000 entries).
 
-  A token revoked on one instance can therefore still be accepted by another instance for up to 30 s.
+  A token revoked on one instance can therefore still be accepted by another instance for up to 10 s.
+- A database error during the revocation lookup **fails closed** (the request errors instead of treating the token as not revoked).
 - Expired rows are purged every hour (see [§22](#22-background-jobs-and-startup-behaviour)).
 - If the table does not exist (Prisma `P2021`), revocation silently degrades to in-memory only.
 
@@ -216,7 +224,7 @@ Same checks, but **never fails**. If anything is wrong (no header, bad or expire
 
 ### 3.6 Daily-login side effect
 
-`register`, `login`, `refresh`, `GET /api/auth/me` and `GET /api/auth/verify` all call `grantDailyLoginReward`. It grants **+1 coin the first time per IST calendar day** (idempotent, race-safe). It never changes the streak, and it never fails the request.
+`register`, `login`, `refresh`, `GET /api/auth/me` and `GET /api/auth/verify` all call `grantDailyLoginReward`. It grants **+1 coin the first time per IST calendar day** (idempotent, race-safe). It never changes the streak, and it never fails the request. `refresh`, `me` and `verify` skip the database write when today's login is already recorded.
 
 ---
 
@@ -235,7 +243,8 @@ Most JSON success bodies contain `"success": true`. **These do not:**
 | `GET /api/study/subjects`, `/chapters/:chapterId/topics` | bare JSON **array** |
 | `GET /api/study/subjects/:subjectSlug`, `/topics/:topicSlug` | bare JSON **object** |
 | `GET /api/social/:provider/link-url` | `{ url }` |
-| `GET /api/social/:provider/callback` | HTTP **302 redirect** |
+| `GET /api/social/:provider/callback` | HTTP **302 redirect** to `FRONTEND_URL/?link_code=…&provider=github` or `?link_error=<CODE>` |
+| `GET /health/ready` | `{ status: "ready" \| "degraded", checks: { database, codebox }, judge, timestamp }` |
 
 **Verdict endpoints (run, submit, poll) return HTTP 200 even when the user's code fails** (Wrong Answer, Compilation Error, TLE, and so on). Read the `verdict`/`status` field. Non-2xx responses mean the request itself failed.
 
@@ -257,15 +266,16 @@ Most JSON success bodies contain `"success": true`. **These do not:**
 | Case | Status | `code` | `message` |
 |---|---|---|---|
 | `ApiError` thrown by app code | `err.status` | `err.code` | `err.message` (shown even for 5xx) |
-| Prisma unique violation `P2002` | 409 | `CONFLICT` | "A record with that `<field>` already exists." |
+| Body larger than 1 MB | 413 | `PAYLOAD_TOO_LARGE` | "Request body is too large." |
+| Malformed JSON body | 400 | `INVALID_JSON` | "Request body is not valid JSON." |
+| Prisma unique violation `P2002` | 409 | `CONFLICT` | "A record with these details already exists." |
+| Prisma validation error (malformed query input) | 400 | `BAD_REQUEST` | "Invalid request parameters." |
 | Prisma init error, `P1000`–`P1003`, or a message containing "No database host" / "connection string" / "DATABASE_URL" | 503 | `DATABASE_UNAVAILABLE` | "Database service is unavailable." |
 | Anything else | `err.status`, or 400 for `ValidationError`, else 500 | `err.code` or the status default | for ≥ 500: "Internal server error."; otherwise `err.message` |
 
 Consequences:
 
-- Malformed JSON gives **400 `BAD_REQUEST`** with the parser's message.
-- A body over 1 MB gives **413 `CODE_TOO_LARGE`** "request entity too large". The default code for 413 is `CODE_TOO_LARGE`.
-- Unexpected 5xx errors may carry a raw `code` such as a Prisma error code (`P2025`) or a Node error code, but the message is always hidden.
+- Unexpected 5xx errors always use the status default code and a hidden message. They are logged server-side with the request id (Prisma errors by class and code only, because their messages embed query arguments).
 
 Default codes by status ([src/utils/ApiError.js](src/utils/ApiError.js)):
 
@@ -287,10 +297,23 @@ Default codes by status ([src/utils/ApiError.js](src/utils/ApiError.js)):
 | Code | Status | Raised by |
 |---|---|---|
 | `UNAUTHORIZED` | 401 | `protect` (no token, deleted account), study submit |
-| `TOKEN_EXPIRED` / `INVALID_TOKEN` / `TOKEN_REVOKED` | 401 | `protect` |
+| `TOKEN_EXPIRED` / `INVALID_TOKEN` / `TOKEN_REVOKED` | 401 | `protect` (`TOKEN_REVOKED` also after password change / logout-all) |
+| `SESSION_EXPIRED` | 401 | refresh more than `SESSION_MAX_AGE_DAYS` after login |
 | `AUTH_RATE_LIMITED` | 429 | register, login |
-| `RATE_LIMITED` | 429 | run / submit / in-flight limiters |
-| `VALIDATION_ERROR` | 400 | register (missing fields) |
+| `ACCOUNT_LOGIN_LOCKED` | 429 | login after 10 failed attempts for the account within 15 min |
+| `RATE_LIMITED` | 429 | run / submit / analyze / session / rankings / in-flight limiters |
+| `JUDGE_BUSY` | 503 | run / submit when the backend-wide judge queue is full or the wait exceeds `JUDGE_QUEUE_TIMEOUT_MS` (`details.retryAfterSeconds`) |
+| `STDIN_TOO_LARGE` | 413 | custom-input run with `stdin` over 64 KB |
+| `INVALID_STDIN` | 400 | custom-input run with non-string `stdin` |
+| `PAYLOAD_TOO_LARGE`, `INVALID_JSON` | 413, 400 | body parser |
+| `OAUTH_NOT_CONFIGURED` | 503 | social link-url without GitHub client id/secret or `BACKEND_URL` (production) |
+| `LINK_CODE_INVALID` | 400 | social complete: invalid, expired or reused `link_code` |
+| `LINK_ACCOUNT_MISMATCH` | 403 | social complete by a different user than the one who started the flow |
+| `ALREADY_LINKED` | 409 | social complete: the GitHub account is linked to another user |
+| `CONFIRMATION_REQUIRED` | 400 | account deletion without `confirm: "DELETE"` |
+| `INVALID_SCOPE` | 400 | rankings with an unknown `scope` |
+| `INVALID_ANSWERS`, `NO_ANSWERS` | 400 | study submit with a non-object or empty answer sheet |
+| `VALIDATION_ERROR` | 400 | register (missing fields), name/profile fields that are not strings or too long |
 | `INVALID_EMAIL` | 400 | register |
 | `WEAK_PASSWORD`, `PASSWORD_TOO_LONG`, `PASSWORD_EQUALS_EMAIL` | 400 | register, change-password |
 | `EMAIL_ALREADY_EXISTS` | 409 | register |
@@ -325,8 +348,12 @@ Source: [src/middlewares/rateLimit.middleware.js](src/middlewares/rateLimit.midd
 
 | Limiter | Applied to | Key | Window | Max | On exceed |
 |---|---|---|---|---|---|
-| `authLimiter` | register **and** login (one shared counter) | `auth:<ip>` | 15 min | 30 | 429 `AUTH_RATE_LIMITED` "Too many login or registration attempts. Please try again in a few minutes." |
-| `runLimiter` | every run route **and** `analyze-complexity` (one shared counter) | `run:<userId or ip>` | 60 s | 10 | 429 `RATE_LIMITED` "Run rate limit exceeded. You can perform at most 10 runs per minute." |
+| `authLimiter` | register **and** login (one shared counter) | `auth:<ip or IPv6 /64>` | 15 min | 30 | 429 `AUTH_RATE_LIMITED` "Too many login or registration attempts. Please try again in a few minutes." |
+| per-account login throttle | login (failed attempts only) | normalized email | 15 min | 10 | 429 `ACCOUNT_LOGIN_LOCKED` |
+| `sessionLimiter` | refresh, logout-all, change-password, account deletion, social complete | `session:<userId>` | 15 min | 20 | 429 `RATE_LIMITED` |
+| `runLimiter` | every run route | `run:<userId>` | 60 s | 10 | 429 `RATE_LIMITED` "Run rate limit exceeded. You can perform at most 10 runs per minute." |
+| `analyzeLimiter` | `analyze-complexity` | `analyze:<userId>` | 60 s | 20 | 429 `RATE_LIMITED` |
+| rankings limiter | `GET /api/rankings` | `rankings:<userId or ip>` | 60 s | 60 | 429 `RATE_LIMITED` |
 | `submitLimiter` | every submit route (one shared counter) | `submit:<userId or ip>` | 60 s | 6 | 429 `RATE_LIMITED` "Submission rate limit exceeded. You can submit at most 6 times per minute." |
 | `inFlightLimiter` | every run **and** submit route (not analyze) | `user:<id>` or `ip:<ip>` | concurrent | 2 | 429 `RATE_LIMITED` "Maximum 2 code execution jobs in flight simultaneously." |
 
@@ -336,8 +363,10 @@ Behaviour details:
 - **Headers on every rate-limited route**: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` (seconds until the window resets). On a 429 the response also has a `Retry-After` header (seconds) and `details.retryAfterSeconds`. The in-flight limiter sets neither.
 - **Order** on run and submit routes is auth → rate limiter → in-flight limiter. A request rejected by the in-flight limiter has already used one rate-limit unit.
 - **In-flight slot lifetime**: released when the HTTP response finishes or the connection closes. Asynchronous submissions (202) **keep the slot until background judging completes**, so two queued submissions block a third run or submit from the same user.
-- On problem-scoped routes (`/api/problems/:slug/run|submit`) with no token, all limits are keyed by IP.
-- With several backend instances, each instance has its own counters.
+- Every execution route requires a token, so execution limits are always per user.
+- **Judge admission** ([src/utils/judgeAdmission.js](src/utils/judgeAdmission.js)): besides the per-user limits, at most `JUDGE_MAX_CONCURRENT` (default 4) run/submit jobs execute against CodeBox at once per instance. Up to `JUDGE_MAX_QUEUE` (default 20) more wait, each for at most `JUDGE_QUEUE_TIMEOUT_MS` (default 30 s); beyond that the request gets 503 `JUDGE_BUSY`.
+- **Byte budgets**: code ≤ 64 KB, custom `stdin` ≤ 64 KB, program output/error text kept per testcase ≤ 4 KB after comparison. Large C/C++ harness requests are deleted from CodeBox right after their results are read.
+- With several backend instances, each instance has its own counters: put an edge/WAF rate limit in front of the API as well.
 
 ---
 
@@ -549,10 +578,10 @@ Because the route uses `protect`, an already expired token gets 401 `TOKEN_EXPIR
 
 | | |
 |---|---|
-| Auth | Protected (the current token must still be valid) |
+| Auth | Protected (the current token must still be valid) · `sessionLimiter` |
 | Body | none |
 
-**What the backend does**: loads the user, grants the daily login reward, signs a new token, revokes the old token, then responds.
+**What the backend does**: refuses sessions older than `SESSION_MAX_AGE_DAYS` (default 30) since the original login (401 `SESSION_EXPIRED`), loads the user, grants the daily login reward (no write if already granted today), signs a new token that keeps the original login time, revokes the old token, then responds. Refreshing never extends a session beyond the maximum age.
 
 **200**
 
@@ -571,7 +600,7 @@ Because the route uses `protect`, an already expired token gets 401 `TOKEN_EXPIR
 }
 ```
 
-**Errors**: 401 (all `protect` codes, and "Account no longer exists").
+**Errors**: 401 (all `protect` codes, `SESSION_EXPIRED`, and "Account no longer exists"), 429.
 
 ### 8.5 `GET /api/auth/me` · `GET /api/auth/verify`
 
@@ -608,19 +637,44 @@ Because the route uses `protect`, an already expired token gets 401 `TOKEN_EXPIR
 |---|---|
 | Auth | Protected |
 
-**Body**: `{ "oldPassword": string, "newPassword": string }`
+**Body**: `{ "currentPassword": string, "newPassword": string }` (`oldPassword` is accepted as an alias of `currentPassword`)
 
 **Order of checks**
 
 1. Both fields present, otherwise 400 `MISSING_FIELDS`.
 2. User exists, otherwise 404 `NOT_FOUND`.
-3. `newPassword` rules, otherwise 400 `WEAK_PASSWORD` / `PASSWORD_TOO_LONG` / `PASSWORD_EQUALS_EMAIL`. These are checked **before** the old password.
-4. `oldPassword` matches, otherwise 400 `INVALID_CURRENT_PASSWORD` "Current password is incorrect."
-5. Saves the new bcrypt hash.
+3. `newPassword` rules, otherwise 400 `WEAK_PASSWORD` / `PASSWORD_TOO_LONG` / `PASSWORD_EQUALS_EMAIL`. These are checked **before** the current password.
+4. `currentPassword` matches, otherwise 400 `INVALID_CURRENT_PASSWORD` "Current password is incorrect."
+5. Saves the new bcrypt hash (cost 12) and increments `tokenVersion`.
 
-**200**: `{ "success": true, "message": "Password updated successfully." }`
+**200**: `{ "success": true, "message": "Password updated successfully. Other sessions have been signed out.", "token": "eyJ…" }`
 
-⚠ Existing tokens, including those on other devices, **stay valid** after a password change.
+**Every earlier token, on every device, is revoked** (401 `TOKEN_REVOKED`). Store the returned `token` to keep the current session.
+
+### 8.7 `POST /api/auth/logout-all`
+
+| | |
+|---|---|
+| Auth | Protected · `sessionLimiter` |
+
+Increments the user's `tokenVersion`, which revokes every token of the account, including the current one. **200**: `{ "success": true, "message": "Logged out of all sessions." }`
+
+### 8.8 `DELETE /api/users/me`
+
+| | |
+|---|---|
+| Auth | Protected · `sessionLimiter` |
+
+**Body**: `{ "password": string, "confirm": "DELETE" }`. Without `confirm` → 400 `CONFIRMATION_REQUIRED`; wrong password → 400 `INVALID_CURRENT_PASSWORD`.
+
+Permanently deletes the account. Submissions, solve progress, coin transactions, owned themes, daily-problem completions, social accounts and complexity profiles are removed by `ON DELETE CASCADE`. **200**: `{ "success": true, "message": "Your account has been deleted." }`
+
+### 8.9 Login hardening
+
+- Unknown emails still cost one bcrypt comparison, so response time does not reveal whether an account exists.
+- 10 failed logins for one account within 15 minutes lock that account's logins for the rest of the window (429 `ACCOUNT_LOGIN_LOCKED`), independent of the IP.
+- Hashes created with a lower bcrypt cost are upgraded to cost 12 on the next successful login.
+- `email` and `password` must be strings (400 otherwise).
 
 ---
 
@@ -822,7 +876,8 @@ Saves the user's calibration: which DSA topics, at which level. It also computes
 5. It resolves identifiers against **DSA topics only** (by id or slug). Any unknown or CORE topic gives 400 "One or more topic IDs are invalid."
 6. It normalises the base difficulty. An invalid value gives 400 "difficulty must be one of: easy (beginner), medium (mid), hard (advanced)."
 7. Topics without an explicit level inherit the base difficulty.
-8. **Rating** is the average of the per-topic level scores, where easy = 800, medium = 1200, hard = 1600. An unknown per-topic level counts as easy. The result is rounded.
+8. **Rating** is the average of the per-topic level scores, where easy = 800, medium = 1200, hard = 1600. The result is rounded. Per-topic levels must be one of the accepted level names (400 otherwise) and are stored normalized (`easy` / `medium` / `hard`).
+   **The rating (and `tier`) is only written while the user has not solved any problem yet.** After the first solve the rating is earned; recalibrating then only updates topic levels and `difficulty`.
 9. **Difficulty** is `hard` if the rating is at least 1400, `medium` if at least 1000, otherwise `easy`.
 10. In one transaction: update `users` (`difficulty`, `rating`, `onboarded = true`), delete **all** existing `user_topics` of the user, insert the new ones, and re-read the user.
 
@@ -954,16 +1009,16 @@ The language is normalised for the lookup (`c++`, `py`, `js` work), but the resp
 
 **404**: problem not found, or "No <language> template found for this problem." The latter happens only for unsupported language names.
 
-### 12.4 `POST /api/problems/:slug/run` — Optional · run limiter · 2⇉
+### 12.4 `POST /api/problems/:slug/run` — Protected · run limiter · 2⇉
 
-Same as [§13.2](#132-run--post-apiexecutionrun), with the problem taken from the URL. Anonymous use is allowed and rate-limited per IP. The `stdin` custom-input mode is **not** available here, because a slug is always present.
+Same as [§13.2](#132-run--post-apiexecutionrun), with the problem taken from the URL. Requires a token (401 otherwise): the shared judge is never available anonymously. The `stdin` custom-input mode is **not** available here, because a slug is always present.
 
-### 12.5 `POST /api/problems/:slug/submit` — Optional · submit limiter · 2⇉
+### 12.5 `POST /api/problems/:slug/submit` — Protected · submit limiter · 2⇉
 
 Same as [§13.3](#133-submit), with the problem taken from the URL.
 
 - **Asynchronous by default**: returns 202 with a `pollUrl`. Send `"wait": true` in the body, or `?wait=true`, to get the full verdict synchronously.
-- ⚠ Anonymous callers get a 202 but **cannot poll**, because the poll route requires the owner's token. Anonymous callers should always send `wait: true`.
+- Requires a token (401 otherwise).
 - Anonymous accepted submissions earn no rewards.
 
 ---
@@ -1302,11 +1357,13 @@ The `reason` is one of:
 - `measurements` is `null` until the status is `COMPLETED`, `INCONCLUSIVE` or `FAILED`.
 - The confidence values here are capitalised: `High`, `Medium`, `Low` or `Inconclusive`.
 
-### 13.6 `POST /api/execution/analyze-complexity` — Optional · run limiter
+### 13.6 `POST /api/execution/analyze-complexity` — Protected · analyze limiter (20/min)
 
-Static (no execution) time and space complexity estimate. It shares the 10-per-minute run budget and is **not** subject to the in-flight limit.
+Static (no execution) time and space complexity estimate. It is **not** subject to the in-flight limit.
 
-**Body**: `{ "code" | "userCode" | "source_code": string, "language" | "lang": string (default "python"), "slug" | "problemSlug": string (accepted but unused) }`. The language is not validated: JS/TS names, Python names, and everything else are treated as brace-style (C/C++/Java). Code over 200,000 characters gives an "unknown" result.
+The analyzer runs in a worker-thread pool ([src/services/complexityPool.js](src/services/complexityPool.js)) with a hard per-job budget (`COMPLEXITY_TIMEOUT_MS`, default 2000 ms). Inputs that would take longer return `status: "unknown"` with the limitation "Analysis exceeded … ms"; they never block the API. The same applies to the analysis attached to run and submit responses.
+
+**Body**: `{ "code" | "userCode" | "source_code": string, "language" | "lang": string (default "python"), "slug" | "problemSlug": string (accepted but unused) }`. Code over 64 KB gives 413 `CODE_TOO_LARGE`. The language is not validated: JS/TS names, Python names, and everything else are treated as brace-style (C/C++/Java).
 
 **200**
 
@@ -1507,30 +1564,32 @@ A concurrent double-buy that hits the unique index is also reported as 400 `ALRE
 
 Controller: [src/controllers/ranking.controller.js](src/controllers/ranking.controller.js).
 
-### `GET /api/rankings` — Public
+### `GET /api/rankings` — Optional auth · 60 requests per minute
 
 **Query**
 
 | Param | Meaning |
 |---|---|
-| `scope` | `college`, `batch`, `state` or `country`. It filters only when the matching value param is also sent. Any other scope, or none, gives the global ranking. |
+| `scope` | `global` (default), `college`, `batch`, `state` or `country`. Non-global scopes **require a token** (401 otherwise); an unknown scope is 400 `INVALID_SCOPE`. A scope filters only when the matching value param is also sent. |
 | `college` / `batch` / `state` / `country` | Exact, case-sensitive value for the chosen scope |
 | `limit` | Default 50, clamped to 1–100 |
 
-**200**
+**200 (anonymous)**: a minimal public view
 
 ```json
 {
   "success": true,
   "count": 2,
   "data": [
-    { "id": "…", "name": "Asha", "score": 1850, "rating": 1310, "streak": 4, "strictPercent": 0, "tier": "Aurora I",
-      "college": "IIT X", "branch": "CSE", "batch": "2027", "state": "MH", "country": "India", "createdAt": "…" }
+    { "rank": 1, "name": "Asha", "score": 1850, "rating": 1310, "streak": 4, "strictPercent": 0, "tier": "Aurora I", "isCurrentUser": false }
   ]
 }
 ```
 
-- Users are sorted by `score` descending (`score` is **scoreUnits**; divide by 10 for points). There is no `rank` field: the rank is the array index + 1.
+**200 (with a token)**: each row also has `college`, `branch`, `batch`, `state`, `country`, and the caller's own row has `isCurrentUser: true`.
+
+- Internal user ids and account creation dates are never returned.
+- Users are sorted by `score` descending (`score` is **scoreUnits**; divide by 10 for points), ties by account age. `rank` is the position in this list.
 - No pagination offset is available.
 - `tier` here is the **stored** tier, updated on each first solve, which can differ from the computed `stats.tier`.
 - There is no `branch` scope.
@@ -1587,20 +1646,20 @@ An unknown chapter id returns `[]`, not 404.
 
 ### 18.5 `POST /api/study/topics/:topicSlug/submit` — Protected
 
-**Body**: `{ "answers": { "<mcqId>": <optionIndex: number> } }`. Answers are compared with `===`, so send **numbers**, not strings.
+**Body**: `{ "answers": { "<mcqId>": <optionIndex: number> } }`. Answers are compared with `===`, so send integer **numbers**, not strings.
 
 **200**
 
 ```json
 {
-  "success": true, "userId": "…", "topicSlug": "what-is-er-model", "score": 3, "total": 5,
+  "success": true, "userId": "…", "topicSlug": "what-is-er-model", "score": 3, "answered": 4, "total": 5,
   "result": [ { "mcqId": "cm…", "isCorrect": true, "correctIndex": 2, "explanation": "…" } ]
 }
 ```
 
-Grading only: **no progress is persisted**.
+`result` (and so `correctIndex`) covers **only the questions that were answered**; an empty answer sheet cannot read out the answer key. Grading only: **no progress is persisted**.
 
-**Errors**: 401 `UNAUTHORIZED`, 404 `NOT_FOUND` "Topic not found."
+**Errors**: 400 `INVALID_ANSWERS` (not an object), 400 `NO_ANSWERS` (no valid answer), 401 `UNAUTHORIZED`, 404 `NOT_FOUND` "Topic not found."
 
 ---
 
@@ -1612,27 +1671,26 @@ Controller: [src/controllers/social.controller.js](src/controllers/social.contro
 
 **200**: `{ "url": "https://github.com/login/oauth/authorize?client_id=…&redirect_uri=<BACKEND_URL>/api/social/github/callback&scope=read%3Auser+user%3Aemail&state=<jwt>" }`
 
-- `state` is a JWT `{ userId, provider }` signed with `OAUTH_STATE_SECRET`, valid for **10 minutes**.
-- `client_id` falls back to `demo-github-client-id` when `GITHUB_CLIENT_ID` is unset.
+- `state` is an HS256 JWT `{ userId, provider, nonce }` signed with `OAUTH_STATE_SECRET`, valid for **10 minutes**.
+- **503 `OAUTH_NOT_CONFIGURED`** when `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` (or, in production, `BACKEND_URL`) is unset.
 - **404 `UNKNOWN_PROVIDER`** for any provider other than `github`.
 
 The frontend should navigate the browser to `url`.
 
 ### 19.2 `GET /api/social/:provider/callback` — Public (GitHub redirects the browser here)
 
-**Query**: `code`, `state`, and optionally `error` and `redirect_uri`.
+**Query**: `code`, `state`, and optionally `error`.
 
 **What the backend does**
 
-1. Computes the redirect target: the origin of `redirect_uri` if it is in the allow-list (`FRONTEND_URL` entries plus `localhost:5173` and `127.0.0.1:5173`), otherwise the first allowed origin.
+1. The redirect target is the first `FRONTEND_URL` origin (outside production, `localhost:5173` is also allowed). No caller-supplied redirect is accepted.
 2. Validates `code` and `state`, verifies the state JWT, and checks the provider and configuration.
 3. Exchanges the code at `https://github.com/login/oauth/access_token`, then reads `/user` and, when no public email exists, `/user/emails` (the primary verified email). Each GitHub call has a 10 s timeout.
-4. Refuses to link if this GitHub account is already linked to **another** user.
-5. Upserts `social_accounts` with `{ providerUserId, username, name, email, avatarUrl, profileUrl, bio, headline: null, stats: { publicRepos, followers, following } }` and refreshes `connectedAt`.
+4. **Does not link anything.** The callback is a plain browser navigation and cannot prove which Calibr8 session completed the GitHub step, so it seals the profile into an encrypted (AES-256-GCM), 5-minute, one-time `link_code`.
 
 **Result**: always a **302 redirect**:
 
-- success: `<frontend>/?linked=github`
+- success: `<frontend>/?link_code=<code>&provider=github` → the frontend calls §19.3
 - failure: `<frontend>/?link_error=<CODE>`
 
 | `link_error` | Meaning |
@@ -1642,10 +1700,23 @@ The frontend should navigate the browser to `url`.
 | `UNKNOWN_PROVIDER` | provider ≠ github |
 | `CONFIGURATION` | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` missing |
 | `AUTH_FAILED` | token exchange failed, or no GitHub user id |
-| `ALREADY_LINKED` | this GitHub account belongs to another Calibr8 user |
-| `SERVER_ERROR` | anything else (network, DB) |
+| `SERVER_ERROR` | anything else (network) |
 
-### 19.3 `DELETE /api/social/:provider` — Protected
+### 19.3 `POST /api/social/:provider/complete` — Protected · `sessionLimiter`
+
+**Body**: `{ "code": "<link_code>" }`
+
+Links the GitHub account to the **signed-in** user, who must be the user that called `link-url` (this defeats link CSRF: a victim sent an attacker's authorize URL comes back in their own session, which does not match).
+
+**200**: `{ "success": true, "linked": "github", "account": SocialAccount }`
+
+| Error | Meaning |
+|---|---|
+| 400 `LINK_CODE_INVALID` | tampered, expired (5 min) or already used code, or provider mismatch |
+| 403 `LINK_ACCOUNT_MISMATCH` | the code was issued for a different user |
+| 409 `ALREADY_LINKED` | this GitHub account belongs to another Calibr8 user |
+
+### 19.4 `DELETE /api/social/:provider` — Protected
 
 Deletes the caller's link for that provider (lowercased).
 
@@ -1767,7 +1838,10 @@ From [src/server.js](src/server.js):
 | After listen | Every **1 hour**: delete expired `revoked_tokens` rows |
 | After listen | `startProfilingWorker()`: no-op unless `COMPLEXITY_PROFILING_ENABLED`. Recovers stale jobs, then processes the queue. |
 | After listen | CodeBox health check: `GET ${CODEBOX_URL}/health` with a 3 s timeout. **Log only.** |
-| `SIGINT` / `SIGTERM` | Stop the cron job and purge timer, stop accepting connections, wait up to **10 s** for in-flight requests, disconnect Prisma, exit 0. In-flight asynchronous submissions are not awaited and can be left `PROCESSING`. |
+| After listen, then every **5 min** | Submissions still `PROCESSING` 15 minutes after creation (abandoned by a crash/restart) are marked `ERROR` |
+| Process level | `unhandledRejection` is logged; `uncaughtException` is logged and exits 1 (let the process manager restart) |
+| `SIGINT` / `SIGTERM` | Stop the cron jobs and timers, stop accepting connections, wait up to **10 s** for in-flight requests, wait up to **25 s** for background (202) evaluations to store their verdicts, stop the analyzer workers, disconnect Prisma, exit 0. |
+| Boot warnings | `NODE_ENV` unset; CodeBox reached over plain HTTP |
 
 ---
 
@@ -1778,19 +1852,28 @@ See [.env.example](.env.example).
 | Variable | Default | Used for |
 |---|---|---|
 | `PORT` | 3000 | HTTP port |
-| `NODE_ENV` | – | `production` changes CORS (no localhost), the secret minimums and `trust proxy` |
+| `NODE_ENV` | – | `production` changes CORS (no localhost), the secret minimums (startup fails on weak/missing secrets), `trust proxy`, HSTS, the API console and OAuth fallbacks. Set it explicitly. |
 | `DATABASE_URL` | – | PostgreSQL. Neon adapter if the URL contains `neon.tech`. |
-| `JWT_SECRET` | dev fallback | token signing (≥ 32 characters in production) |
+| `JWT_SECRET` | dev fallback | token signing (≥ 32 characters in production, else the server refuses to start) |
 | `JWT_EXPIRES_IN` | `1d` | token lifetime |
-| `OAUTH_STATE_SECRET` | dev fallback | GitHub OAuth state; must differ from `JWT_SECRET` |
+| `SESSION_MAX_AGE_DAYS` | 30 | absolute session lifetime across refreshes |
+| `OAUTH_STATE_SECRET` | dev fallback | GitHub OAuth state and link codes; must differ from `JWT_SECRET`; ≥ 32 characters in production |
 | `FRONTEND_URL` | – | comma-separated CORS origins and OAuth redirect allow-list |
-| `BACKEND_URL` | `http://localhost:3000` | OAuth `redirect_uri` base |
+| `BACKEND_URL` | `http://localhost:3000` outside production; required in production for GitHub linking | OAuth `redirect_uri` base |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | – | GitHub OAuth |
 | `TRUST_PROXY` | 1 in production, else off | client IP for rate limits |
 | `PROBLEM_CACHE_TTL_MS` | 60000 | resolved-problem cache (0 disables) |
 | `CATALOG_CACHE_TTL_MS` | 30000 | problem catalogue cache (0 disables) |
+| `CATALOG_STATS_CACHE_TTL_MS` | 300000 | acceptance-rate stats (a scan of all submissions) |
+| `PROBLEM_CACHE_MAX_BYTES` | 64 MB | byte budget of the resolved-problem cache |
+| `SUBMISSION_CACHE_MAX_BYTES` | 32 MB | byte budget of the submission-result cache |
+| `JUDGE_MAX_CONCURRENT` / `JUDGE_MAX_QUEUE` / `JUDGE_QUEUE_TIMEOUT_MS` | 4 / 20 / 30000 | backend-wide judge admission control |
+| `COMPLEXITY_WORKERS` / `COMPLEXITY_TIMEOUT_MS` / `COMPLEXITY_MAX_QUEUE` | 1 / 2000 / 50 | static analyzer worker pool |
+| `SERVE_API_CONSOLE` | false | serve the `public/` API explorer in production |
+| `TEST_DATABASE_URL` (tests only) | – | database for DB-backed tests; tests refuse to use the `.env` `DATABASE_URL` ([tests/helpers/testEnv.js](tests/helpers/testEnv.js)) |
+| `TEST_CODEBOX_URL`, `TEST_CODEBOX_TOKEN` (tests only) | – | judge for tests that need a real CodeBox; otherwise CodeBox is blanked in tests |
 | `CODEBOX_URL`, `CODEBOX_TOKEN` | – | **required** for Run and Submit (otherwise 503) |
-| `CODEBOX_ALLOW_INSECURE_HTTP` | false | allow an `http://` CodeBox URL |
+| `CODEBOX_ALLOW_INSECURE_HTTP` | false | allow an `http://` CodeBox URL. ⚠ Sends the CodeBox token and all code unencrypted; logged as an error at startup in production. |
 | `CODEBOX_MULTICASE_ENABLED` | true | C/C++ multi-case harness |
 | `CODEBOX_MULTICASE_MAX_CASES` | 500 | cases per harness request |
 | `CODEBOX_BATCH_EXECUTION_ENABLED` | `auto` in code (`false` in `.env.example`) | CodeBox `/batches` API: `auto` / `true` / `false` |
@@ -1811,14 +1894,15 @@ Every cache below is **in-process memory**. With more than one backend instance,
 
 | Cache | TTL / size | Effect |
 |---|---|---|
-| Resolved problem (testcases + templates) | 60 s / 300 | Problem edits can take up to 60 s to appear in detail, run and submit. `solvedCount` is patched in place on first solves. |
-| Problem catalogue | 30 s | List, categories and acceptance rates can lag by up to 30 s. |
+| Resolved problem (testcases + templates) | 60 s / 300 / 64 MB | Problem edits can take up to 60 s to appear in detail, run and submit. `solvedCount` is patched in place on first solves. |
+| Problem catalogue | 30 s | List and categories can lag by up to 30 s. |
+| Acceptance stats | 5 min | Acceptance rates can lag by up to 5 min (not rebuilt on every solve). |
 | Bundled `problems/*.json` topic | forever | topic fallback |
-| Submission results | 30 min / 2,000 | Per-testcase results in poll responses |
+| Submission results | 30 min / 2,000 / 32 MB | Public (hidden-stripped, clipped) per-testcase results in poll responses |
 | Daily-problem rows | 5 min / 8 days | `GET /api/daily-problem` and the "is this the daily problem?" check on submit. Rows never change, so the TTL only bounds how long a manual DB edit takes to show. |
-| Token revocation | revoked until expiry; not-revoked 30 s | cross-instance revocation delay of up to 30 s |
+| Token revocation | revoked until expiry; not-revoked 10 s | cross-instance delay of up to 10 s for single-token logout. `tokenVersion` revocation (password change, logout-all) is immediate. |
 | Theme catalogue seed | once per process | |
-| Static complexity analyzer | 500 parsed / 1,000 results | |
+| Static complexity analyzer | 500 parsed / 1,000 results, keyed by hash, inside the worker threads | |
 | Rate limiter and in-flight counters | windows | limits are per instance |
 
 ---
@@ -1826,16 +1910,16 @@ Every cache below is **in-process memory**. With more than one backend instance,
 ## 25. Known quirks and gotchas
 
 1. **Unknown routes return HTML 404**, not the JSON error shape.
-2. **Async-submit routes and anonymous users**: `POST /api/problems/:slug/submit` returns 202 by default, but anonymous users cannot poll. Use `wait: true`.
+2. `POST /api/problems/:slug/submit` returns 202 by default. Use `wait: true` for a synchronous verdict.
 3. `POST /api/execute/submissions` is **synchronous**, unlike `POST /api/execution/submissions`, because sync mode is detected by the substring `/execute/submit` in the URL.
-4. The run budget (10 per minute) is **shared** between Run and `analyze-complexity`. The in-flight cap (2) is shared between Run and Submit.
+4. The in-flight cap (2) is shared between Run and Submit. `analyze-complexity` has its own budget.
 5. `stats.tier` (computed) and `users.tier` / rankings `tier` (stored) can differ. New users show `"Prism I"` stored but `"Pulse II"` computed.
 6. Poll responses lose per-test details after 30 minutes, after a restart, or on another instance. `rewardError` is always `false` in poll responses.
-7. A synchronous submit that fails because of CodeBox leaves its row `PROCESSING` forever. Asynchronous failures are marked `ERROR`.
-8. `PATCH /api/users/me/academic` stores `null` as the string `"null"`, while `PATCH /api/users/me` stores `""`.
+7. A submit whose judging fails (synchronous or asynchronous) is marked `ERROR`; rows abandoned by a crash are marked `ERROR` by the stale sweep after 15 minutes.
+8. Profile text fields are trimmed, stripped of control characters and length-limited (name 60, college 120, branch 80, batch 20, state 60, country 60). `null` or `""` clears a field.
 9. `DELETE /api/social/:provider` returns `count` as an object: `{ "count": { "count": 1 } }`.
 10. Study MCQ submission does not persist progress, and answers must be numbers.
-11. Password change does not revoke existing tokens.
+11. Password change revokes every existing token (store the returned `token`).
 12. `GET /api/problems/:slug` → `templatesArray` exposes the judge driver (header/footer) code.
 13. The JSON returned by `GET /` lists endpoints that are partly outdated.
 14. `GET /api/problems` counts a problem as solved on any ACCEPTED submission with `totalCount > 0`. `GET /api/users/all` additionally requires `passedCount === totalCount`. Both conditions hold for every submission the judge marks ACCEPTED.

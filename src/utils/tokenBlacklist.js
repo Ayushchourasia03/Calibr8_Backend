@@ -9,7 +9,7 @@ const revokedCache = new Map();
 // every authenticated request. Kept short so revocations made by other
 // instances propagate quickly.
 const notRevokedCache = new Map();
-const NOT_REVOKED_TTL_MS = 30 * 1000;
+const NOT_REVOKED_TTL_MS = 10 * 1000;
 const MAX_NOT_REVOKED_ENTRIES = 50_000;
 
 let persistenceAvailable = true;
@@ -94,23 +94,27 @@ export const isTokenBlacklisted = async (token, decodedPayload = null) => {
 
   if (!persistenceAvailable || !prisma?.revokedToken) return false;
 
+  let revoked;
   try {
-    const revoked = await prisma.revokedToken.findUnique({
+    revoked = await prisma.revokedToken.findUnique({
       where: { jti },
       select: { expiresAt: true },
     });
-
-    if (revoked && revoked.expiresAt.getTime() > now) {
-      revokedCache.set(jti, revoked.expiresAt.getTime());
-      return true;
-    }
-
-    if (notRevokedCache.size >= MAX_NOT_REVOKED_ENTRIES) notRevokedCache.clear();
-    notRevokedCache.set(jti, now + NOT_REVOKED_TTL_MS);
   } catch (err) {
     handlePersistenceError(err);
+    // Fail closed: a revocation that cannot be checked is not assumed absent
+    // (P2021 = table missing is handled above and degrades to memory only).
+    if (err?.code !== 'P2021') throw err;
+    return false;
   }
 
+  if (revoked && revoked.expiresAt.getTime() > now) {
+    revokedCache.set(jti, revoked.expiresAt.getTime());
+    return true;
+  }
+
+  if (notRevokedCache.size >= MAX_NOT_REVOKED_ENTRIES) notRevokedCache.clear();
+  notRevokedCache.set(jti, now + NOT_REVOKED_TTL_MS);
   return false;
 };
 

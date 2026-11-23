@@ -1,5 +1,6 @@
 import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
+import { tierForRating } from "../utils/userHeaderStats.js";
 
 /**
  * POST /api/onboarding or PUT /api/onboarding/levels
@@ -9,7 +10,7 @@ export const onboard = async (req, res, next) => {
   try {
     const userId = req.user.id;
     let { difficulty, topicIds, topicSelections, topicLevels, beginner } =
-      req.body;
+      req.body ?? {};
 
     // Difficulty normalization and score lookup maps
     const difficultyNormalize = {
@@ -36,8 +37,8 @@ export const onboard = async (req, res, next) => {
     // Support topicLevels alias from dashboard [{ topicId, level }]
     if (Array.isArray(topicLevels) && topicLevels.length > 0) {
       topicSelections = topicLevels.map((item) => ({
-        topicId: item.topicId,
-        difficulty: item.level || item.difficulty || "easy",
+        topicId: item?.topicId,
+        difficulty: item?.level || item?.difficulty || "easy",
       }));
     }
 
@@ -46,15 +47,26 @@ export const onboard = async (req, res, next) => {
 
     if (Array.isArray(topicSelections) && topicSelections.length > 0) {
       resolvedTopicIdentifiers = topicSelections.map((item) => {
-        const id = typeof item === "string" ? item : item.topicId;
-        const diff =
-          typeof item === "object"
+        const id = typeof item === "string" ? item : item?.topicId;
+        if (typeof id !== "string" || !id || id.length > 100) {
+          throw new ApiError(400, "One or more topic IDs are invalid.");
+        }
+        const rawLevel =
+          item && typeof item === "object"
             ? item.difficulty || item.level || "easy"
             : "easy";
-        levelByTopicIdentifier.set(id, diff);
+        // Only the three known levels are ever stored.
+        const level = difficultyNormalize[String(rawLevel).toLowerCase()];
+        if (!level) {
+          throw new ApiError(400, "Topic level must be one of: easy, medium, hard.");
+        }
+        levelByTopicIdentifier.set(id, level);
         return id;
       });
     } else if (Array.isArray(topicIds)) {
+      if (topicIds.some((id) => typeof id !== "string" || !id || id.length > 100)) {
+        throw new ApiError(400, "One or more topic IDs are invalid.");
+      }
       resolvedTopicIdentifiers = [...topicIds];
     }
 
@@ -139,10 +151,19 @@ export const onboard = async (req, res, next) => {
 
     // Persist changes in a single database transaction
     const updatedUser = await prisma.$transaction(async (tx) => {
-      // 1. Update user fields
+      // 1. Update user fields. Calibration only seeds the starting rating:
+      //    once the user has solved a problem, the rating is earned and can
+      //    no longer be overwritten by self-assessment (topic levels and the
+      //    difficulty preference can still be changed).
+      const solvedCount = await tx.userProblemProgress.count({ where: { userId } });
+      const data = { difficulty: normalizedDifficulty, onboarded: true };
+      if (solvedCount === 0) {
+        data.rating = rating;
+        data.tier = tierForRating(rating);
+      }
       await tx.user.update({
         where: { id: userId },
-        data: { difficulty: normalizedDifficulty, rating, onboarded: true },
+        data,
       });
 
       // 2. Remove existing topic associations

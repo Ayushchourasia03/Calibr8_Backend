@@ -1,25 +1,39 @@
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET, JWT_EXPIRES_IN } from '../config/jwt.js';
+import { JWT_SECRET, JWT_EXPIRES_IN, JWT_ALGORITHM, SESSION_MAX_AGE_DAYS } from '../config/jwt.js';
+import { ApiError } from './ApiError.js';
 
 /**
- * Sign a JWT containing the given payload with an automatic unique jti.
- * @param {{ id: string, [key: string]: any }} payload
- * @param {string} [expiresIn]
+ * Issues a session token for a user.
+ *
+ * Claims: id, tv (the user's tokenVersion: bumping it revokes every token,
+ * e.g. on password change or "log out everywhere"), auth_time (original
+ * login, carried over by /refresh to bound the session lifetime) and a
+ * unique jti (per-token revocation on logout). No PII (email) in the token.
+ *
+ * @param {{ id: string, tokenVersion?: number }} user
+ * @param {{ authTime?: number, expiresIn?: string }} [options]
  * @returns {string}
  */
-export const signToken = (payload, expiresIn = JWT_EXPIRES_IN) => {
-  const jti = payload.jti || crypto.randomUUID();
-  return jwt.sign({ ...payload, jti }, JWT_SECRET, { expiresIn });
-};
+export const signSessionToken = (user, { authTime, expiresIn = JWT_EXPIRES_IN } = {}) =>
+  jwt.sign(
+    {
+      id: user.id,
+      tv: Number(user.tokenVersion) || 0,
+      auth_time: authTime ?? Math.floor(Date.now() / 1000),
+      jti: crypto.randomUUID(),
+    },
+    JWT_SECRET,
+    { expiresIn, algorithm: JWT_ALGORITHM },
+  );
 
 /**
- * Verify and decode a JWT.
+ * Verify and decode a JWT (HS256 only).
  * @param {string} token
- * @returns {object} decoded payload with jti, id, iat, exp
+ * @returns {object} decoded payload with jti, id, tv, auth_time, iat, exp
  * @throws {JsonWebTokenError | TokenExpiredError}
  */
-export const verifyToken = (token) => jwt.verify(token, JWT_SECRET);
+export const verifyToken = (token) => jwt.verify(token, JWT_SECRET, { algorithms: [JWT_ALGORITHM] });
 
 /**
  * Decode token without verification (useful for inspecting exp/jti on expired/revoking tokens).
@@ -27,3 +41,15 @@ export const verifyToken = (token) => jwt.verify(token, JWT_SECRET);
  * @returns {object|null}
  */
 export const decodeToken = (token) => jwt.decode(token);
+
+/** Original login time of a verified token (seconds). Legacy tokens: iat. */
+export const tokenAuthTime = (decoded) => Number(decoded?.auth_time) || Number(decoded?.iat) || 0;
+
+/** Throws 401 SESSION_EXPIRED when the session is older than SESSION_MAX_AGE_DAYS. */
+export function assertSessionWithinMaxAge(decoded, nowMs = Date.now()) {
+  const authTime = tokenAuthTime(decoded);
+  if (!authTime || nowMs / 1000 - authTime > SESSION_MAX_AGE_DAYS * 86400) {
+    throw new ApiError(401, 'Your session has expired. Please log in again.', 'SESSION_EXPIRED');
+  }
+  return authTime;
+}

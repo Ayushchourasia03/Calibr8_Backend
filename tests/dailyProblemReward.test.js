@@ -1,3 +1,4 @@
+import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
 // Integration tests: daily-problem completion, reward, streak and decay.
 //
 // Uses the database in DATABASE_URL, but only test users and daily_problems

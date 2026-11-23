@@ -1,3 +1,4 @@
+import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
 // Integration tests: daily problem assignment, selection, history and API.
 //
 // Uses the database in DATABASE_URL. Every row it writes is either a test
@@ -18,7 +19,8 @@ const {
   COOLDOWN_DAYS,
 } = await import("../src/services/dailyProblemService.js");
 const { getISTDateString, addDaysToISTDate } = await import("../src/services/streakService.js");
-const { signToken } = await import("../src/utils/jwt.js");
+const { signSessionToken } = await import("../src/utils/jwt.js");
+const signToken = (user) => signSessionToken({ id: user.id, tokenVersion: user.tokenVersion ?? 0 });
 const { default: app } = await import("../src/app.js");
 
 const TEST_DATE_PREFIX = "2099-";

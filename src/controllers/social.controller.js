@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -5,20 +6,21 @@ import { OAUTH_STATE_SECRET } from "../config/jwt.js";
 
 // Bound every outbound GitHub call so a slow upstream cannot hang the callback.
 const GITHUB_TIMEOUT_MS = 10_000;
+const LINK_CODE_TTL_MS = 5 * 60 * 1000;
+const isProduction = process.env.NODE_ENV === "production";
 
 /**
  * Validates frontend redirect URL against an allow-list to prevent open redirect vulnerabilities.
  */
-function getSafeFrontendRedirect(targetUrl, req) {
-  const configured = (process.env.FRONTEND_URL || "http://localhost:5173")
+function getSafeFrontendRedirect(targetUrl) {
+  const configured = (process.env.FRONTEND_URL || (isProduction ? "" : "http://localhost:5173"))
     .split(",")
     .map((u) => u.trim().replace(/\/+$/, ""))
     .filter(Boolean);
 
   const allowedOrigins = [
     ...configured,
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
+    ...(isProduction ? [] : ["http://localhost:5173", "http://127.0.0.1:5173"]),
   ];
 
   if (targetUrl) {
@@ -42,6 +44,59 @@ function getSafeFrontendRedirect(targetUrl, req) {
   return allowedOrigins[0] || "http://localhost:5173";
 }
 
+function oauthConfig(providerName) {
+  if (providerName !== "github") return null;
+  const clientId = process.env.GITHUB_CLIENT_ID;
+  const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+  const backendUrl = process.env.BACKEND_URL || (isProduction ? "" : "http://localhost:3000");
+  if (!clientId || !clientSecret || !backendUrl) return null;
+  return {
+    clientId,
+    clientSecret,
+    redirectUri: `${backendUrl.replace(/\/+$/, "")}/api/social/${providerName}/callback`,
+  };
+}
+
+// ---- one-time link codes ---------------------------------------------------
+// The OAuth callback is a browser navigation and carries no Calibr8
+// credentials, so it cannot tell whose browser completed the GitHub step. It
+// therefore never links an account itself: it hands the fetched profile to
+// the frontend as an encrypted, short-lived code, and the signed-in frontend
+// completes the link. The completing user must be the user who started the
+// flow. This defeats login/link CSRF: a victim sent an attacker's authorize
+// URL lands back in their OWN session, which does not match the state's user.
+
+const linkKey = crypto.createHash("sha256").update(`calibr8-oauth-link:${OAUTH_STATE_SECRET}`).digest();
+
+function sealLinkCode(payload) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", linkKey, iv);
+  const body = Buffer.concat([cipher.update(JSON.stringify(payload), "utf8"), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64url");
+}
+
+function openLinkCode(code) {
+  try {
+    const raw = Buffer.from(String(code), "base64url");
+    if (raw.length < 29 || raw.length > 8192) return null;
+    const decipher = crypto.createDecipheriv("aes-256-gcm", linkKey, raw.subarray(0, 12));
+    decipher.setAuthTag(raw.subarray(12, 28));
+    const json = Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString("utf8");
+    const payload = JSON.parse(json);
+    if (!payload || typeof payload.exp !== "number" || payload.exp < Date.now()) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+// Codes are single-use within this process (best effort; they also expire).
+const usedLinkCodes = new Map(); // nonce -> expiry
+setInterval(() => {
+  const now = Date.now();
+  for (const [nonce, exp] of usedLinkCodes) if (exp < now) usedLinkCodes.delete(nonce);
+}, 60_000).unref?.();
+
 /**
  * GET /api/social/:provider/link-url
  * Returns authorization URL for linking external social account (Protected).
@@ -58,21 +113,21 @@ export const getLinkUrl = (req, res, next) => {
         "UNKNOWN_PROVIDER",
       );
     }
+    const config = oauthConfig(providerName);
+    if (!config) {
+      throw new ApiError(503, "GitHub linking is not configured.", "OAUTH_NOT_CONFIGURED");
+    }
 
     // Uses OAUTH_STATE_SECRET strictly kept separate from JWT_SECRET
     const state = jwt.sign(
-      { userId: req.user.id, provider: providerName },
+      { userId: req.user.id, provider: providerName, nonce: crypto.randomUUID() },
       OAUTH_STATE_SECRET,
-      { expiresIn: "10m" },
+      { expiresIn: "10m", algorithm: "HS256" },
     );
 
-    const backendUrl = process.env.BACKEND_URL || "http://localhost:3000";
-    const redirectUri = `${backendUrl}/api/social/${providerName}/callback`;
-    const clientId = process.env.GITHUB_CLIENT_ID || "demo-github-client-id";
-
     const params = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: redirectUri,
+      client_id: config.clientId,
+      redirect_uri: config.redirectUri,
       scope: "read:user user:email",
       state,
     });
@@ -86,16 +141,15 @@ export const getLinkUrl = (req, res, next) => {
 
 /**
  * GET /api/social/:provider/callback
- * OAuth redirect callback handler.
+ * OAuth redirect callback handler. Fetches the provider profile and redirects
+ * to the frontend with ?link_code=<code>&provider=<name>; the frontend then
+ * calls POST /api/social/:provider/complete. Never links by itself.
  * SECURITY:
  * 1. Uses short error codes (CANCELLED, EXPIRED, etc.) instead of raw error messages.
  * 2. Enforces allow-list on redirect destination to prevent open redirect vulnerabilities.
  */
-export const handleCallback = async (req, res, next) => {
-  const safeFrontend = getSafeFrontendRedirect(
-    req.query.redirect_uri || process.env.FRONTEND_URL,
-    req,
-  );
+export const handleCallback = async (req, res) => {
+  const safeFrontend = getSafeFrontendRedirect(process.env.FRONTEND_URL);
 
   try {
     const { provider } = req.params;
@@ -108,88 +162,116 @@ export const handleCallback = async (req, res, next) => {
     let payload;
     try {
       // Verify with OAUTH_STATE_SECRET
-      payload = jwt.verify(String(state), OAUTH_STATE_SECRET);
+      payload = jwt.verify(String(state), OAUTH_STATE_SECRET, { algorithms: ["HS256"] });
     } catch {
       return res.redirect(`${safeFrontend}/?link_error=EXPIRED`);
     }
 
     const providerName = String(provider).toLowerCase();
-    if (providerName !== "github") {
+    if (providerName !== "github" || payload.provider !== providerName) {
       return res.redirect(`${safeFrontend}/?link_error=UNKNOWN_PROVIDER`);
     }
 
-    if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
+    const config = oauthConfig(providerName);
+    if (!config) {
       return res.redirect(`${safeFrontend}/?link_error=CONFIGURATION`);
     }
 
     // Fetch GitHub Profile
-    let profile;
-    {
-      const backendUrl = process.env.BACKEND_URL || "http://localhost:3000";
-      const redirectUri = `${backendUrl}/api/social/${providerName}/callback`;
-
-      const tokenRes = await fetch(
-        "https://github.com/login/oauth/access_token",
-        {
-          method: "POST",
-          signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            client_id: process.env.GITHUB_CLIENT_ID,
-            client_secret: process.env.GITHUB_CLIENT_SECRET,
-            code: String(code),
-            redirect_uri: redirectUri,
-          }),
-        },
-      );
-      const token = await tokenRes.json();
-      if (!token.access_token) {
-        return res.redirect(`${safeFrontend}/?link_error=AUTH_FAILED`);
-      }
-
-      const headers = {
-        Authorization: `Bearer ${token.access_token}`,
-        Accept: "application/vnd.github+json",
-        "User-Agent": "calibr8",
-      };
-
-      const gh = await (
-        await fetch("https://api.github.com/user", { headers, signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS) })
-      ).json();
-      if (!gh.id) {
-        return res.redirect(`${safeFrontend}/?link_error=AUTH_FAILED`);
-      }
-
-      let email = gh.email;
-      if (!email) {
-        const emails = await (
-          await fetch("https://api.github.com/user/emails", { headers, signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS) })
-        ).json();
-        email = Array.isArray(emails)
-          ? emails.find((e) => e.primary && e.verified)?.email
-          : null;
-      }
-
-      profile = {
-        providerUserId: String(gh.id),
-        username: gh.login,
-        name: gh.name || gh.login,
-        email: email ?? null,
-        avatarUrl: gh.avatar_url,
-        profileUrl: gh.html_url,
-        bio: gh.bio ?? null,
-        headline: null,
-        stats: {
-          publicRepos: gh.public_repos,
-          followers: gh.followers,
-          following: gh.following,
-        },
-      };
+    const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        code: String(code),
+        redirect_uri: config.redirectUri,
+      }),
+    });
+    const token = await tokenRes.json();
+    if (!token.access_token) {
+      return res.redirect(`${safeFrontend}/?link_error=AUTH_FAILED`);
     }
 
+    const headers = {
+      Authorization: `Bearer ${token.access_token}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "calibr8",
+    };
+
+    const gh = await (
+      await fetch("https://api.github.com/user", { headers, signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS) })
+    ).json();
+    if (!gh.id) {
+      return res.redirect(`${safeFrontend}/?link_error=AUTH_FAILED`);
+    }
+
+    let email = gh.email;
+    if (!email) {
+      const emails = await (
+        await fetch("https://api.github.com/user/emails", { headers, signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS) })
+      ).json();
+      email = Array.isArray(emails)
+        ? emails.find((e) => e.primary && e.verified)?.email
+        : null;
+    }
+
+    const clip = (v, n) => (typeof v === "string" ? v.slice(0, n) : null);
+    const profile = {
+      providerUserId: String(gh.id),
+      username: clip(gh.login, 100),
+      name: clip(gh.name || gh.login, 100),
+      email: clip(email, 254),
+      avatarUrl: clip(gh.avatar_url, 500),
+      profileUrl: clip(gh.html_url, 500),
+      bio: clip(gh.bio, 500),
+      headline: null,
+      stats: {
+        publicRepos: Number(gh.public_repos) || 0,
+        followers: Number(gh.followers) || 0,
+        following: Number(gh.following) || 0,
+      },
+    };
+
+    const linkCode = sealLinkCode({
+      uid: payload.userId,
+      provider: providerName,
+      profile,
+      nonce: crypto.randomUUID(),
+      exp: Date.now() + LINK_CODE_TTL_MS,
+    });
+    res.redirect(`${safeFrontend}/?link_code=${encodeURIComponent(linkCode)}&provider=${providerName}`);
+  } catch (err) {
+    console.error("[OAuth Callback Error]", err.message);
+    res.redirect(`${safeFrontend}/?link_error=SERVER_ERROR`);
+  }
+};
+
+/**
+ * POST /api/social/:provider/complete  { code }
+ * Completes linking for the signed-in user (Protected). The user must be the
+ * one who started the flow (GET /link-url).
+ */
+export const completeLink = async (req, res, next) => {
+  try {
+    const providerName = String(req.params.provider).toLowerCase();
+    const payload = openLinkCode(req.body?.code);
+    if (!payload || payload.provider !== providerName) {
+      throw new ApiError(400, "This link request is invalid or has expired. Please try again.", "LINK_CODE_INVALID");
+    }
+    if (payload.uid !== req.user.id) {
+      throw new ApiError(403, "This link request was started by a different account.", "LINK_ACCOUNT_MISMATCH");
+    }
+    if (usedLinkCodes.has(payload.nonce)) {
+      throw new ApiError(400, "This link request was already used.", "LINK_CODE_INVALID");
+    }
+    usedLinkCodes.set(payload.nonce, payload.exp);
+
+    const { profile } = payload;
     // Verify account is not linked to another user
     const existing = await prisma.socialAccount.findUnique({
       where: {
@@ -198,22 +280,21 @@ export const handleCallback = async (req, res, next) => {
           providerUserId: profile.providerUserId,
         },
       },
+      select: { userId: true },
     });
-
-    if (existing && existing.userId !== payload.userId) {
-      return res.redirect(`${safeFrontend}/?link_error=ALREADY_LINKED`);
+    if (existing && existing.userId !== req.user.id) {
+      throw new ApiError(409, "This GitHub account is already linked to another Calibr8 account.", "ALREADY_LINKED");
     }
 
-    // Upsert social account
-    await prisma.socialAccount.upsert({
+    const account = await prisma.socialAccount.upsert({
       where: {
         userId_provider: {
-          userId: payload.userId,
+          userId: req.user.id,
           provider: providerName,
         },
       },
       create: {
-        userId: payload.userId,
+        userId: req.user.id,
         provider: providerName,
         ...profile,
       },
@@ -223,10 +304,12 @@ export const handleCallback = async (req, res, next) => {
       },
     });
 
-    res.redirect(`${safeFrontend}/?linked=${providerName}`);
+    res.status(200).json({ success: true, linked: providerName, account });
   } catch (err) {
-    console.error("[OAuth Callback Error]", err.message);
-    res.redirect(`${safeFrontend}/?link_error=SERVER_ERROR`);
+    if (err?.code === "P2002") {
+      return next(new ApiError(409, "This GitHub account is already linked to another Calibr8 account.", "ALREADY_LINKED"));
+    }
+    next(err);
   }
 };
 

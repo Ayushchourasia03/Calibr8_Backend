@@ -26,49 +26,123 @@ import {
 } from "../utils/acceptedSubmissionReward.js";
 import { getUserHeaderStats } from "../utils/userHeaderStats.js";
 import { publicTestResults } from "../utils/testcaseResults.js";
-import { analyzeComplexity } from "../services/complexityAnalyzer.service.js";
+import { analyzeComplexitySafe, MAX_ANALYZE_CODE_BYTES } from "../services/complexityPool.js";
 import { recordDailyProblemCompletion } from "../services/dailyProblemService.js";
+import { acquireJudgeSlot } from "../utils/judgeAdmission.js";
 import {
   supportsMultiCase,
+  isHarnessSafeUserCode,
   wrapWithHarness,
   buildHarnessStdin,
   parseHarnessOutput,
   normalizeHarnessCase,
 } from "../utils/multiCaseHarness.js";
 
+// Request byte budgets. Every byte sent to CodeBox is held in its shared,
+// non-evicting Redis for about an hour, so user-controlled sizes are capped.
+export const MAX_CODE_BYTES = 64 * 1024;
+export const MAX_CUSTOM_STDIN_BYTES = 64 * 1024;
+// Program output / error text kept per testcase after comparison (responses,
+// cache). Comparison itself always uses the full output.
+const MAX_RESULT_TEXT_CHARS = 4 * 1024;
+
+function clipText(value, max = MAX_RESULT_TEXT_CHARS) {
+  if (typeof value !== "string" || value.length <= max) return value;
+  return `${value.slice(0, max)}\n…[truncated ${value.length - max} characters]`;
+}
+
 // Holds per-testcase results/complexity that are not persisted, so polling
-// clients can read them. Bounded by TTL and size so it cannot grow forever.
+// clients can read them. Bounded by TTL, entry count AND total bytes, and
+// only ever holds public (hidden-stripped, clipped) results.
 const SUBMISSION_CACHE_TTL_MS = 30 * 60 * 1000;
 const SUBMISSION_CACHE_MAX_ENTRIES = 2000;
-const submissionCacheEntries = new Map(); // id -> { value, expiresAt }
+const SUBMISSION_CACHE_MAX_BYTES = Number(process.env.SUBMISSION_CACHE_MAX_BYTES) || 32 * 1024 * 1024;
+const submissionCacheEntries = new Map(); // id -> { value, expiresAt, bytes }
+let submissionCacheBytes = 0;
+function dropCacheEntry(id) {
+  const entry = submissionCacheEntries.get(id);
+  if (!entry) return;
+  submissionCacheBytes -= entry.bytes;
+  submissionCacheEntries.delete(id);
+}
 const submissionCache = {
   get(id) {
     const entry = submissionCacheEntries.get(id);
     if (!entry) return undefined;
     if (entry.expiresAt <= Date.now()) {
-      submissionCacheEntries.delete(id);
+      dropCacheEntry(id);
       return undefined;
     }
     return entry.value;
   },
-  set(id, value) {
-    submissionCacheEntries.delete(id);
-    if (submissionCacheEntries.size >= SUBMISSION_CACHE_MAX_ENTRIES) {
+  set(id, rawValue) {
+    dropCacheEntry(id);
+    const value = rawValue?.results
+      ? { ...rawValue, results: publicTestResults(rawValue.results) }
+      : rawValue;
+    let bytes = 0;
+    try {
+      bytes = Buffer.byteLength(JSON.stringify(value) || "", "utf-8");
+    } catch {
+      return;
+    }
+    if (bytes > SUBMISSION_CACHE_MAX_BYTES / 4) return; // never let one entry dominate
+    while (
+      submissionCacheEntries.size > 0 &&
+      (submissionCacheEntries.size >= SUBMISSION_CACHE_MAX_ENTRIES ||
+        submissionCacheBytes + bytes > SUBMISSION_CACHE_MAX_BYTES)
+    ) {
       // Map preserves insertion order: evict the oldest entry.
-      submissionCacheEntries.delete(submissionCacheEntries.keys().next().value);
+      dropCacheEntry(submissionCacheEntries.keys().next().value);
     }
     submissionCacheEntries.set(id, {
       value,
+      bytes,
       expiresAt: Date.now() + SUBMISSION_CACHE_TTL_MS,
     });
+    submissionCacheBytes += bytes;
   },
 };
 setInterval(() => {
   const now = Date.now();
   for (const [id, entry] of submissionCacheEntries) {
-    if (entry.expiresAt <= now) submissionCacheEntries.delete(id);
+    if (entry.expiresAt <= now) dropCacheEntry(id);
   }
 }, 5 * 60 * 1000).unref?.();
+
+// Background (202) evaluations still running in this process, so a graceful
+// shutdown can wait for them instead of leaving rows in PROCESSING.
+const activeEvaluations = new Set();
+
+/** Waits (bounded) for background evaluations to settle. */
+export async function drainEvaluations(timeoutMs = 25_000) {
+  if (activeEvaluations.size === 0) return 0;
+  const pending = activeEvaluations.size;
+  await Promise.race([
+    Promise.allSettled([...activeEvaluations]),
+    new Promise((resolve) => setTimeout(resolve, timeoutMs).unref()),
+  ]);
+  return pending;
+}
+
+// Submissions older than this that are still PROCESSING were abandoned by a
+// crashed/restarted process (judging is bounded far below this).
+const STALE_PROCESSING_MS = 15 * 60 * 1000;
+
+/** Marks abandoned PROCESSING submissions as ERROR. Safe on every instance. */
+export async function recoverStaleSubmissions(now = Date.now()) {
+  try {
+    const { count } = await prisma.submission.updateMany({
+      where: { status: "PROCESSING", createdAt: { lt: new Date(now - STALE_PROCESSING_MS) } },
+      data: { status: "ERROR" },
+    });
+    if (count) console.warn(`[Submissions] Marked ${count} abandoned PROCESSING submission(s) as ERROR.`);
+    return count;
+  } catch (err) {
+    console.error("[Submissions] Stale-submission recovery failed:", err.message);
+    return 0;
+  }
+}
 
 const MAX_CASES_PER_BATCH = 20;
 const BATCH_POLL_INITIAL_INTERVAL_MS = 150;
@@ -708,6 +782,16 @@ async function executeMultiCase({
       interval = Math.min(BATCH_POLL_MAX_INTERVAL_MS, Math.round(interval * 1.25));
     }
 
+    // The harness request carries every testcase of the chunk; free it from
+    // CodeBox's Redis right away instead of letting it sit there for an hour.
+    if (created?.token) {
+      fetchCodeboxJson(new URL(`/submissions/${created.token}`, runnerUrl), {
+        method: "DELETE",
+        headers,
+        timeoutMs: 5000,
+      }).catch(() => {});
+    }
+
     const decode = (v) => (v ? Buffer.from(v, "base64").toString("utf-8") : "");
     const inputBytesOf = (i) => Buffer.byteLength(String(stdins[i] ?? ""), "utf-8");
 
@@ -1066,6 +1150,7 @@ async function runSingleTestCase({
   timeLimit = 3000,
   memoryLimit = 256,
   expectedOutput = "",
+  allowMultiCase = true,
 }) {
   const normLang = normalizeLanguage(language);
   if (!normLang) {
@@ -1101,8 +1186,22 @@ async function runSingleTestCase({
     testcases: [{ stdin: stdin || "" }],
     timeLimit,
     memoryLimit,
+    allowMultiCase,
   });
   return result;
+}
+
+function validateCodeSize(studentCode) {
+  if (typeof studentCode !== "string" || studentCode.trim().length === 0) {
+    throw new ApiError(400, "Code is required.", "MISSING_CODE");
+  }
+  if (Buffer.byteLength(studentCode, "utf-8") > MAX_CODE_BYTES) {
+    throw new ApiError(
+      413,
+      "Code exceeds maximum allowable size (64 KB).",
+      "CODE_TOO_LARGE",
+    );
+  }
 }
 
 /**
@@ -1131,27 +1230,30 @@ export const runCode = async (req, res, next) => {
 
     const { code, userCode, source_code, sourceCode, stdin } = req.body;
     const studentCode = userCode || code || source_code || sourceCode;
-
-    if (!studentCode || studentCode.trim().length === 0) {
-      throw new ApiError(400, "Code is required.", "MISSING_CODE");
-    }
-
-    if (Buffer.byteLength(studentCode, "utf-8") > 64 * 1024) {
-      throw new ApiError(
-        413,
-        "Code exceeds maximum allowable size (64 KB).",
-        "CODE_TOO_LARGE",
-      );
-    }
+    validateCodeSize(studentCode);
+    const allowMultiCase = isHarnessSafeUserCode(studentCode);
 
     // If custom stdin is provided without a problem
     if (stdin !== undefined && !slug) {
-      const result = await runSingleTestCase({
-        problem: null,
-        language: normLang,
-        code: studentCode,
-        stdin,
-      });
+      if (typeof stdin !== "string") {
+        throw new ApiError(400, "stdin must be a string.", "INVALID_STDIN");
+      }
+      if (Buffer.byteLength(stdin, "utf-8") > MAX_CUSTOM_STDIN_BYTES) {
+        throw new ApiError(413, "Custom input exceeds maximum allowable size (64 KB).", "STDIN_TOO_LARGE");
+      }
+      const release = await acquireJudgeSlot();
+      let result;
+      try {
+        result = await runSingleTestCase({
+          problem: null,
+          language: normLang,
+          code: studentCode,
+          stdin,
+          allowMultiCase,
+        });
+      } finally {
+        release();
+      }
 
       return res.status(200).json({
         success: true,
@@ -1163,15 +1265,15 @@ export const runCode = async (req, res, next) => {
           {
             index: 0,
             testIndex: 0,
-            input: stdin,
+            input: clipText(stdin),
             expected: "",
-            actual: result.actual,
+            actual: clipText(result.actual),
             studentStdout: result.studentStdout,
             status: result.status === "OK" ? "Accepted" : result.status,
             passed: result.status === "OK",
             timeMs: result.timeMs,
             memoryKb: result.memoryKb,
-            errorText: result.errorText,
+            errorText: clipText(result.errorText),
           },
         ],
       });
@@ -1205,15 +1307,22 @@ export const runCode = async (req, res, next) => {
       );
     }
 
-    const executionResults = await executeCodeBatch({
-      language: normLang,
-      fullCode,
-      testcases: visibleCases.map((testcase) => ({
-        stdin: testcase.stdinSmall ?? testcase.input ?? "",
-      })),
-      timeLimit: problem.timeLimit || 2000,
-      memoryLimit: problem.memoryLimit || 256,
-    });
+    const release = await acquireJudgeSlot();
+    let executionResults;
+    try {
+      executionResults = await executeCodeBatch({
+        language: normLang,
+        fullCode,
+        testcases: visibleCases.map((testcase) => ({
+          stdin: testcase.stdinSmall ?? testcase.input ?? "",
+        })),
+        timeLimit: problem.timeLimit || 2000,
+        memoryLimit: problem.memoryLimit || 256,
+        allowMultiCase,
+      });
+    } finally {
+      release();
+    }
 
     const results = [];
     let allPassed = true;
@@ -1246,7 +1355,7 @@ export const runCode = async (req, res, next) => {
         isVisible: true,
         input: testInput,
         expected: expectedOutput,
-        actual: execResult.actual,
+        actual: clipText(execResult.actual),
         studentStdout: execResult.studentStdout,
         status: caseStatus,
         passed: isPassed,
@@ -1256,25 +1365,23 @@ export const runCode = async (req, res, next) => {
         memoryKb: execResult.memoryKb,
         inputBytes:
           execResult.inputBytes ?? Buffer.byteLength(testInput, "utf-8"),
-        errorText: execResult.errorText,
+        errorText: clipText(execResult.errorText),
       });
     }
 
     const passedCount = results.filter((r) => r.passed).length;
 
-    let complexity = null;
-    try {
-      complexity = await analyzeComplexity({
-        code: studentCode,
-        language: normLang,
-        problemSlug: slug,
-        executionResult: {
-          timeMs: Math.max(...results.map((r) => r.timeMs || 0), 0),
-          memoryKb: Math.max(...results.map((r) => r.memoryKb || 0), 0),
-        },
-        include: ["time", "space"], // Compact static analysis without dynamic evidence overhead
-      });
-    } catch {}
+    // Off the event loop, with a hard timeout (never throws).
+    const complexity = await analyzeComplexitySafe({
+      code: studentCode,
+      language: normLang,
+      problemSlug: problem.slug,
+      executionResult: {
+        timeMs: Math.max(...results.map((r) => r.timeMs || 0), 0),
+        memoryKb: Math.max(...results.map((r) => r.memoryKb || 0), 0),
+      },
+      include: ["time", "space"], // Compact static analysis without dynamic evidence overhead
+    });
 
     res.status(200).json({
       success: true,
@@ -1356,6 +1463,9 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
   }
 
   const fullCode = providedFullCode || buildFinalCode(problem, code, normLang);
+  // User code that could subvert the in-binary multi-case harness is judged
+  // on the batch path (one sandbox per testcase) instead.
+  const allowMultiCase = isHarnessSafeUserCode(code);
 
   let passedCount = 0;
   let maxTimeMs = 0;
@@ -1402,7 +1512,7 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
   // stop early. Verdicts below are computed exactly as in the per-tier loop.
   // C/C++ use the multi-case harness instead (one compile, one sandbox per
   // tier) via executeCodeBatch below.
-  const multiCasePrimary = isMultiCaseEnabled() && supportsMultiCase(normLang);
+  const multiCasePrimary = allowMultiCase && isMultiCaseEnabled() && supportsMultiCase(normLang);
   const precomputedTierResults = multiCasePrimary ? null : await runAllTiersInOneBatch({
     tiers,
     language: normLang,
@@ -1429,6 +1539,7 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
         timeLimit: problem.timeLimit || 2000,
         memoryLimit: problem.memoryLimit || 256,
         stopOnTimeout: true,
+        allowMultiCase,
       });
     }
 
@@ -1457,7 +1568,7 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
         testIndex: tc.testIndex ?? results.length,
         input: testInput,
         expected: expectedOutput,
-        actual: execResult.actual,
+        actual: clipText(execResult.actual),
         passed: isPassed,
         isVisible: tc.isVisible === true,
         time: execResult.timeMs || 0,
@@ -1469,7 +1580,7 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
         inputBytes:
           execResult.inputBytes ?? Buffer.byteLength(testInput, "utf-8"),
         status: isPassed ? "Accepted" : failureType,
-        errorText: execResult.errorText,
+        errorText: clipText(execResult.errorText),
       };
       results.push(caseItem);
 
@@ -1484,12 +1595,12 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
           firstFailure = {
             testIndex: tc.testIndex ?? results.length - 1,
             status: failureType,
-            errorText: isVisible ? execResult.errorText : null,
+            errorText: isVisible ? clipText(execResult.errorText) : null,
             input: isVisible ? testInput : undefined,
             expected: isVisible ? expectedOutput : undefined,
-            actual: isVisible ? execResult.actual : undefined,
+            actual: isVisible ? clipText(execResult.actual) : undefined,
             message: isVisible
-              ? `Failed sample test ${results.length}: expected '${expectedOutput}', got '${execResult.actual}'`
+              ? `Failed sample test ${results.length}: expected '${clipText(expectedOutput, 500)}', got '${clipText(execResult.actual, 500)}'`
               : `Failed on hidden evaluation test case #${results.length}.`,
           };
         }
@@ -1524,6 +1635,7 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
  */
 export const submitSolution = async (req, res, next) => {
   const submittedAt = new Date();
+  let releaseJudge = null;
   try {
     const slug =
       req.params?.slug ||
@@ -1545,18 +1657,11 @@ export const submitSolution = async (req, res, next) => {
     const { code, userCode, source_code, sourceCode, wait } = req.body;
     const studentCode = userCode || code || source_code || sourceCode;
     const userId = req.user?.id || null;
-
-    if (!studentCode || studentCode.trim().length === 0) {
-      throw new ApiError(400, "Code is required.", "MISSING_CODE");
+    // Every execution route requires authentication; never judge anonymously.
+    if (!userId) {
+      throw new ApiError(401, "Please log in to submit solutions.", "UNAUTHORIZED");
     }
-
-    if (Buffer.byteLength(studentCode, "utf-8") > 64 * 1024) {
-      throw new ApiError(
-        413,
-        "Code exceeds maximum allowable size (64 KB).",
-        "CODE_TOO_LARGE",
-      );
-    }
+    validateCodeSize(studentCode);
 
     const problem = await resolveProblem(slug);
     if (!problem) {
@@ -1574,68 +1679,46 @@ export const submitSolution = async (req, res, next) => {
 
     // Validate function-only submission and build executable source upfront
     const fullCode = buildFinalCode(problem, studentCode, normLang);
-
-    const subId = `sub_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     const totalTcs = (problem.testcases || []).length;
 
-    let submission = {
-      id: subId,
-      problemId: problem.id,
-      userId,
-      language: normLang,
-      code: studentCode,
-      status: "PROCESSING",
-      passedCount: 0,
-      totalCount: totalTcs,
-      createdAt: new Date().toISOString(),
-      problem: {
-        slug: problem.slug,
-        title: problem.title,
-      },
-    };
+    // Backend-wide judge admission (503 JUDGE_BUSY when saturated), before
+    // anything is stored.
+    releaseJudge = await acquireJudgeSlot();
 
-    const createSubmissionRow = async () => {
-      try {
-        submission = await prisma.submission.create({
-          data: {
-            problemId: problem.id,
-            userId,
-            language: normLang,
-            code: studentCode,
-            status: "PROCESSING",
-            passedCount: 0,
-            totalCount: totalTcs,
-          },
-          select: {
-            id: true,
-            problemId: true,
-            userId: true,
-            language: true,
-            code: true,
-            status: true,
-            passedCount: true,
-            totalCount: true,
-            createdAt: true,
-          },
-        });
-      } catch (dbErr) {
-        if (userId) {
-          throw new ApiError(
-            503,
-            "Unable to save this submission. Please try again.",
-            "SUBMISSION_STORAGE_UNAVAILABLE",
-          );
-        }
-      }
-
-      submissionCache.set(submission.id, {
-        ...submission,
-        problem: {
-          slug: problem.slug,
-          title: problem.title,
+    let submission;
+    try {
+      submission = await prisma.submission.create({
+        data: {
+          problemId: problem.id,
+          userId,
+          language: normLang,
+          code: studentCode,
+          status: "PROCESSING",
+          passedCount: 0,
+          totalCount: totalTcs,
+        },
+        select: {
+          id: true,
+          problemId: true,
+          userId: true,
+          language: true,
+          status: true,
+          passedCount: true,
+          totalCount: true,
+          createdAt: true,
         },
       });
-    };
+    } catch {
+      throw new ApiError(
+        503,
+        "Unable to save this submission. Please try again.",
+        "SUBMISSION_STORAGE_UNAVAILABLE",
+      );
+    }
+    submissionCache.set(submission.id, {
+      ...submission,
+      problem: { slug: problem.slug, title: problem.title },
+    });
 
     // If wait=true or route is /api/execute/submit (synchronous evaluation)
     const isDirectExecuteRoute =
@@ -1644,36 +1727,24 @@ export const submitSolution = async (req, res, next) => {
       req.query?.wait === "true" ||
       req.path === "/submit";
 
-    // Synchronous submits save the row while the code runs (the id is only
-    // needed afterwards); queued submits need the id before replying.
-    let submissionSaved = null;
-    if (isDirectExecuteRoute) {
-      submissionSaved = createSubmissionRow();
-      submissionSaved.catch(() => {}); // awaited in runEvaluation
-    } else {
-      await createSubmissionRow();
-    }
-
-    // "Already solved?" lookup, also overlapped with execution: an accepted
+    // "Already solved?" lookup, overlapped with execution: an accepted
     // re-submit of a solved problem earns nothing, so it can skip the reward
-    // transaction (4 database round trips) entirely.
-    const priorSolvePromise = userId
-      ? prisma.userProblemProgress
-          .findUnique({
-            where: { userId_problemId: { userId, problemId: problem.id } },
-            select: {
-              user: {
-                select: { rating: true, score: true, coins: true, streak: true, longestStreak: true },
-              },
-            },
-          })
-          .catch(() => null)
-      : Promise.resolve(null);
+    // transaction entirely.
+    const priorSolvePromise = prisma.userProblemProgress
+      .findUnique({
+        where: { userId_problemId: { userId, problemId: problem.id } },
+        select: {
+          user: {
+            select: { rating: true, score: true, coins: true, streak: true, longestStreak: true },
+          },
+        },
+      })
+      .catch(() => null);
 
     // Reads a first solve's reward needs (rating, solved count), also done
     // while the code runs, so the reward transaction only has to write.
     const rewardPrefetchPromise = priorSolvePromise.then((priorSolve) =>
-      userId && !priorSolve
+      !priorSolve
         ? Promise.all([
           prisma.user.findUnique({ where: { id: userId }, select: REWARD_USER_SELECT }),
           prisma.userProblemProgress.count({ where: { userId } }),
@@ -1682,13 +1753,19 @@ export const submitSolution = async (req, res, next) => {
     ).catch(() => null);
 
     const runEvaluation = async () => {
-      const evaluation = await evaluateAllTestcases(
-        problem,
-        normLang,
-        studentCode,
-        fullCode,
-      );
-      if (submissionSaved) await submissionSaved;
+      let evaluation;
+      try {
+        evaluation = await evaluateAllTestcases(
+          problem,
+          normLang,
+          studentCode,
+          fullCode,
+        );
+      } finally {
+        // The judge slot only covers CodeBox work.
+        releaseJudge?.();
+        releaseJudge = null;
+      }
       let updated = {
         ...submission,
         status: evaluation.status,
@@ -1707,60 +1784,24 @@ export const submitSolution = async (req, res, next) => {
         evaluation.totalCount > 0 &&
         evaluation.passedCount === evaluation.totalCount;
 
-      // Rewards (user/progress/coins) and the verdict (submission row, then the
-      // problem's solved count) touch different rows and don't depend on each
-      // other, so they run in parallel. Within each chain the order is kept.
-      const rewardsChain = async () => {
-        let reward = null;
-        let rewardError = false;
-        let dailyProblemReward = { granted: false, coins: 0 };
-        if (userId && isAccepted) {
-          const priorSolve = await priorSolvePromise;
-          try {
-            if (priorSolve?.user) {
-              // Already solved: no points/rating change, same response shape.
-              reward = {
-                awarded: false,
-                points: 0,
-                scoreDelta: 0,
-                coinsEarned: 0,
-                stats: getUserHeaderStats(priorSolve.user),
-              };
-            } else {
-              const prefetched = await rewardPrefetchPromise;
-              reward = await prisma.$transaction((tx) =>
-                applyAcceptedSubmissionReward(tx, { userId, problem, prefetched }),
-              );
-            }
-            rewardError = !reward;
-          } catch (rewardDbErr) {
-            rewardError = true;
-            console.error(
-              `[Submission Rewards] Failed to save rewards for submission ${submission.id}:`,
-              rewardDbErr,
-            );
-          }
+      // Off the event loop with a hard timeout; never throws.
+      const complexityTask = analyzeComplexitySafe({
+        code: studentCode,
+        language: normLang,
+        problemSlug: problem.slug,
+        executionResult: {
+          timeMs: evaluation.maxTimeMs,
+          memoryKb: evaluation.maxMemoryKb,
+        },
+        include: ["time", "space"],
+      });
 
-          // Never throws; counts for the IST day the code was submitted on.
-          const dpReward = await recordDailyProblemCompletion({
-            userId,
-            problemId: problem.id,
-            submissionId: submission.id,
-            submittedAt,
-          });
-          dailyProblemReward = { granted: dpReward.granted, coins: dpReward.coins };
-          if (dpReward.granted && reward?.stats) {
-            reward.stats.coins = dpReward.balance;
-            reward.stats.streak = dpReward.streak;
-            reward.stats.longestStreak = dpReward.longestStreak;
-            reward.coinsEarned = (Number(reward.coinsEarned) || 0) + dpReward.coins;
-          }
-        }
-        return { reward, rewardError, dailyProblemReward };
-      };
-
-      const verdictChain = async () => {
-        const dbUpdated = await prisma.submission.update({
+      // 1. The verdict is persisted first. Rewards are derived from a stored
+      //    verdict only, so a failed verdict write can never leave score,
+      //    rating or coins granted for a submission that shows ERROR.
+      let dbUpdated;
+      try {
+        dbUpdated = await prisma.submission.update({
           where: { id: submission.id },
           data: {
             status: evaluation.status,
@@ -1778,67 +1819,93 @@ export const submitSolution = async (req, res, next) => {
             memory: true,
           },
         });
+      } catch {
+        throw new ApiError(
+          503,
+          "Unable to save the submission verdict. Please try again.",
+          "SUBMISSION_STORAGE_UNAVAILABLE",
+        );
+      }
 
-        // Counts ACCEPTED rows, so it must follow the update above. A user who
-        // had already solved this problem is already counted: nothing changes.
-        const priorSolve = userId && isAccepted ? await priorSolvePromise : null;
-        if (userId && isAccepted && !priorSolve) {
-          try {
-            const solvedCount = await syncProblemSolvedCount(prisma, problem.id);
-            updateCachedProblemSolvedCount(problem.id, solvedCount);
-          } catch (syncError) {
-            console.error(
-              `[Problem solved count] Failed to update problem ${problem.id}:`,
-              syncError,
+      // 2. Rewards (user/progress/coins) and the problem's solved count touch
+      //    different rows, so they run in parallel. Both are idempotent.
+      const rewardsChain = async () => {
+        let reward = null;
+        let rewardError = false;
+        let dailyProblemReward = { granted: false, coins: 0 };
+        if (!isAccepted) return { reward, rewardError, dailyProblemReward };
+
+        const priorSolve = await priorSolvePromise;
+        try {
+          if (priorSolve?.user) {
+            // Already solved: no points/rating change, same response shape.
+            reward = {
+              awarded: false,
+              points: 0,
+              scoreDelta: 0,
+              coinsEarned: 0,
+              stats: getUserHeaderStats(priorSolve.user),
+            };
+          } else {
+            const prefetched = await rewardPrefetchPromise;
+            reward = await prisma.$transaction((tx) =>
+              applyAcceptedSubmissionReward(tx, { userId, problem, prefetched }),
             );
           }
-        }
-        return dbUpdated;
-      };
-
-      // Promise.resolve().then(): a synchronous throw is caught like a rejection.
-      const complexityTask = Promise.resolve().then(() => analyzeComplexity({
-        code: studentCode,
-        language: normLang,
-        problemSlug: problem.slug,
-        executionResult: {
-          timeMs: evaluation.maxTimeMs,
-          memoryKb: evaluation.maxMemoryKb,
-        },
-        include: ["time", "space"],
-      })).catch((err) => {
-        console.warn("[Complexity Analyzer Warning]:", err.message);
-        return null;
-      });
-
-      let verdictPersisted = false;
-      try {
-        const [rewards, dbUpdated] = await Promise.all([
-          rewardsChain(),
-          verdictChain(),
-        ]);
-        verdictPersisted = true;
-        updated = {
-          ...dbUpdated,
-          ...updated,
-          ...rewards,
-        };
-      } catch (dbErr) {
-        if (userId) {
-          throw new ApiError(
-            503,
-            "Unable to save the submission verdict. Please try again.",
-            "SUBMISSION_STORAGE_UNAVAILABLE",
+          rewardError = !reward;
+        } catch (rewardDbErr) {
+          rewardError = true;
+          console.error(
+            `[Submission Rewards] Failed to save rewards for submission ${submission.id}:`,
+            rewardDbErr?.code || rewardDbErr?.message || rewardDbErr,
           );
         }
-      }
+
+        // Never throws; counts for the IST day the code was submitted on.
+        const dpReward = await recordDailyProblemCompletion({
+          userId,
+          problemId: problem.id,
+          submissionId: submission.id,
+          submittedAt,
+        });
+        dailyProblemReward = { granted: dpReward.granted, coins: dpReward.coins };
+        if (dpReward.granted && reward?.stats) {
+          reward.stats.coins = dpReward.balance;
+          reward.stats.streak = dpReward.streak;
+          reward.stats.longestStreak = dpReward.longestStreak;
+          reward.coinsEarned = (Number(reward.coinsEarned) || 0) + dpReward.coins;
+        }
+        return { reward, rewardError, dailyProblemReward };
+      };
+
+      const solvedCountChain = async () => {
+        // Counts ACCEPTED rows, so it runs after the verdict update. A user
+        // who had already solved this problem is already counted.
+        if (!isAccepted || (await priorSolvePromise)) return;
+        try {
+          const solvedCount = await syncProblemSolvedCount(prisma, problem.id);
+          updateCachedProblemSolvedCount(problem.id, solvedCount);
+        } catch (syncError) {
+          console.error(
+            `[Problem solved count] Failed to update problem ${problem.id}:`,
+            syncError?.message || syncError,
+          );
+        }
+      };
+
+      const [rewards] = await Promise.all([rewardsChain(), solvedCountChain()]);
+      updated = {
+        ...dbUpdated,
+        ...updated,
+        ...rewards,
+      };
 
       const complexity = await complexityTask;
 
       // Empirical complexity profiling runs in the background and never
       // delays or changes this verdict. The response only announces it.
       let complexityProfile = null;
-      if (isAccepted && verdictPersisted) {
+      if (isAccepted) {
         const eligibility = profilingEligibility({ problemSlug: problem.slug, language: normLang });
         if (eligibility.eligible) {
           complexityProfile = {
@@ -1864,7 +1931,16 @@ export const submitSolution = async (req, res, next) => {
     };
 
     if (isDirectExecuteRoute) {
-      const completed = await runEvaluation();
+      let completed;
+      try {
+        completed = await runEvaluation();
+      } catch (evaluationErr) {
+        // Never leave a synchronous submission PROCESSING forever.
+        await prisma.submission
+          .update({ where: { id: submission.id }, data: { status: "ERROR" } })
+          .catch(() => {});
+        throw evaluationErr;
+      }
 
       return res.status(200).json({
         success: true,
@@ -1892,22 +1968,26 @@ export const submitSolution = async (req, res, next) => {
 
     // Keep the per-user execution slot until the background job settles.
     const releaseInFlight = req.holdInFlightSlot?.();
-    runEvaluation()
+    const job = runEvaluation()
       .catch((err) => {
-        console.error("[Submission Background Error]:", err.name || "Error");
+        console.error("[Submission Background Error]:", err?.code || err?.name || "Error");
         submissionCache.set(submission.id, {
           ...submission,
           status: "ERROR",
           verdict: "ERROR",
         });
-        prisma.submission
+        return prisma.submission
           .update({
             where: { id: submission.id },
             data: { status: "ERROR" },
           })
           .catch(() => {});
       })
-      .finally(() => releaseInFlight?.());
+      .finally(() => {
+        releaseInFlight?.();
+        activeEvaluations.delete(job);
+      });
+    activeEvaluations.add(job);
 
     res.status(202).json({
       success: true,
@@ -1922,6 +2002,9 @@ export const submitSolution = async (req, res, next) => {
       },
     });
   } catch (err) {
+    // Synchronous failures before the evaluation took over the slot.
+    releaseJudge?.();
+    releaseJudge = null;
     next(err);
   }
 };
@@ -2054,14 +2137,19 @@ export const getComplexityAnalysis = async (req, res, next) => {
     const rawLang = language || lang || "python";
     const problemId = slug || problemSlug || "";
 
-    if (!studentCode || !studentCode.trim()) {
+    if (typeof studentCode !== "string" || !studentCode.trim()) {
       throw new ApiError(400, "Code is required.", "MISSING_CODE");
     }
+    if (Buffer.byteLength(studentCode, "utf-8") > MAX_ANALYZE_CODE_BYTES) {
+      throw new ApiError(413, "Code exceeds maximum allowable size (64 KB).", "CODE_TOO_LARGE");
+    }
 
-    const complexity = await analyzeComplexity({
+    // Runs in a worker thread with a hard timeout: an adversarial input can
+    // cost at most one worker for COMPLEXITY_TIMEOUT_MS, never the event loop.
+    const complexity = await analyzeComplexitySafe({
       code: studentCode,
-      language: rawLang,
-      problemSlug: problemId,
+      language: String(rawLang),
+      problemSlug: String(problemId),
     });
 
     res.status(200).json({

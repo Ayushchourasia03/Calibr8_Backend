@@ -77,6 +77,17 @@ export async function applyAcceptedSubmissionReward(
     };
   }
 
+  // The prefetched rating was read before judging started. Lock the user row
+  // and re-read it, so two concurrent first solves cannot overwrite each
+  // other's rating change (the rating is written as an absolute value).
+  if (typeof tx.$queryRaw === "function") {
+    const [locked] = await tx.$queryRaw`
+      SELECT "rating" FROM "users" WHERE "id" = ${userId} FOR UPDATE`;
+    if (locked && Number.isFinite(Number(locked.rating))) {
+      user.rating = Number(locked.rating);
+    }
+  }
+
   // Includes the row inserted above.
   const completedProblems = prefetched && Number.isFinite(prefetched.completedBefore)
     ? prefetched.completedBefore + 1

@@ -8,7 +8,7 @@ import {
   runCode,
   submitSolution,
 } from "../controllers/execution.controller.js";
-import { optionalAuth } from "../middlewares/auth.middleware.js";
+import { optionalAuth, protect } from "../middlewares/auth.middleware.js";
 import {
   inFlightLimiter,
   runLimiter,
@@ -29,12 +29,13 @@ router.get("/:slug/template", getProblemStarterTemplate);
 
 // Execution endpoints at problem scope:
 // POST /api/problems/:slug/run - run visible test cases
-router.post("/:slug/run", optionalAuth, runLimiter, inFlightLimiter, runCode);
+// Execution always requires an account: the judge is shared and metered.
+router.post("/:slug/run", protect, runLimiter, inFlightLimiter, runCode);
 
 // POST /api/problems/:slug/submit - submit solution for full tier judging
 router.post(
   "/:slug/submit",
-  optionalAuth,
+  protect,
   submitLimiter,
   inFlightLimiter,
   submitSolution,

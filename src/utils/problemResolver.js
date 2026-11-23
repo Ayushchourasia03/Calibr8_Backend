@@ -13,7 +13,32 @@ const pendingProblemLoads = new Map();
 // requested on every detail/run/submit call, so keep them briefly in memory.
 const PROBLEM_CACHE_TTL_MS = Number(process.env.PROBLEM_CACHE_TTL_MS ?? 60_000);
 const PROBLEM_CACHE_MAX_ENTRIES = 300;
-const problemCache = new Map(); // key -> { value, expiresAt }
+// Problems carry every testcase: bound the cache by (approximate) bytes too.
+const PROBLEM_CACHE_MAX_BYTES = Number(process.env.PROBLEM_CACHE_MAX_BYTES) || 64 * 1024 * 1024;
+const problemCache = new Map(); // key -> { value, expiresAt, bytes }
+let problemCacheBytes = 0;
+
+function approxProblemBytes(problem) {
+  let bytes = 4096;
+  for (const tc of problem?.testcases || []) {
+    bytes += (tc.stdinSmall?.length || 0) + (tc.expectedSmall?.length || 0) + 128;
+  }
+  for (const t of problem?.templates || []) bytes += (t.code?.length || 0) * 2;
+  return bytes + (problem?.description?.length || 0);
+}
+
+function deleteProblemCacheEntry(key) {
+  const entry = problemCache.get(key);
+  if (!entry) return;
+  problemCacheBytes -= entry.bytes || 0;
+  problemCache.delete(key);
+}
+
+// Acceptance stats need a scan of all submissions: refreshed on their own,
+// slower timer instead of on every catalog rebuild.
+const STATS_CACHE_TTL_MS = Number(process.env.CATALOG_STATS_CACHE_TTL_MS ?? 5 * 60_000);
+let statsCache = null; // { value: Map, expiresAt }
+let pendingStatsLoad = null;
 
 // Global catalog rows + acceptance stats (user-independent).
 const CATALOG_CACHE_TTL_MS = Number(process.env.CATALOG_CACHE_TTL_MS ?? 30_000);
@@ -48,10 +73,11 @@ export function invalidateProblemCache(problemId = null) {
   catalogCache = null;
   if (!problemId) {
     problemCache.clear();
+    problemCacheBytes = 0;
     return;
   }
   for (const [key, entry] of problemCache) {
-    if (entry.value?.id === problemId) problemCache.delete(key);
+    if (entry.value?.id === problemId) deleteProblemCacheEntry(key);
   }
 }
 
@@ -84,7 +110,7 @@ export async function resolveProblem(slugOrId) {
   if (PROBLEM_CACHE_TTL_MS > 0) {
     const cached = problemCache.get(key);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
-    if (cached) problemCache.delete(key);
+    if (cached) deleteProblemCacheEntry(key);
   }
 
   const pending = pendingProblemLoads.get(key);
@@ -96,13 +122,22 @@ export async function resolveProblem(slugOrId) {
     const problem = await load;
     // Only cache hits; a miss may be a problem that is about to be uploaded.
     if (problem && PROBLEM_CACHE_TTL_MS > 0) {
-      if (problemCache.size >= PROBLEM_CACHE_MAX_ENTRIES) {
-        problemCache.delete(problemCache.keys().next().value);
+      const bytes = approxProblemBytes(problem);
+      if (bytes <= PROBLEM_CACHE_MAX_BYTES / 4) {
+        deleteProblemCacheEntry(key);
+        while (
+          problemCache.size > 0 &&
+          (problemCache.size >= PROBLEM_CACHE_MAX_ENTRIES || problemCacheBytes + bytes > PROBLEM_CACHE_MAX_BYTES)
+        ) {
+          deleteProblemCacheEntry(problemCache.keys().next().value);
+        }
+        problemCache.set(key, {
+          value: problem,
+          bytes,
+          expiresAt: Date.now() + PROBLEM_CACHE_TTL_MS,
+        });
+        problemCacheBytes += bytes;
       }
-      problemCache.set(key, {
-        value: problem,
-        expiresAt: Date.now() + PROBLEM_CACHE_TTL_MS,
-      });
     }
     return problem;
   } finally {
@@ -269,27 +304,7 @@ async function loadCatalogUncached() {
     },
   });
 
-  const submissionsByProblem = new Map();
-
-  if (problems.length > 0) {
-    // All problems are included, so no IN (...) list is needed.
-    const submissionGroups = await prisma.submission.groupBy({
-      by: ["problemId", "status"],
-      _count: { _all: true },
-    });
-
-    for (const group of submissionGroups) {
-      const current = submissionsByProblem.get(group.problemId) || {
-        accepted: 0,
-        total: 0,
-      };
-      current.total += group._count._all;
-      if (String(group.status).toUpperCase() === "ACCEPTED") {
-        current.accepted += group._count._all;
-      }
-      submissionsByProblem.set(group.problemId, current);
-    }
-  }
+  const submissionsByProblem = problems.length > 0 ? await loadAcceptanceStats() : new Map();
 
   return problems.map((problem) => {
     const stats = submissionsByProblem.get(problem.id);
@@ -322,6 +337,40 @@ async function loadCatalogUncached() {
       points: pointsForDifficulty(problem.difficulty),
     };
   });
+}
+
+async function loadAcceptanceStatsUncached() {
+  // All problems are included, so no IN (...) list is needed.
+  const submissionGroups = await prisma.submission.groupBy({
+    by: ["problemId", "status"],
+    _count: { _all: true },
+  });
+  const byProblem = new Map();
+  for (const group of submissionGroups) {
+    const current = byProblem.get(group.problemId) || { accepted: 0, total: 0 };
+    current.total += group._count._all;
+    if (String(group.status).toUpperCase() === "ACCEPTED") {
+      current.accepted += group._count._all;
+    }
+    byProblem.set(group.problemId, current);
+  }
+  return byProblem;
+}
+
+function loadAcceptanceStats() {
+  if (STATS_CACHE_TTL_MS > 0 && statsCache && statsCache.expiresAt > Date.now()) {
+    return Promise.resolve(statsCache.value);
+  }
+  if (pendingStatsLoad) return pendingStatsLoad;
+  pendingStatsLoad = loadAcceptanceStatsUncached()
+    .then((value) => {
+      if (STATS_CACHE_TTL_MS > 0) statsCache = { value, expiresAt: Date.now() + STATS_CACHE_TTL_MS };
+      return value;
+    })
+    .finally(() => {
+      pendingStatsLoad = null;
+    });
+  return pendingStatsLoad;
 }
 
 function filterCatalog(problems, { search, topic, status }) {

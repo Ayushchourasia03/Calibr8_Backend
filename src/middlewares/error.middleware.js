@@ -13,11 +13,20 @@ import { ApiError } from "../utils/ApiError.js";
  */
 // eslint-disable-next-line no-unused-vars
 export const errorHandler = (err, req, res, next) => {
-  console.error(
-    `[API Error] ${req.method} ${req.path}:`,
-    err.name || "Error",
-    err.code || "",
-  );
+  const requestId = req.id ? ` [${req.id}]` : "";
+  const status = err instanceof ApiError ? err.status : err.status || err.statusCode;
+  // Unexpected (5xx) errors are logged with their stack for diagnosis; the
+  // client only ever sees a generic message.
+  if (!status || status >= 500) {
+    // Prisma messages embed the query arguments (user data): log the class
+    // and code only for those.
+    const detail = String(err?.name || "").startsWith("PrismaClient")
+      ? `${err.name} ${err.code || ""}`
+      : err?.stack || err;
+    console.error(`[API Error]${requestId} ${req.method} ${req.path}:`, detail);
+  } else {
+    console.error(`[API Error]${requestId} ${req.method} ${req.path}:`, err.name || "Error", err.code || "");
+  }
 
   if (err instanceof ApiError) {
     const payload = {
@@ -31,20 +40,44 @@ export const errorHandler = (err, req, res, next) => {
     return res.status(err.status).json(payload);
   }
 
+  // Body parser errors (express.json / urlencoded)
+  if (err.type === "entity.too.large") {
+    return res.status(413).json({
+      success: false,
+      code: "PAYLOAD_TOO_LARGE",
+      message: "Request body is too large.",
+    });
+  }
+  if (err.type === "entity.parse.failed") {
+    return res.status(400).json({
+      success: false,
+      code: "INVALID_JSON",
+      message: "Request body is not valid JSON.",
+    });
+  }
+
   // Prisma unique constraint violation (P2002)
   if (err.code === "P2002") {
-    const field = err.meta?.target?.[0] ?? "field";
     return res.status(409).json({
       success: false,
       code: "CONFLICT",
-      message: `A record with that ${field} already exists.`,
+      message: "A record with these details already exists.",
+    });
+  }
+
+  // Malformed input reaching a query (e.g. wrong type for a filter)
+  if (err.name === "PrismaClientValidationError") {
+    return res.status(400).json({
+      success: false,
+      code: "BAD_REQUEST",
+      message: "Invalid request parameters.",
     });
   }
 
   // Database connection or environment configuration errors
   if (
     err.name === "PrismaClientInitializationError" ||
-    ["P1000", "P1001", "P1002", "P1003"].includes(err.code) ||
+    ["P1000", "P1001", "P1002", "P1003", "P1008", "P1017", "P2024"].includes(err.code) ||
     (err.message &&
       (err.message.includes("No database host") ||
         err.message.includes("connection string") ||
@@ -57,19 +90,19 @@ export const errorHandler = (err, req, res, next) => {
     });
   }
 
-  const status = err.status || (err.name === "ValidationError" ? 400 : 500);
-  const code = err.code || ApiError.defaultCode(status);
+  const finalStatus = status || (err.name === "ValidationError" ? 400 : 500);
+  const code = typeof err.code === "string" && finalStatus < 500 ? err.code : ApiError.defaultCode(finalStatus);
   const message =
-    status >= 500 ? "Internal server error." : err.message || "Request failed.";
+    finalStatus >= 500 ? "Internal server error." : err.message || "Request failed.";
 
   const payload = {
     success: false,
     code,
     message,
   };
-  if (status < 500 && err.details) {
+  if (finalStatus < 500 && err.details) {
     payload.details = err.details;
   }
 
-  res.status(status).json(payload);
+  res.status(finalStatus).json(payload);
 };

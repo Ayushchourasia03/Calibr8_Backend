@@ -13,6 +13,9 @@ import themeRouter from "./theme.router.js";
 import rankingRouter from "./ranking.router.js";
 import coinRouter from "./coin.router.js";
 import dailyProblemRouter from "./dailyProblem.router.js";
+import prisma from "../config/db.js";
+import { getCodeboxUrl, fetchCodeboxJson } from "../utils/codeboxClient.js";
+import { judgeAdmissionStats } from "../utils/judgeAdmission.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,6 +33,37 @@ const handleHealth = (req, res) =>
 router.get("/health", handleHealth);
 router.get("/api/health", handleHealth);
 
+// Readiness: database reachable (and CodeBox, cached for 30 s). Liveness
+// probes should keep using /health; this one fails while dependencies are down.
+let codeboxCheck = { at: 0, ok: null };
+async function checkCodebox() {
+  if (Date.now() - codeboxCheck.at < 30_000) return codeboxCheck.ok;
+  const url = getCodeboxUrl(false);
+  let ok = null;
+  if (url) {
+    ok = await fetchCodeboxJson(new URL("/health", url), { timeoutMs: 3000 }).then(() => true, () => false);
+  }
+  codeboxCheck = { at: Date.now(), ok };
+  return ok;
+}
+const withTimeout = (promise, ms) =>
+  Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms).unref())]);
+const handleReady = async (req, res) => {
+  const [database, codebox] = await Promise.all([
+    withTimeout(prisma.$queryRaw`SELECT 1`, 2000).then(() => true, () => false),
+    checkCodebox(),
+  ]);
+  const ready = database && codebox !== false;
+  res.status(ready ? 200 : 503).json({
+    status: ready ? "ready" : "degraded",
+    checks: { database, codebox },
+    judge: judgeAdmissionStats(),
+    timestamp: new Date().toISOString(),
+  });
+};
+router.get("/health/ready", handleReady);
+router.get("/api/health/ready", handleReady);
+
 // Consistent /api/* routing namespace
 router.use("/api/auth", authRouter);
 router.use("/api/users", userRouter);
@@ -46,8 +80,9 @@ router.use('/api/execute', executionRouter);
 router.use('/api/coins', coinRouter);
 router.use('/api/daily-problem', dailyProblemRouter);
 
+const serveConsole = process.env.NODE_ENV !== "production" || process.env.SERVE_API_CONSOLE === "true";
 router.get("/", (req, res) => {
-  if (req.accepts(["html", "json"]) === "html") {
+  if (serveConsole && req.accepts(["html", "json"]) === "html") {
     res.sendFile(path.join(__dirname, "../../public/index.html"));
   } else {
     res.status(200).json({
@@ -84,16 +119,19 @@ router.get("/", (req, res) => {
       },
       endpoints: [
         { method: "GET", path: "/health", description: "Health check" },
+        { method: "GET", path: "/health/ready", description: "Readiness check (database, CodeBox)" },
         { method: "GET", path: "/ping", description: "Ping check" },
         { method: "GET", path: "/api/health", description: "API namespace health check" },
         { method: "GET", path: "/api/ping", description: "API namespace ping check" },
         { method: "POST", path: "/api/auth/register", description: "Register new user account (Password >= 8 chars, <= 72 bytes, != email)" },
         { method: "POST", path: "/api/auth/login", description: "Authenticate and get JWT token (1d expiry)" },
         { method: "POST", path: "/api/auth/logout", description: "Revoke token persistently (Protected)" },
-        { method: "POST", path: "/api/auth/refresh", description: "Refresh active token (Protected)" },
+        { method: "POST", path: "/api/auth/logout-all", description: "End every session of the account (Protected)" },
+        { method: "POST", path: "/api/auth/refresh", description: "Refresh active token, at most SESSION_MAX_AGE_DAYS after login (Protected)" },
         { method: "GET", path: "/api/auth/me", description: "Verify token & retrieve current user (Protected)" },
         { method: "GET", path: "/api/auth/verify", description: "Verify token alias (Protected)" },
-        { method: "POST", path: "/api/auth/change-password", description: "Change user password (Protected)" },
+        { method: "POST", path: "/api/auth/change-password", description: "Change password; signs out other sessions and returns a new token (Protected)" },
+        { method: "DELETE", path: "/api/users/me", description: "Delete the account (password + confirm: DELETE) (Protected)" },
         { method: "GET", path: "/api/users/me", description: "Get authenticated profile (Protected)" },
         { method: "PUT", path: "/api/users/me", description: "Update profile name (Protected)" },
         { method: "GET", path: "/api/users/me/overview", description: "Get profile details and successful submission activity (Protected)" },
@@ -119,7 +157,8 @@ router.get("/", (req, res) => {
         { method: "POST", path: "/api/execution/submissions", description: "Asynchronous tiered submission evaluation - 202 Accepted (Protected)" },
         { method: "GET", path: "/api/execution/submissions/:id", description: "Get submission status and tier progress - Owner only (Protected)" },
         { method: "GET", path: "/api/social/:provider/link-url", description: "Get GitHub OAuth link URL (Protected)" },
-        { method: "GET", path: "/api/social/:provider/callback", description: "OAuth callback handler with safe error codes & allow-list redirect" },
+        { method: "GET", path: "/api/social/:provider/callback", description: "OAuth callback: redirects to the frontend with a one-time link_code" },
+        { method: "POST", path: "/api/social/:provider/complete", description: "Complete linking with the link_code (Protected)" },
         { method: "DELETE", path: "/api/social/:provider", description: "Unlink social provider (Protected)" },
         { method: "GET", path: "/api/study/subjects", description: "List curriculum subjects with chapter counts (Public)" },
         { method: "GET", path: "/api/study/subjects/:subjectSlug", description: "Get subject chapters and curriculum structure (Public)" },
@@ -131,7 +170,7 @@ router.get("/", (req, res) => {
         { method: "GET", path: "/api/themes/me", description: "Get user active theme and coins balance (Protected)" },
         { method: "POST", path: "/api/themes/:slug/buy", description: "Purchase a theme with coins (Protected)" },
         { method: "PUT", path: "/api/themes/apply", description: "Apply an owned theme as active (Protected)" },
-        { method: "GET", path: "/api/rankings", description: "Get public leaderboard rankings with scope/pagination filters (Public)" },
+        { method: "GET", path: "/api/rankings", description: "Leaderboard; regional fields and scopes require login (Optional auth)" },
         { method: "GET", path: "/api/daily-problem", description: "Today's daily problem with caller completion & streak (Optional auth)" },
         { method: "GET", path: "/api/daily-problem/history", description: "Past daily problems up to today, newest first (Optional auth)" },
       ],

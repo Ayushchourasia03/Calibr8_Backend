@@ -1,28 +1,44 @@
 import prisma from "../config/db.js";
+import { ApiError } from "../utils/ApiError.js";
+import { queryString, FIELD_LIMITS } from "../utils/validation.js";
+
+const SCOPES = ["global", "college", "batch", "state", "country"];
 
 /**
  * GET /api/rankings
- * Retrieves public user leaderboard rankings filtered by scope.
- * Excludes sensitive fields (e.g., password hashes).
+ * Leaderboard ordered by score.
+ *
+ * Privacy: anonymous callers get a minimal public view (display name and
+ * scores) and only the global scope. Signed-in users also see the regional
+ * fields (college/batch/state/country) and can filter by them. Internal
+ * user ids and account creation dates are never exposed; the caller's own
+ * row is flagged with isCurrentUser.
  */
 export const getRankings = async (req, res, next) => {
   try {
-    const { scope, college, batch, state, country, limit = 50 } = req.query;
+    const signedIn = Boolean(req.user?.id);
+    const scope = (queryString(req.query.scope, { max: 20 }) || "global").toLowerCase();
+    if (!SCOPES.includes(scope)) {
+      throw new ApiError(400, `scope must be one of: ${SCOPES.join(", ")}.`, "INVALID_SCOPE");
+    }
+    if (scope !== "global" && !signedIn) {
+      throw new ApiError(401, "Log in to view regional rankings.", "UNAUTHORIZED");
+    }
+
     const where = {};
+    if (scope !== "global") {
+      const value = queryString(req.query[scope], { max: FIELD_LIMITS[scope] });
+      if (value) where[scope] = value;
+    }
 
-    if (scope === "college" && college) where.college = college;
-    if (scope === "batch" && batch) where.batch = batch;
-    if (scope === "state" && state) where.state = state;
-    if (scope === "country" && country) where.country = country;
-
-    const rawLimit = parseInt(limit, 10);
+    const rawLimit = parseInt(queryString(req.query.limit, { max: 6 }) ?? "50", 10);
     const parsedLimit = Number.isNaN(rawLimit)
       ? 50
       : Math.min(Math.max(rawLimit, 1), 100);
 
     const users = await prisma.user.findMany({
       where,
-      orderBy: { score: "desc" },
+      orderBy: [{ score: "desc" }, { createdAt: "asc" }],
       take: parsedLimit,
       select: {
         id: true,
@@ -37,14 +53,20 @@ export const getRankings = async (req, res, next) => {
         batch: true,
         state: true,
         country: true,
-        createdAt: true,
       },
     });
 
+    const data = users.map(({ id, college, branch, batch, state, country, ...row }, index) => ({
+      rank: index + 1,
+      ...row,
+      ...(signedIn ? { college, branch, batch, state, country } : {}),
+      isCurrentUser: signedIn && id === req.user.id,
+    }));
+
     res.status(200).json({
       success: true,
-      count: users.length,
-      data: users,
+      count: data.length,
+      data,
     });
   } catch (err) {
     next(err);

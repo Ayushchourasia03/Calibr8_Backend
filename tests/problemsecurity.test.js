@@ -1,3 +1,4 @@
+import "./helpers/testEnv.js"; // must stay first: refuses to run against the .env database
 import "dotenv/config";
 import assert from "node:assert";
 
@@ -92,11 +93,28 @@ async function runTests() {
   const port = server.address().port;
   const baseUrl = `http://localhost:${port}`;
 
+  // Execution requires an account (audit H3): register a throwaway user.
+  const regRes = await fetch(`${baseUrl}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Exec Security", email: `exec-security-${Date.now()}@example.com`, password: "ExecSecurity123" }),
+  });
+  const { token: execToken } = await regRes.json();
+  const authJson = { "Content-Type": "application/json", Authorization: `Bearer ${execToken}` };
+
+  // Anonymous execution is rejected.
+  const anonRun = await fetch(`${baseUrl}/api/problems/add-two-numbers/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ language: "cpp", code: "int f(){return 0;}" }),
+  });
+  assert.strictEqual(anonRun.status, 401, "anonymous runs must be rejected");
+
   try {
     // 1. Function-only enforcement: submitting main() should fail
     const forbiddenMainRes = await fetch(`${baseUrl}/api/problems/add-two-numbers/run`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authJson,
       body: JSON.stringify({
         slug: "add-two-numbers",
         language: "cpp",
@@ -111,7 +129,7 @@ async function runTests() {
     // 2. Unsupported language rejected
     const unsupportedLangRes = await fetch(`${baseUrl}/api/problems/add-two-numbers/run`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authJson,
       body: JSON.stringify({
         slug: "add-two-numbers",
         language: "ruby",
@@ -139,7 +157,7 @@ async function runTests() {
 
     const runCppRes = await fetch(`${baseUrl}/api/problems/add-two-numbers/run`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authJson,
       body: JSON.stringify({
         slug: "add-two-numbers",
         language: "cpp",
@@ -174,7 +192,7 @@ async function runTests() {
 `;
     const runPyRes = await fetch(`${baseUrl}/api/problems/add-two-numbers/run`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authJson,
       body: JSON.stringify({
         slug: "add-two-numbers",
         language: "python",
@@ -189,7 +207,7 @@ async function runTests() {
     // 5. C++ Compilation Error Diagnostics
     const syntaxErrRes = await fetch(`${baseUrl}/api/problems/add-two-numbers/run`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authJson,
       body: JSON.stringify({
         slug: "add-two-numbers",
         language: "cpp",
@@ -208,7 +226,7 @@ async function runTests() {
       delete process.env.CODEBOX_URL;
       const unavailRes = await fetch(`${baseUrl}/api/problems/add-two-numbers/run`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authJson,
         body: JSON.stringify({
           slug: "add-two-numbers",
           language: "cpp",
@@ -226,6 +244,7 @@ async function runTests() {
     console.log("\nALL EXECUTION & REGRESSION TESTS PASSED! 🎉");
   } finally {
     globalThis.fetch = originalFetch;
+    await prisma.user.deleteMany({ where: { email: { startsWith: "exec-security-" } } }).catch(() => {});
     await prisma.$disconnect().catch(() => {});
     await new Promise((resolve) => server.close(resolve));
   }
