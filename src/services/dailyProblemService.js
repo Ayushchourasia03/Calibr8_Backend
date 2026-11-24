@@ -436,6 +436,9 @@ async function runStreakDecayJob() {
  * streak decay at startup and at 00:05 IST.
  */
 export function startDailyProblemScheduler() {
+  if (process.env.ENABLE_CRON_JOBS === "false") {
+    return;
+  }
   if (scheduledTasks.length > 0) return;
 
   runAssignmentJob();

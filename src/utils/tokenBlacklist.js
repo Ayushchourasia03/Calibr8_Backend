@@ -5,19 +5,14 @@ import { decodeToken } from './jwt.js';
 // Local cache of revoked token ids -> expiry (ms). Entries are pruned once the
 // underlying JWT has expired, since an expired token is rejected anyway.
 const revokedCache = new Map();
-// Short-lived cache of ids confirmed NOT revoked, to avoid a DB round-trip on
-// every authenticated request. Kept short so revocations made by other
-// instances propagate quickly.
-const notRevokedCache = new Map();
-const NOT_REVOKED_TTL_MS = 10 * 1000;
-const MAX_NOT_REVOKED_ENTRIES = 50_000;
+const P2021_RETRY_COOLDOWN_MS = 60 * 1000;
+let persistenceRetryAt = 0;
 
-let persistenceAvailable = true;
+const canPersist = () => Date.now() >= persistenceRetryAt && Boolean(prisma?.revokedToken);
 
 setInterval(() => {
   const now = Date.now();
   for (const [id, exp] of revokedCache) if (exp <= now) revokedCache.delete(id);
-  for (const [id, exp] of notRevokedCache) if (exp <= now) notRevokedCache.delete(id);
 }, 60 * 1000).unref?.();
 
 /** Stable identifier for a token: its jti, or a hash of the token for legacy tokens. */
@@ -31,11 +26,11 @@ function expiryMs(payload) {
 }
 
 function handlePersistenceError(err) {
-  // P2021: table does not exist (migration not applied yet). Stop retrying so
-  // we don't add a failing query + log line to every request.
+  // P2021: table does not exist (migration not applied yet). Back off for a
+  // bounded window so migrations applied later recover automatically.
   if (err?.code === 'P2021') {
-    persistenceAvailable = false;
-    console.warn('[TokenBlacklist] revoked_tokens table missing; using in-memory revocation only. Run prisma migrate deploy.');
+    persistenceRetryAt = Date.now() + P2021_RETRY_COOLDOWN_MS;
+    console.warn('[TokenBlacklist] revoked_tokens table missing; using in-memory revocation only until retry.');
     return;
   }
   console.warn('[TokenBlacklist] Database warning:', err?.message);
@@ -55,9 +50,8 @@ export const blacklistToken = async (token, decodedPayload = null) => {
   const expiresAtMs = expiryMs(payload);
 
   revokedCache.set(jti, expiresAtMs);
-  notRevokedCache.delete(jti);
 
-  if (!persistenceAvailable || !prisma?.revokedToken) return;
+  if (!canPersist()) return;
 
   try {
     await prisma.revokedToken.upsert({
@@ -89,10 +83,7 @@ export const isTokenBlacklisted = async (token, decodedPayload = null) => {
 
   if (revokedCache.has(jti)) return true;
 
-  const notRevokedUntil = notRevokedCache.get(jti);
-  if (notRevokedUntil && notRevokedUntil > now) return false;
-
-  if (!persistenceAvailable || !prisma?.revokedToken) return false;
+  if (!canPersist()) return false;
 
   let revoked;
   try {
@@ -103,7 +94,7 @@ export const isTokenBlacklisted = async (token, decodedPayload = null) => {
   } catch (err) {
     handlePersistenceError(err);
     // Fail closed: a revocation that cannot be checked is not assumed absent
-    // (P2021 = table missing is handled above and degrades to memory only).
+    // (P2021 = table missing degrades to memory only for the retry window).
     if (err?.code !== 'P2021') throw err;
     return false;
   }
@@ -113,14 +104,12 @@ export const isTokenBlacklisted = async (token, decodedPayload = null) => {
     return true;
   }
 
-  if (notRevokedCache.size >= MAX_NOT_REVOKED_ENTRIES) notRevokedCache.clear();
-  notRevokedCache.set(jti, now + NOT_REVOKED_TTL_MS);
   return false;
 };
 
 /** Deletes expired revocation rows. Safe to call periodically. */
 export const purgeExpiredRevokedTokens = async () => {
-  if (!persistenceAvailable || !prisma?.revokedToken) return 0;
+  if (!canPersist()) return 0;
   try {
     const { count } = await prisma.revokedToken.deleteMany({
       where: { expiresAt: { lte: new Date() } },

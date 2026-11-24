@@ -251,10 +251,20 @@ test("profiler: CodeBox outage is retryable, a driver compile failure is not", a
   }
 });
 
-test("profiler: unsupported language is rejected up front", async () => {
+test("profiler: unsupported language and unsafe harness hooks are rejected up front", async () => {
   await assert.rejects(
     profiler.runComplexityProfile({ definition: addTwoNumbersProfile, problem, language: "python", userCode: "x", config }),
     (e) => e.code === "UNSUPPORTED",
+  );
+  await assert.rejects(
+    profiler.runComplexityProfile({
+      definition: addTwoNumbersProfile,
+      problem,
+      language: "cpp",
+      userCode: '__attribute__((constructor)) void pwn(){}\nListNode* addTwoNumbers(ListNode* a, ListNode* b){ return nullptr; }',
+      config,
+    }),
+    (e) => e.code === "UNSAFE_FOR_PROFILING" && e.retryable === false,
   );
 });
 

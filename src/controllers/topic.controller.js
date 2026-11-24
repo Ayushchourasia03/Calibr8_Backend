@@ -2,6 +2,15 @@ import prisma from "../config/db.js";
 import { ApiError } from "../utils/ApiError.js";
 import { listAllProblems } from "../utils/problemResolver.js";
 
+const SAFE_IDENTIFIER_RE = /^[A-Za-z0-9_-]{1,100}$/;
+function assertSafeParam(value, label) {
+  const s = typeof value === "string" ? value.trim() : "";
+  if (!SAFE_IDENTIFIER_RE.test(s)) {
+    throw new ApiError(400, `Invalid ${label}.`, "INVALID_PARAMETER");
+  }
+  return s;
+}
+
 /**
  * GET /api/topics
  * Returns all available topics, optionally filtered by category query (?category=dsa or ?category=core).
@@ -77,7 +86,7 @@ export const getDsaTopics = async (req, res, next) => {
  */
 export const getTopicDetail = async (req, res, next) => {
   try {
-    const { identifier } = req.params;
+    const identifier = assertSafeParam(req.params.identifier, "topic identifier");
 
     // Try finding topic by ID
     let topic = await prisma.topic.findUnique({
@@ -175,7 +184,7 @@ export const getAllDsaTopics = async (req, res, next) => {
  */
 export const getProblemsByDsaTopic = async (req, res, next) => {
   try {
-    const { slug } = req.params;
+    const slug = assertSafeParam(req.params.slug, "topic slug");
     const { difficulty, search } = req.query;
 
     let topic = null;

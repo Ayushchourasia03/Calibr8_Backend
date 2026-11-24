@@ -25,6 +25,7 @@ const state = {
   wakeTimer: null,
   kicking: false,
   started: false,
+  stopped: false,
 };
 
 // Hooks for tests.
@@ -42,6 +43,7 @@ export function __resetQueueStateForTests() {
   if (state.wakeTimer) clearTimeout(state.wakeTimer);
   state.wakeTimer = null;
   state.kicking = false;
+  state.stopped = false;
 }
 
 /** Judging-priority markers, called around every judge execution. */
@@ -143,14 +145,14 @@ async function scheduleNextWake(store = db) {
 
 /** Starts as many jobs as concurrency allows. Safe to call any time. */
 export function kick() {
-  if (state.kicking) return;
+  if (state.kicking || state.stopped) return;
   state.kicking = true;
   (async () => {
     try {
       const { concurrency, enabled } = getProfilingConfig();
-      if (!enabled) return;
+      if (!enabled || state.stopped) return;
       const store = db; // one handle for the claim and the job it starts
-      while (state.running < concurrency) {
+      while (state.running < concurrency && !state.stopped) {
         const job = await claimNextJob(store);
         if (!job) {
           await scheduleNextWake(store);
@@ -272,7 +274,7 @@ export async function processJob(job, store = db) {
     // Outcomes caused by the solution itself on oversized inputs (the sandbox
     // killed it, ...) make the estimate unreliable -> INCONCLUSIVE. Internal
     // problems (driver compile error, generator bug, retries exhausted) -> FAILED.
-    const inconclusiveCodes = new Set(["PROFILE_NO_REPORT"]);
+    const inconclusiveCodes = new Set(["PROFILE_NO_REPORT", "UNSAFE_FOR_PROFILING"]);
     await finish({
       status: inconclusiveCodes.has(err.code) ? "INCONCLUSIVE" : "FAILED",
       failureReason: reason,
@@ -290,6 +292,7 @@ export async function processJob(job, store = db) {
 export async function startProfilingWorker() {
   if (state.started) return;
   state.started = true;
+  state.stopped = false;
   const config = getProfilingConfig();
   if (!config.enabled) return;
   await recoverStaleJobs(config);
@@ -298,6 +301,14 @@ export async function startProfilingWorker() {
   const later = setTimeout(() => recoverStaleJobs(getProfilingConfig()).then(kick), config.timeoutMs + 61_000);
   later.unref?.();
   kick();
+}
+
+export function stopProfilingWorker() {
+  state.stopped = true;
+  if (state.wakeTimer) {
+    clearTimeout(state.wakeTimer);
+    state.wakeTimer = null;
+  }
 }
 
 async function recoverStaleJobs(config) {

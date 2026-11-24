@@ -5,6 +5,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { blacklistToken } from "../utils/tokenBlacklist.js";
 import { getUserHeaderStats } from "../utils/userHeaderStats.js";
 import { requireEmail, requireText } from "../utils/validation.js";
+import { clientIpKey } from "../utils/clientIp.js";
 import {
   assertLoginAllowed,
   recordFailedLogin,
@@ -20,13 +21,29 @@ function stripSecrets(user) {
   return safe;
 }
 
+const COMMON_WEAK_PASSWORDS = new Set([
+  "12345678",
+  "123456789",
+  "1234567890",
+  "password",
+  "password1",
+  "password123",
+  "qwerty123",
+  "qwertyui",
+  "abcdefgh",
+  "letmein1",
+  "welcome1",
+  "admin123",
+  "calibr8123",
+]);
+
 /**
  * Validate password strength:
  * - Minimum 8 characters
  * - Maximum 72 bytes (bcrypt limit)
- * - Must differ from email
+ * - Must differ from email and display name, and not be trivial/repeated
  */
-function validatePassword(password, email) {
+function validatePassword(password, email, name) {
   if (typeof password !== "string" || password.length < 8) {
     throw new ApiError(400, "Password must be at least 8 characters long.", "WEAK_PASSWORD");
   }
@@ -36,8 +53,15 @@ function validatePassword(password, email) {
     throw new ApiError(400, "Password cannot exceed 72 bytes.", "PASSWORD_TOO_LONG");
   }
 
-  if (email && password.toLowerCase() === email.trim().toLowerCase()) {
+  const lower = password.toLowerCase();
+  if (email && lower === email.trim().toLowerCase()) {
     throw new ApiError(400, "Password must differ from the email address.", "PASSWORD_EQUALS_EMAIL");
+  }
+  if (name && lower === String(name).trim().toLowerCase()) {
+    throw new ApiError(400, "Password cannot be identical to your account name.", "WEAK_PASSWORD");
+  }
+  if (/^(.)\1+$/.test(password) || COMMON_WEAK_PASSWORDS.has(lower.trim())) {
+    throw new ApiError(400, "Please choose a stronger, less predictable password.", "WEAK_PASSWORD");
   }
 }
 
@@ -66,8 +90,8 @@ export const register = async (req, res, next) => {
     const normalizedEmail = requireEmail(email);
     const cleanName = requireText(name, "name");
 
-    // 3. Enforce strict password requirements (min 8, max 72 bytes, != email)
-    validatePassword(password, normalizedEmail);
+    // 3. Enforce password strength (min 8, max 72 bytes, non-trivial, != email/name)
+    validatePassword(password, normalizedEmail, cleanName);
 
     // 4. Check if user already exists
     const existing = await prisma.user.findUnique({
@@ -146,8 +170,9 @@ export const login = async (req, res, next) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    // Per-account throttle on top of the per-IP limiter (credential stuffing).
-    assertLoginAllowed(normalizedEmail);
+    const ipKey = clientIpKey(req);
+    // Per-(account, IP) throttle on top of the per-IP limiter (credential stuffing).
+    assertLoginAllowed(normalizedEmail, ipKey);
 
     const user = await prisma.user.findUnique({
       where: { email: normalizedEmail },
@@ -164,10 +189,10 @@ export const login = async (req, res, next) => {
     // Same bcrypt cost whether or not the account exists (no timing oracle).
     const isMatch = await comparePassword(password, user?.passwordHash);
     if (!user || !isMatch) {
-      recordFailedLogin(normalizedEmail);
+      recordFailedLogin(normalizedEmail, ipKey);
       throw new ApiError(401, "Invalid email or password.", "INVALID_CREDENTIALS");
     }
-    clearFailedLogins(normalizedEmail);
+    clearFailedLogins(normalizedEmail, ipKey);
 
     // Upgrade hashes created with an older cost factor.
     if (needsRehash(user.passwordHash)) {
@@ -415,13 +440,13 @@ export const changePassword = async (req, res, next) => {
 
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
-      select: { id: true, email: true, passwordHash: true },
+      select: { id: true, email: true, name: true, passwordHash: true },
     });
     if (!user) {
       throw new ApiError(404, "User not found.", "NOT_FOUND");
     }
 
-    validatePassword(newPassword, user.email);
+    validatePassword(newPassword, user.email, user.name);
 
     const isMatch = await comparePassword(currentPassword, user.passwordHash);
     if (!isMatch) {

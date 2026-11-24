@@ -8,6 +8,7 @@
 
 import { buildFinalCode, LANGUAGE_IDS, normalizeLanguage } from "../utils/codeBuilder.js";
 import { fetchCodeboxJson, getCodeboxUrl } from "../utils/codeboxClient.js";
+import { isHarnessSafeUserCode } from "../utils/multiCaseHarness.js";
 import { wrapWithProfileHarness, buildProfileStdin, parseProfileOutput } from "./profileHarness.js";
 import { classifyGrowth, classifyTimeWithReference, downgrade, TIME_MODELS, SPACE_MODELS } from "./complexityFit.js";
 
@@ -306,6 +307,12 @@ export async function runComplexityProfile({ definition, problem, language, user
   const lang = normalizeLanguage(language);
   const driver = definition?.drivers?.[lang];
   if (!driver) throw new ProfilingError(`Profiling is not available for ${language}.`, { code: "UNSUPPORTED" });
+  if ((lang === "cpp" || lang === "c") && !isHarnessSafeUserCode(userCode)) {
+    throw new ProfilingError("Submitted code uses constructs incompatible with complexity profiling.", {
+      code: "UNSAFE_FOR_PROFILING",
+      retryable: false,
+    });
+  }
 
   // 1. Generate and validate inputs (ascending sizes).
   const sizes = definition.sizes.filter((n) => n <= config.maxInputSize);

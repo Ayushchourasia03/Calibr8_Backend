@@ -8,6 +8,9 @@ import { requireText, optionalText, requireEmail, queryString } from "../src/uti
 import { acquireJudgeSlot, __resetJudgeAdmissionForTests } from "../src/utils/judgeAdmission.js";
 import { analyzeComplexitySafe, closeComplexityPool } from "../src/services/complexityPool.js";
 import { signSessionToken, verifyToken, assertSessionWithinMaxAge } from "../src/utils/jwt.js";
+import { JWT_SECRET } from "../src/config/jwt.js";
+import { getCodeboxUrl } from "../src/utils/codeboxClient.js";
+import { buildFinalCode } from "../src/utils/codeBuilder.js";
 import { comparePassword, hashPassword, needsRehash } from "../src/utils/bcrypt.js";
 import { assertLoginAllowed, recordFailedLogin, clearFailedLogins } from "../src/middlewares/rateLimit.middleware.js";
 import { tierForRating } from "../src/utils/userHeaderStats.js";
@@ -180,4 +183,103 @@ test("M6: tier is derived from rating", () => {
   assert.equal(tierForRating(700), "Pulse I");
   assert.equal(tierForRating(800), "Pulse II");
   assert.equal(tierForRating(1600), "Eclipse II");
+});
+
+test("H2/M5: harness blocks includes outside allowlist, operator new, qualified libc hooks, and raw/trigraph tricks", () => {
+  const bypasses = [
+    '#include </etc/passwd>\nint f(){return 1;}',
+    '#include "secret.h"\nint f(){return 1;}',
+    'void* operator new(unsigned long n){return nullptr;}',
+    'long read(int fd, void* b, unsigned long n) noexcept { return 0; }',
+    'int c8p__leak = 1;',
+    '??=define X 1',
+    'R"delim( // )delim"\n__attribute__((constructor)) void evil(){}',
+  ];
+  for (const code of bypasses) {
+    assert.equal(isHarnessSafeUserCode(code), false, code);
+  }
+  // Tokenizer desync: digit separators / trigraphs must not open a fake char
+  // literal that hides the rest of the code from the checks.
+  const desync = [
+    "int a = 1'0; __attribute__((constructor)) void pwn(){} int b = 2'0;",
+    "int a = 1'0; long read(int fd, void* b, unsigned long n) { return 0; } int b = 2'0;",
+    "double d = .5'0; __attribute__((constructor)) void pwn(){} int e = 0x1'F;",
+    "char c = '??''; __attribute__((constructor)) void pwn(){} char d = 'x';",
+  ];
+  for (const code of desync) {
+    assert.equal(isHarnessSafeUserCode(code), false, code);
+  }
+  const allowed = [
+    'const char* msg = "__attribute__((constructor)) int fork()";\nint solve(int n){ return n; }',
+    '#include <vector>\n#include <algorithm>\nclass Solution { public: int solve(int x){ return x; } };',
+    "const long long MOD = 1'000'000'007;\nint f(char c){ switch(c){ case'a': return 1; case ' ': return 2; } return (int)(MOD % 7); }",
+  ];
+  for (const code of allowed) {
+    assert.equal(isHarnessSafeUserCode(code), true, code);
+  }
+});
+
+test("M3: login failure throttle is scoped per (email, IP)", () => {
+  const email = `scoped-${Date.now()}@example.test`;
+  for (let i = 0; i < 10; i++) recordFailedLogin(email, "198.51.100.1");
+  assert.throws(() => assertLoginAllowed(email, "198.51.100.1"), (err) => err.code === "ACCOUNT_LOGIN_LOCKED");
+  assert.doesNotThrow(() => assertLoginAllowed(email, "198.51.100.2"));
+  clearFailedLogins(email, "198.51.100.1");
+  assert.doesNotThrow(() => assertLoginAllowed(email, "198.51.100.1"));
+});
+
+test("H4: getCodeboxUrl rejects remote HTTP in production even with CODEBOX_ALLOW_INSECURE_HTTP=true", () => {
+  const prevEnv = process.env.NODE_ENV;
+  const prevUrl = process.env.CODEBOX_URL;
+  const prevTok = process.env.CODEBOX_TOKEN;
+  const prevInsecure = process.env.CODEBOX_ALLOW_INSECURE_HTTP;
+  try {
+    process.env.NODE_ENV = "production";
+    process.env.CODEBOX_TOKEN = "tok";
+    process.env.CODEBOX_ALLOW_INSECURE_HTTP = "true";
+    process.env.CODEBOX_URL = "http://codebox.internal:2358";
+    assert.throws(() => getCodeboxUrl(true), (err) => err.code === "EXECUTION_UNAVAILABLE");
+    process.env.CODEBOX_URL = "http://127.0.0.1:2358";
+    assert.equal(getCodeboxUrl(true).hostname, "127.0.0.1");
+    process.env.CODEBOX_URL = "https://codebox.example.com";
+    assert.equal(getCodeboxUrl(true).protocol, "https:");
+  } finally {
+    if (prevEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = prevEnv;
+    if (prevUrl === undefined) delete process.env.CODEBOX_URL; else process.env.CODEBOX_URL = prevUrl;
+    if (prevTok === undefined) delete process.env.CODEBOX_TOKEN; else process.env.CODEBOX_TOKEN = prevTok;
+    if (prevInsecure === undefined) delete process.env.CODEBOX_ALLOW_INSECURE_HTTP; else process.env.CODEBOX_ALLOW_INSECURE_HTTP = prevInsecure;
+  }
+});
+
+test("M1/M2: verifyToken requires calibr8 issuer & audience and uses random non-static secret", () => {
+  assert.ok(JWT_SECRET.length >= 24);
+  assert.equal(JWT_SECRET.includes("calibr8_dev"), false);
+  const wrongAud = jwt.sign({ id: "user-1" }, JWT_SECRET, { algorithm: "HS256", issuer: "other", audience: "other" });
+  assert.throws(() => verifyToken(wrongAud));
+  const valid = signSessionToken({ id: "user-1", tokenVersion: 0 });
+  const decoded = verifyToken(valid);
+  assert.equal(decoded.iss, "calibr8");
+  assert.equal(decoded.aud, "calibr8-api");
+});
+
+test("codeBuilder ignores comments for main() checks and scopes Python driver locals", () => {
+  const problem = { slug: "two-sum", templates: {} };
+  const pyCommented = "# Do not write main() here\nclass Solution:\n    def twoSum(self, nums, target):\n        return []";
+  const builtPy = buildFinalCode(problem, pyCommented, "python");
+  assert.ok(builtPy.includes("def _c8_run():"));
+  const cppCommented = "// Do not write main() here\nclass Solution {\npublic:\n    int f() { return 1; }\n};";
+  assert.ok(buildFinalCode(problem, cppCommented, "cpp").includes("class Solution"));
+  assert.throws(
+    () => buildFinalCode(problem, "int main() { return 0; }", "cpp"),
+    (err) => err.code === "FUNCTION_ONLY_REQUIRED",
+  );
+  // A digit separator must not hide a later main() from the check.
+  assert.throws(
+    () => buildFinalCode(problem, "const int K = 1'000;\nint main() { return K; }", "cpp"),
+    (err) => err.code === "FUNCTION_ONLY_REQUIRED",
+  );
+  // The JS driver IIFE must start with ';' so ASI cannot turn it into a call
+  // on user code that ends without a semicolon.
+  const builtJs = buildFinalCode(problem, "const solve = (a) => a\nmodule.exports = { solve }", "javascript");
+  assert.match(builtJs, /\n;\(\(\) => \{/);
 });

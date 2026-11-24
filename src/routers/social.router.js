@@ -11,7 +11,7 @@ import { sessionLimiter } from "../middlewares/rateLimit.middleware.js";
 const router = Router();
 
 // GET /api/social/:provider/link-url - get OAuth authorization URL
-router.get("/:provider/link-url", protect, getLinkUrl);
+router.get("/:provider/link-url", protect, sessionLimiter, getLinkUrl);
 
 // GET /api/social/:provider/callback - OAuth callback handler (redirects with ?link_code)
 router.get("/:provider/callback", handleCallback);
@@ -20,6 +20,6 @@ router.get("/:provider/callback", handleCallback);
 router.post("/:provider/complete", protect, sessionLimiter, completeLink);
 
 // DELETE /api/social/:provider - unlink provider from account
-router.delete("/:provider", protect, unlinkProvider);
+router.delete("/:provider", protect, sessionLimiter, unlinkProvider);
 
 export default router;

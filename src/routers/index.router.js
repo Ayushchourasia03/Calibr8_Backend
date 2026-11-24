@@ -15,7 +15,6 @@ import coinRouter from "./coin.router.js";
 import dailyProblemRouter from "./dailyProblem.router.js";
 import prisma from "../config/db.js";
 import { getCodeboxUrl, fetchCodeboxJson } from "../utils/codeboxClient.js";
-import { judgeAdmissionStats } from "../utils/judgeAdmission.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,7 +56,6 @@ const handleReady = async (req, res) => {
   res.status(ready ? 200 : 503).json({
     status: ready ? "ready" : "degraded",
     checks: { database, codebox },
-    judge: judgeAdmissionStats(),
     timestamp: new Date().toISOString(),
   });
 };
@@ -80,7 +78,10 @@ router.use('/api/execute', executionRouter);
 router.use('/api/coins', coinRouter);
 router.use('/api/daily-problem', dailyProblemRouter);
 
-const serveConsole = process.env.NODE_ENV !== "production" || process.env.SERVE_API_CONSOLE === "true";
+const isDevOrTest = process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
+const serveConsole =
+  (isDevOrTest && process.env.SERVE_API_CONSOLE !== "false") ||
+  process.env.SERVE_API_CONSOLE === "true";
 router.get("/", (req, res) => {
   if (serveConsole && req.accepts(["html", "json"]) === "html") {
     res.sendFile(path.join(__dirname, "../../public/index.html"));

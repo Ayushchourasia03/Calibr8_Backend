@@ -111,6 +111,78 @@ export function getDefaultUserTemplate(problem, lang) {
   return `// Write your function here\n`;
 }
 
+function stripCommentsAndStringsForChecks(src, lang) {
+  let out = "";
+  let i = 0;
+  const n = src.length;
+  const isPython = lang === "python";
+  const isCFamily = lang === "c" || lang === "cpp";
+  while (i < n) {
+    const ch = src[i];
+    const next = src[i + 1];
+    // C/C++ digit separators (1'000'000) are part of the number, not a char literal.
+    if (isCFamily && /[0-9]/.test(ch) && !(i > 0 && /[A-Za-z0-9_]/.test(src[i - 1]))) {
+      const start = i;
+      i++;
+      while (i < n) {
+        if (/[A-Za-z0-9_.]/.test(src[i])) i++;
+        else if (src[i] === "'" && /[A-Za-z0-9_]/.test(src[i + 1] || "")) i += 2;
+        else if ((src[i] === "+" || src[i] === "-") && /[eEpP]/.test(src[i - 1])) i++;
+        else break;
+      }
+      out += src.slice(start, i);
+      continue;
+    }
+    if (isPython && ch === "#") {
+      out += " ";
+      i++;
+      while (i < n && src[i] !== "\n") i++;
+      continue;
+    }
+    if (!isPython && ch === "/" && next === "/") {
+      out += " ";
+      i += 2;
+      while (i < n && src[i] !== "\n") i++;
+      continue;
+    }
+    if (!isPython && ch === "/" && next === "*") {
+      out += " ";
+      i += 2;
+      while (i < n && !(src[i] === "*" && src[i + 1] === "/")) i++;
+      i += 2;
+      continue;
+    }
+    if (isPython && (src.startsWith('"""', i) || src.startsWith("'''", i))) {
+      const delim = src.slice(i, i + 3);
+      out += " ";
+      i += 3;
+      const close = src.indexOf(delim, i);
+      i = close === -1 ? n : close + 3;
+      continue;
+    }
+    if (ch === "\"" || ch === "'" || (!isPython && ch === "`")) {
+      const q = ch;
+      out += " ";
+      i++;
+      while (i < n) {
+        if (src[i] === "\\") {
+          i += 2;
+          continue;
+        }
+        if (src[i] === q) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
 /**
  * Generic header/footer synthesizers for common DSA problems when problem.json
  * does not specify custom header/footer.
@@ -122,9 +194,10 @@ function getSynthesizedWrapper(problem, userCode, lang) {
     slug.includes("list") ||
     slug.includes("node") ||
     (problem?.topic && String(problem.topic).toLowerCase().includes("linked list"));
+  const strippedCode = stripCommentsAndStringsForChecks(userCode, lang);
 
   if (lang === "cpp") {
-    const isNode = userCode.includes("Node*") || userCode.includes("Node *") || slug.includes("circular");
+    const isNode = strippedCode.includes("Node*") || strippedCode.includes("Node *") || slug.includes("circular");
     let structDef = "";
     if (isLinkedList) {
       structDef = isNode
@@ -133,7 +206,7 @@ function getSynthesizedWrapper(problem, userCode, lang) {
     }
 
     // Omit struct definition from header if user code already defines it
-    if (userCode.includes("struct ListNode") || userCode.includes("class ListNode")) {
+    if (/\b(?:struct|class)\s+ListNode\b/.test(strippedCode)) {
       structDef = "";
     }
 
@@ -147,7 +220,7 @@ function getSynthesizedWrapper(problem, userCode, lang) {
 
   if (lang === "c") {
     let structDef = "";
-    if (isLinkedList && !userCode.includes("struct ListNode")) {
+    if (isLinkedList && !/\bstruct\s+ListNode\b/.test(strippedCode)) {
       structDef = `struct ListNode {\n    int val;\n    struct ListNode* next;\n};\nstatic struct ListNode* createListNode(int val) {\n    struct ListNode* n = (struct ListNode*)malloc(sizeof(struct ListNode));\n    n->val = val; n->next = NULL; return n;\n}\n`;
     }
 
@@ -158,7 +231,7 @@ function getSynthesizedWrapper(problem, userCode, lang) {
 
   if (lang === "java") {
     let structDef = "";
-    if (isLinkedList && !userCode.includes("class ListNode")) {
+    if (isLinkedList && !/\bclass\s+ListNode\b/.test(strippedCode)) {
       structDef = `class ListNode {\n    int val;\n    ListNode next;\n    ListNode() {}\n    ListNode(int x) { val = x; }\n    ListNode(int x, ListNode n) { val = x; next = n; }\n}\n`;
     }
 
@@ -169,10 +242,13 @@ function getSynthesizedWrapper(problem, userCode, lang) {
 
   if (lang === "javascript") {
     let structDef = "";
-    if (isLinkedList && !userCode.includes("class ListNode")) {
+    if (isLinkedList && !/\bclass\s+ListNode\b/.test(strippedCode)) {
       structDef = `class ListNode {\n    constructor(val = 0, next = null) {\n        this.val = val;\n        this.next = next;\n    }\n}\n`;
     }
+    // Leading ';' so ASI cannot glue the IIFE onto user code that ends in an
+    // expression without a semicolon (e.g. `module.exports = { solve }`).
     const footer = `
+;(() => {
 try {
   const _fs = require('fs');
   const _raw = _fs.readFileSync(0, 'utf8');
@@ -232,13 +308,14 @@ try {
   process.stderr.write(String(_err));
   process.exit(1);
 }
+})();
 `;
     return { header: structDef, footer };
   }
 
   if (lang === "python") {
     let structDef = "";
-    if (isLinkedList && !userCode.includes("class ListNode")) {
+    if (isLinkedList && !/\bclass\s+ListNode\b/.test(strippedCode)) {
       structDef = `from typing import List, Optional\nimport sys, json\n\nclass ListNode:\n    def __init__(self, val=0, next=None):\n        self.val = val\n        self.next = next\n`;
     } else {
       structDef = `from typing import List, Optional\nimport sys, json\n`;
@@ -246,59 +323,62 @@ try {
 
     const footer = `
 # Driver code provided by Calibr8 platform
-try:
-    _raw_stdin = sys.stdin.read()
-    _lines = [l.strip() for l in _raw_stdin.split('\\n') if l.strip()]
-    _parsed_lines = []
-    for _line in _lines:
-        try:
-            _parsed_lines.append(json.loads(_line))
-        except Exception:
-            _parts = _line.split()
-            if len(_parts) > 1 and all(p.lstrip('-').isdigit() for p in _parts):
-                _parsed_lines.append([int(p) for p in _parts])
-            elif len(_parts) == 1 and _parts[0].lstrip('-').isdigit():
-                _parsed_lines.append(int(_parts[0]))
+def _c8_run():
+    try:
+        _raw_stdin = sys.stdin.read()
+        _lines = [l.strip() for l in _raw_stdin.split('\\n') if l.strip()]
+        _parsed_lines = []
+        for _line in _lines:
+            try:
+                _parsed_lines.append(json.loads(_line))
+            except Exception:
+                _parts = _line.split()
+                if len(_parts) > 1 and all(p.lstrip('-').isdigit() for p in _parts):
+                    _parsed_lines.append([int(p) for p in _parts])
+                elif len(_parts) == 1 and _parts[0].lstrip('-').isdigit():
+                    _parsed_lines.append(int(_parts[0]))
+                else:
+                    _parsed_lines.append(_line)
+
+        _fn = None
+        if 'Solution' in globals() and callable(globals()['Solution']):
+            _sol = Solution()
+            _methods = [m for m in dir(_sol) if not m.startswith('_') and callable(getattr(_sol, m))]
+            if _methods:
+                _fn = getattr(_sol, _methods[0])
+        if _fn is None:
+            _funcs = [v for k, v in list(globals().items()) if not k.startswith('_') and callable(v) and k not in ('Solution', 'sys', 'json', 'traceback', 'inspect')]
+            if _funcs:
+                _fn = _funcs[-1]
+
+        if _fn is not None:
+            import inspect
+            _sig = inspect.signature(_fn)
+            _param_names = [p.name for p in _sig.parameters.values() if p.name != 'self']
+            _expected_count = len(_param_names)
+            _final_args = _parsed_lines
+
+            if len(_parsed_lines) > _expected_count and _expected_count > 0:
+                if len(_parsed_lines) == _expected_count + 1 and isinstance(_parsed_lines[0], int):
+                    _final_args = _parsed_lines[1:]
+
+            if _expected_count == 1 and len(_final_args) > 1:
+                if isinstance(_final_args[0], int) and isinstance(_final_args[1], list):
+                    _final_args = [_final_args[1]]
+
+            _result = _fn(*_final_args)
+            if isinstance(_result, bool):
+                print(str(_result).lower())
+            elif isinstance(_result, list):
+                print(" ".join(str(x) for x in _result))
             else:
-                _parsed_lines.append(_line)
+                print(_result)
+    except Exception:
+        import traceback
+        sys.stderr.write(traceback.format_exc())
+        sys.exit(1)
 
-    _fn = None
-    if 'Solution' in globals() and callable(globals()['Solution']):
-        _sol = Solution()
-        _methods = [m for m in dir(_sol) if not m.startswith('_') and callable(getattr(_sol, m))]
-        if _methods:
-            _fn = getattr(_sol, _methods[0])
-    if _fn is None:
-        _funcs = [v for k, v in list(globals().items()) if not k.startswith('_') and callable(v) and k not in ('Solution', 'sys', 'json', 'traceback')]
-        if _funcs:
-            _fn = _funcs[-1]
-
-    if _fn is not None:
-        import inspect
-        _sig = inspect.signature(_fn)
-        _param_names = [p.name for p in _sig.parameters.values() if p.name != 'self']
-        _expected_count = len(_param_names)
-        _final_args = _parsed_lines
-
-        if len(_parsed_lines) > _expected_count and _expected_count > 0:
-            if len(_parsed_lines) == _expected_count + 1 and isinstance(_parsed_lines[0], int):
-                _final_args = _parsed_lines[1:]
-
-        if _expected_count == 1 and len(_final_args) > 1:
-            if isinstance(_final_args[0], int) and isinstance(_final_args[1], list):
-                _final_args = [_final_args[1]]
-
-        _result = _fn(*_final_args)
-        if isinstance(_result, bool):
-            print(str(_result).lower())
-        elif isinstance(_result, list):
-            print(" ".join(str(x) for x in _result))
-        else:
-            print(_result)
-except Exception as _e:
-    import traceback
-    sys.stderr.write(traceback.format_exc())
-    sys.exit(1)
+_c8_run()
 `;
     return { header: structDef, footer };
   }
@@ -339,13 +419,15 @@ export function buildFinalCode(problem, userCode, language) {
     problem?.submissionModel === "stdin" ||
     problem?.submissionModel === "standard";
 
+  const codeForChecks = stripCommentsAndStringsForChecks(userCode, lang);
+
   // Enforce function-only: users must never be required to write main()
   if (!isStdioProblem) {
     const hasMain =
-      /\bmain\s*\(/.test(userCode) ||
-      /\bint\s+main\b/.test(userCode) ||
-      /\bvoid\s+main\b/.test(userCode) ||
-      /\bdef\s+main\b/.test(userCode);
+      /\bmain\s*\(/.test(codeForChecks) ||
+      /\bint\s+main\b/.test(codeForChecks) ||
+      /\bvoid\s+main\b/.test(codeForChecks) ||
+      /\bdef\s+main\b/.test(codeForChecks);
 
     if (hasMain) {
       throw new ApiError(
@@ -390,7 +472,7 @@ export function buildFinalCode(problem, userCode, language) {
     // Prevent duplicate type definitions only if user code actually DEFINES the struct or class
     if (
       /struct\s+ListNode\s*\{/.test(header) &&
-      (/struct\s+ListNode\s*\{/.test(userCode) || /class\s+ListNode\s*\{/.test(userCode))
+      (/struct\s+ListNode\s*\{/.test(codeForChecks) || /class\s+ListNode\s*\{/.test(codeForChecks))
     ) {
       header = header.replace(/struct\s+ListNode\s*\{[^}]*\};?\s*/g, "");
     }
@@ -434,7 +516,11 @@ if (typeof Solution !== 'undefined') {
 }
 `;
     } else if (lang === "cpp") {
-      if (userCode.includes("class Solution") && userCode.includes("addTwoNumbers") && !/ListNode\*\s+addTwoNumbers\s*\(/.test(userCode.replace(/class\s+Solution[\s\S]*?\};/, ""))) {
+      if (
+        /\bclass\s+Solution\b/.test(codeForChecks) &&
+        /\baddTwoNumbers\b/.test(codeForChecks) &&
+        !/ListNode\s*\*\s*addTwoNumbers\s*\(/.test(codeForChecks.replace(/class\s+Solution[\s\S]*?\};/, ""))
+      ) {
         bridge = `\nListNode* addTwoNumbers(ListNode* l1, ListNode* l2) {\n    Solution sol;\n    return sol.addTwoNumbers(l1, l2);\n}\n`;
       }
     }

@@ -33,8 +33,13 @@ export function getCodeboxUrl(required = true) {
   const isHttps = runnerUrl.protocol === "https:";
   const isHttp = runnerUrl.protocol === "http:";
   const allowInsecureHttp = process.env.CODEBOX_ALLOW_INSECURE_HTTP === "true";
+  const isProduction = process.env.NODE_ENV === "production";
+  const host = runnerUrl.hostname.toLowerCase();
+  const isLoopback = host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "[::1]";
 
-  if (!isHttps && !(isHttp && allowInsecureHttp)) {
+  const httpPermitted = isHttp && allowInsecureHttp && (!isProduction || isLoopback);
+
+  if (!isHttps && !httpPermitted) {
     if (!required) return null;
     throw new ApiError(
       503,

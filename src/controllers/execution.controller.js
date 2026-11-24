@@ -522,29 +522,55 @@ async function executeCodeboxBatchOnce({
     rawResults.map((result, index) => [Number(result.index ?? index), result]),
   );
 
+  const isCompileFailed =
+    batchStatus?.status === "compile_failed" ||
+    batchStatus?.status === "COMPILE_FAILED" ||
+    batchStatus?.status === "compile-failed";
+
+  let sawExecutionFailure = false;
   const results = testcases.map((_, index) => {
-    const rawResult = byIndex.get(index) || rawResults[index] || {};
+    const rawResult = byIndex.get(index) ?? rawResults[index];
+    if (!rawResult && !isCompileFailed) {
+      if (sawExecutionFailure) {
+        return {
+          status: "Skipped",
+          actual: "",
+          studentStdout: "",
+          errorText: null,
+          timeMs: 0,
+          cpuTimeMs: 0,
+          wallTimeMs: 0,
+          memoryKb: 0,
+          inputBytes: Buffer.byteLength(String(testcases[index]?.stdin ?? ""), "utf-8"),
+        };
+      }
+      throw new ApiError(
+        503,
+        "Code execution service returned incomplete batch results.",
+        "EXECUTION_UNAVAILABLE",
+      );
+    }
+
     const fallback = {
       index,
-      status:
-        batchStatus?.status === "compile_failed" ||
-        batchStatus?.status === "COMPILE_FAILED"
-          ? "Compilation Error"
-          : "Runtime Error",
-      stderr:
-        batchStatus?.status === "compile_failed" ||
-        batchStatus?.status === "COMPILE_FAILED"
-          ? batchStatus?.compileError || batchStatus?.error || ""
-          : batchStatus?.message || "",
+      status: isCompileFailed ? "Compilation Error" : "Runtime Error",
+      stderr: isCompileFailed
+        ? batchStatus?.compileError || batchStatus?.error || ""
+        : batchStatus?.message || "",
       stdout: "",
       exitCode: 1,
     };
 
+    const normalized = normalizeBatchResult({ ...fallback, ...(rawResult || {}) }, index, {
+      memoryLimitKb: payload.limits.memory_limit,
+      cpuLimitMs: payload.limits.cpu_time_limit * 1000,
+    });
+    if (normalized.status !== "OK" && normalized.status !== "Skipped") {
+      sawExecutionFailure = true;
+    }
+
     return {
-      ...normalizeBatchResult({ ...fallback, ...rawResult }, index, {
-        memoryLimitKb: payload.limits.memory_limit,
-        cpuLimitMs: payload.limits.cpu_time_limit * 1000,
-      }),
+      ...normalized,
       inputBytes: Buffer.byteLength(
         String(testcases[index]?.stdin ?? ""),
         "utf-8",
@@ -1529,6 +1555,9 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
     if (
       !tierExecResults ||
       tierExecResults.length !== tier.cases.length ||
+      // Any skipped case means the one-shot batch stopped early: re-run the
+      // tier so verdicts and passedCount match the per-tier path exactly and
+      // a tier can never pass with cases that were not executed.
       tierExecResults.some((r) => !r || r.status === "Skipped")
     ) {
       tierExecResults = await executeCodeBatch({
@@ -1926,6 +1955,7 @@ export const submitSolution = async (req, res, next) => {
         complexity,
         complexityProfile,
       };
+
       submissionCache.set(submission.id, updated);
 
       return updated;
@@ -2017,6 +2047,8 @@ export const submitSolution = async (req, res, next) => {
 export const getSubmissionStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
+    // Per-case results, tier, rewards and complexity are not columns of the
+    // submissions table; they come from the in-memory submissionCache below.
     let submission = await prisma.submission.findUnique({
       where: { id },
       select: {
@@ -2136,6 +2168,14 @@ export const getComplexityAnalysis = async (req, res, next) => {
       req.body;
     const studentCode = userCode || code || source_code;
     const rawLang = language || lang || "python";
+    const normLang = normalizeLanguage(rawLang);
+    if (!normLang) {
+      throw new ApiError(
+        422,
+        `Unsupported language: '${rawLang}'. Supported languages: ${SUPPORTED_LANGUAGES.join(", ")}.`,
+        "UNSUPPORTED_LANGUAGE",
+      );
+    }
     const problemId = slug || problemSlug || "";
 
     if (typeof studentCode !== "string" || !studentCode.trim()) {
@@ -2149,7 +2189,7 @@ export const getComplexityAnalysis = async (req, res, next) => {
     // cost at most one worker for COMPLEXITY_TIMEOUT_MS, never the event loop.
     const complexity = await analyzeComplexitySafe({
       code: studentCode,
-      language: String(rawLang),
+      language: normLang,
       problemSlug: String(problemId),
     });
 

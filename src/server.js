@@ -7,14 +7,17 @@ import {
   stopDailyProblemScheduler,
 } from "./services/dailyProblemService.js";
 import { purgeExpiredRevokedTokens } from "./utils/tokenBlacklist.js";
-import { startProfilingWorker } from "./profiling/profilingQueue.js";
+import { getCodeboxUrl } from "./utils/codeboxClient.js";
+import { startProfilingWorker, stopProfilingWorker } from "./profiling/profilingQueue.js";
 import { closeComplexityPool } from "./services/complexityPool.js";
 import {
   drainEvaluations,
   recoverStaleSubmissions,
 } from "./controllers/execution.controller.js";
 
-const PORT = Number(process.env.PORT) || 3000;
+// PORT is what hosting platforms inject (and what .env / README use);
+// APP_PORT is accepted as an alternative.
+const PORT = Number(process.env.PORT || process.env.APP_PORT) || 3000;
 
 let server;
 let purgeTimer;
@@ -25,8 +28,11 @@ process.on("unhandledRejection", (reason) => {
   console.error("[Process] Unhandled promise rejection:", reason?.stack || reason);
 });
 process.on("uncaughtException", (error) => {
-  console.error("[Process] Uncaught exception, exiting:", error?.stack || error);
-  process.exit(1);
+  console.error("[Process] Uncaught exception, shutting down:", error?.stack || error);
+  // Non-zero even if the loop drains on its own or a shutdown is already running.
+  process.exitCode = 1;
+  setTimeout(() => process.exit(1), 5000).unref();
+  shutdown("UNCAUGHT_EXCEPTION", 1).catch(() => process.exit(1));
 });
 
 function warnAboutConfiguration() {
@@ -37,21 +43,25 @@ function warnAboutConfiguration() {
   if (codeboxUrl.startsWith("http://") && process.env.CODEBOX_ALLOW_INSECURE_HTTP === "true") {
     const log = process.env.NODE_ENV === "production" ? console.error : console.warn;
     log(
-      "⚠ [Security] CodeBox is reached over plain HTTP: the CodeBox token and all submitted code travel unencrypted. " +
-        "Serve CodeBox over HTTPS (or a private network) and unset CODEBOX_ALLOW_INSECURE_HTTP.",
+      "⚠ [Security] CODEBOX_ALLOW_INSECURE_HTTP=true is enabled: plain HTTP is restricted to non-production or loopback only. " +
+        "Serve CodeBox over HTTPS in production.",
     );
   }
 }
 
 // Codebox engine check
 async function checkCodeboxEngine() {
-  const url = process.env.CODEBOX_URL;
-  if (!url) {
+  if (!process.env.CODEBOX_URL) {
     console.log("ℹ CODEBOX_URL not configured — Codebox engine health check skipped.");
     return;
   }
+  const url = getCodeboxUrl(false);
+  if (!url) {
+    console.warn("⚠ CODEBOX_URL rejected by transport security policy — Codebox engine health check skipped.");
+    return;
+  }
   try {
-    const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(new URL("/health", url), { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
       const data = await res.json();
       console.log(`✅ Connected to Codebox exec engine (${data.status})`);
@@ -79,6 +89,10 @@ async function startServer() {
       );
       console.log("✅ Connected to database");
     } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        console.error("❌ Fatal database connection error in production:", error.message);
+        process.exit(1);
+      }
       console.warn("⚠ Database connection warning:", error.message);
     }
   } else {
@@ -119,13 +133,14 @@ async function startServer() {
   });
 }
 
-async function shutdown(signal) {
+async function shutdown(signal, exitCode = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
 
   console.log(`\n⚠ ${signal} received. Shutting down gracefully...`);
 
   stopDailyProblemScheduler();
+  stopProfilingWorker();
   if (purgeTimer) clearInterval(purgeTimer);
   if (staleTimer) clearInterval(staleTimer);
 
@@ -153,7 +168,7 @@ async function shutdown(signal) {
   }
 
   console.log("✅ Shutdown complete");
-  process.exit(0);
+  process.exit(exitCode);
 }
 
 process.on("SIGINT", () => shutdown("SIGINT"));

@@ -7,6 +7,7 @@ import {
   submitMCQs,
 } from '../controllers/study.controller.js';
 import { protect } from '../middlewares/auth.middleware.js';
+import { submitLimiter } from '../middlewares/rateLimit.middleware.js';
 
 const router = express.Router();
 
@@ -18,6 +19,6 @@ router.get('/chapters/:chapterId/topics', getTopicsByChapter);
 router.get('/topics/:topicSlug', getTopicBySlug);
 
 // Submitting MCQ answers requires authentication (scores are not persisted yet)
-router.post('/topics/:topicSlug/submit', protect, submitMCQs);
+router.post('/topics/:topicSlug/submit', protect, submitLimiter, submitMCQs);
 
 export default router;

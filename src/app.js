@@ -12,6 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const isProduction = process.env.NODE_ENV === "production";
+const isDevOrTest = process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
 const app = express();
 app.disable("x-powered-by");
 
@@ -37,14 +38,21 @@ app.use((req, res, next) => {
   next();
 });
 
+export const serveApiConsole =
+  (isDevOrTest && process.env.SERVE_API_CONSOLE !== "false") ||
+  process.env.SERVE_API_CONSOLE === "true";
+
 // 1. Security headers
 app.use((req, res, next) => {
+  const frameDirective = serveApiConsole ? "frame-ancestors 'self'" : "frame-ancestors 'none'";
   res.setHeader(
     "Content-Security-Policy",
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; ${frameDirective}; base-uri 'self'; form-action 'self'`,
   );
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
+  if (!serveApiConsole) {
+    res.setHeader("X-Frame-Options", "DENY");
+  }
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   if (isProduction) {
@@ -65,7 +73,7 @@ const configuredOrigins = [
       }
     })
     .filter(Boolean),
-  ...(isProduction ? [] : ["http://localhost:5173", "http://127.0.0.1:5173"]),
+  ...(isDevOrTest ? ["http://localhost:5173", "http://127.0.0.1:5173"] : []),
 ];
 
 app.use(
@@ -93,7 +101,6 @@ app.use(
 
 // The API explorer page is a development tool: not served in production
 // unless explicitly enabled.
-export const serveApiConsole = !isProduction || process.env.SERVE_API_CONSOLE === "true";
 if (serveApiConsole) {
   app.use(express.static(path.join(__dirname, "../public"), { index: false }));
 }

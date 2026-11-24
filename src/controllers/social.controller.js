@@ -6,8 +6,20 @@ import { OAUTH_STATE_SECRET } from "../config/jwt.js";
 
 // Bound every outbound GitHub call so a slow upstream cannot hang the callback.
 const GITHUB_TIMEOUT_MS = 10_000;
-const LINK_CODE_TTL_MS = 5 * 60 * 1000;
+const LINK_CODE_TTL_MS = 2 * 60 * 1000;
 const isProduction = process.env.NODE_ENV === "production";
+
+function safeHttpsUrl(value, maxLen = 500) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const parsed = new URL(value.trim());
+    if (parsed.protocol !== "https:") return null;
+    const normalized = parsed.toString();
+    return normalized.length <= maxLen ? normalized : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Validates frontend redirect URL against an allow-list to prevent open redirect vulnerabilities.
@@ -66,7 +78,15 @@ function oauthConfig(providerName) {
 // flow. This defeats login/link CSRF: a victim sent an attacker's authorize
 // URL lands back in their OWN session, which does not match the state's user.
 
-const linkKey = crypto.createHash("sha256").update(`calibr8-oauth-link:${OAUTH_STATE_SECRET}`).digest();
+const linkKey = Buffer.from(
+  crypto.hkdfSync(
+    "sha256",
+    OAUTH_STATE_SECRET,
+    Buffer.from("calibr8-oauth-link-salt"),
+    Buffer.from("aes-256-gcm"),
+    32,
+  ),
+);
 
 function sealLinkCode(payload) {
   const iv = crypto.randomBytes(12);
@@ -150,6 +170,8 @@ export const getLinkUrl = (req, res, next) => {
  */
 export const handleCallback = async (req, res) => {
   const safeFrontend = getSafeFrontendRedirect(process.env.FRONTEND_URL);
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cache-Control", "no-store");
 
   try {
     const { provider } = req.params;
@@ -226,8 +248,8 @@ export const handleCallback = async (req, res) => {
       username: clip(gh.login, 100),
       name: clip(gh.name || gh.login, 100),
       email: clip(email, 254),
-      avatarUrl: clip(gh.avatar_url, 500),
-      profileUrl: clip(gh.html_url, 500),
+      avatarUrl: safeHttpsUrl(gh.avatar_url, 500),
+      profileUrl: safeHttpsUrl(gh.html_url, 500),
       bio: clip(gh.bio, 500),
       headline: null,
       stats: {
@@ -266,43 +288,66 @@ export const completeLink = async (req, res, next) => {
     if (payload.uid !== req.user.id) {
       throw new ApiError(403, "This link request was started by a different account.", "LINK_ACCOUNT_MISMATCH");
     }
-    if (usedLinkCodes.has(payload.nonce)) {
+    if (!payload.nonce || usedLinkCodes.has(payload.nonce)) {
       throw new ApiError(400, "This link request was already used.", "LINK_CODE_INVALID");
     }
     usedLinkCodes.set(payload.nonce, payload.exp);
 
     const { profile } = payload;
-    // Verify account is not linked to another user
-    const existing = await prisma.socialAccount.findUnique({
-      where: {
-        provider_providerUserId: {
-          provider: providerName,
-          providerUserId: profile.providerUserId,
-        },
-      },
-      select: { userId: true },
-    });
-    if (existing && existing.userId !== req.user.id) {
-      throw new ApiError(409, "This GitHub account is already linked to another Calibr8 account.", "ALREADY_LINKED");
-    }
+    const consumeAndLink = async (store) => {
+      if (store.revokedToken?.create) {
+        try {
+          await store.revokedToken.create({
+            data: {
+              jti: `oauth-nonce:${payload.nonce}`,
+              userId: req.user.id,
+              expiresAt: new Date(payload.exp),
+            },
+          });
+        } catch (nonceErr) {
+          if (nonceErr?.code === "P2002") {
+            throw new ApiError(400, "This link request was already used.", "LINK_CODE_INVALID");
+          }
+          if (nonceErr?.code !== "P2021") throw nonceErr;
+        }
+      }
 
-    const account = await prisma.socialAccount.upsert({
-      where: {
-        userId_provider: {
+      const existing = await store.socialAccount.findUnique({
+        where: {
+          provider_providerUserId: {
+            provider: providerName,
+            providerUserId: profile.providerUserId,
+          },
+        },
+        select: { userId: true },
+      });
+      if (existing && existing.userId !== req.user.id) {
+        throw new ApiError(409, "This GitHub account is already linked to another Calibr8 account.", "ALREADY_LINKED");
+      }
+
+      return store.socialAccount.upsert({
+        where: {
+          userId_provider: {
+            userId: req.user.id,
+            provider: providerName,
+          },
+        },
+        create: {
           userId: req.user.id,
           provider: providerName,
+          ...profile,
         },
-      },
-      create: {
-        userId: req.user.id,
-        provider: providerName,
-        ...profile,
-      },
-      update: {
-        ...profile,
-        connectedAt: new Date(),
-      },
-    });
+        update: {
+          ...profile,
+          connectedAt: new Date(),
+        },
+      });
+    };
+
+    const account =
+      typeof prisma.$transaction === "function"
+        ? await prisma.$transaction((tx) => consumeAndLink(tx))
+        : await consumeAndLink(prisma);
 
     res.status(200).json({ success: true, linked: providerName, account });
   } catch (err) {

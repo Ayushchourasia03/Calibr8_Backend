@@ -71,6 +71,10 @@ export const buyTheme = async (req, res, next) => {
       throw new ApiError(404, "Theme not found", "NOT_FOUND");
     }
 
+    if (theme.isDefault || Number(theme.price) <= 0) {
+      throw new ApiError(400, "Default or free themes cannot be purchased.", "ALREADY_OWNED");
+    }
+
     const purchase = await prisma.$transaction(async (tx) => {
       const alreadyOwned = await tx.userTheme.findFirst({
         where: { userId, themeId: theme.id },

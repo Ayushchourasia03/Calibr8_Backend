@@ -807,15 +807,15 @@
             <div class="card-title">Register Account</div>
             <div class="api-field" style="margin-bottom:0.6rem;">
               <label>Full Name</label>
-              <input type="text" id="regName" value="Alex Smith" />
+              <input type="text" id="regName" placeholder="Full name" />
             </div>
             <div class="api-field" style="margin-bottom:0.6rem;">
               <label>Email Address</label>
-              <input type="email" id="regEmail" value="alex@example.com" />
+              <input type="email" id="regEmail" placeholder="you@example.com" />
             </div>
             <div class="api-field" style="margin-bottom:0.8rem;">
               <label>Password (min 8 chars, != email)</label>
-              <input type="password" id="regPassword" value="Calibr8Pass123" />
+              <input type="password" id="regPassword" placeholder="Enter a strong password" />
             </div>
             <button class="btn btn-success" style="width:100%;" onclick="handleRegister()">Register Account</button>
           </div>
@@ -825,11 +825,11 @@
             <div class="card-title">Login</div>
             <div class="api-field" style="margin-bottom:0.6rem;">
               <label>Email Address</label>
-              <input type="email" id="loginEmail" value="alex@example.com" />
+              <input type="email" id="loginEmail" placeholder="you@example.com" />
             </div>
             <div class="api-field" style="margin-bottom:0.8rem;">
               <label>Password</label>
-              <input type="password" id="loginPassword" value="Calibr8Pass123" />
+              <input type="password" id="loginPassword" placeholder="Enter your password" />
             </div>
             <button class="btn" style="width:100%;" onclick="handleLogin()">Sign In</button>
           </div>
@@ -1360,7 +1360,7 @@
     </div>
 
     <script>
-      let authToken = localStorage.getItem("calibr8_token") || "";
+      let authToken = "";
       let currentUser = null;
       let dsaTopicList = [];
       const selectedLevels = {};
@@ -1381,12 +1381,12 @@
         { id: "sys-5", category: "system", method: "GET", path: "/", auth: false, desc: "Service manifest (JSON) or this console (HTML)", headers: { "Accept": "application/json" } },
 
         // Authentication
-        { id: "auth-1", category: "auth", method: "POST", path: "/api/auth/register", auth: false, desc: "Register a new account (password 8–72 bytes, ≠ email). 30 req / 15 min / IP", body: { email: "user_" + Math.floor(Math.random()*9000+1000) + "@calibr8.dev", password: "StrongPassword123", name: "Student Demo" } },
-        { id: "auth-2", category: "auth", method: "POST", path: "/api/auth/login", auth: false, desc: "Log in and get a 1-day JWT; +1 coin on first login of the IST day", body: { email: "student@example.com", password: "StrongPassword123" } },
+        { id: "auth-1", category: "auth", method: "POST", path: "/api/auth/register", auth: false, desc: "Register a new account (password 8–72 bytes, ≠ email). 30 req / 15 min / IP", body: { email: "", password: "", name: "" } },
+        { id: "auth-2", category: "auth", method: "POST", path: "/api/auth/login", auth: false, desc: "Log in and get a 1-day JWT; +1 coin on first login of the IST day", body: { email: "", password: "" } },
         { id: "auth-3", category: "auth", method: "GET", path: "/api/auth/me", auth: true, desc: "Current user + header stats + coinsEarnedToday" },
         { id: "auth-4", category: "auth", method: "GET", path: "/api/auth/verify", auth: true, desc: "Alias of /api/auth/me" },
         { id: "auth-5", category: "auth", method: "POST", path: "/api/auth/refresh", auth: true, desc: "Issue a new token and revoke the old one" },
-        { id: "auth-6", category: "auth", method: "POST", path: "/api/auth/change-password", auth: true, desc: "Change password (body uses oldPassword / newPassword)", body: { oldPassword: "OldPassword123", newPassword: "NewStrongPassword456" } },
+        { id: "auth-6", category: "auth", method: "POST", path: "/api/auth/change-password", auth: true, desc: "Change password (body uses oldPassword / newPassword)", body: { oldPassword: "", newPassword: "" } },
         { id: "auth-7", category: "auth", method: "POST", path: "/api/auth/logout", auth: true, desc: "Revoke the current token" },
 
         // Users & Profile
@@ -1508,17 +1508,15 @@
         if (tabId === "rankingsTab") loadRankings();
       }
 
-      const API_BASE = localStorage.getItem("calibr8_api") || "/api";
+      const API_BASE = "/api";
 
       function apiUrl(endpoint) {
-        const base = localStorage.getItem("calibr8_api") || "/api";
-        const cleanBase = base.endsWith("/") ? base.slice(0, -1) : base;
         const cleanPath = endpoint.startsWith("/") ? endpoint : "/" + endpoint;
-        return cleanBase + cleanPath;
+        return API_BASE + cleanPath;
       }
 
       async function loadBalance() {
-        const token = localStorage.getItem("calibr8_token");
+        const token = authToken;
         if (!token) {
           const c = document.getElementById("coinsVal");
           if (c) c.textContent = "100";
@@ -1579,7 +1577,7 @@
 
       async function loadDaily() {
         try {
-          const token = localStorage.getItem("calibr8_token");
+          const token = authToken;
           const headers = {};
           if (token) headers["Authorization"] = "Bearer " + token;
           const res = await fetch(apiUrl("/daily-problem"), { headers });
@@ -1663,7 +1661,7 @@
       });
 
       async function loadHistory() {
-        const token = localStorage.getItem("calibr8_token");
+        const token = authToken;
         const listEl = document.getElementById("historyList");
         if (!token) {
           if (listEl) listEl.innerHTML = "<p style='color:var(--text-muted); padding:1rem;'>Please log in to view your coin transaction audit history.</p>";
@@ -1742,15 +1740,13 @@
           return;
         }
         authToken = token;
-        localStorage.setItem("calibr8_token", token);
-        logConsole("TOKEN UPDATED", { message: "Token set in localStorage and applied to all protected requests.", tokenPrefix: token.slice(0, 20) + "..." });
+        logConsole("TOKEN UPDATED", { message: "Token stored in memory for this page session and applied to protected requests.", tokenPrefix: token.slice(0, 20) + "..." });
         fetchProfile();
       }
 
       function clearToken() {
         authToken = "";
         currentUser = null;
-        localStorage.removeItem("calibr8_token");
         document.getElementById("globalTokenInput").value = "";
         updateAuthUI();
         logConsole("TOKEN CLEARED", { message: "Session token cleared. Requests will run unauthenticated." });
@@ -1797,24 +1793,34 @@
               : '<span class="tag-auth tag-public">🌐 Public</span>';
 
           card.innerHTML =
-            '<div class="api-header" onclick="toggleApiBody(\'' + ep.id + '\')">' +
+            '<div class="api-header" data-toggle-ep="' + escapeHtml(ep.id) + '">' +
               '<div class="api-meta">' +
-                '<span class="method ' + methodClass + '">' + ep.method + '</span>' +
+                '<span class="method ' + escapeHtml(methodClass) + '">' + escapeHtml(ep.method) + '</span>' +
                 '<span class="api-path">' + escapeHtml(ep.path) + '</span>' +
                 authBadge +
               '</div>' +
               '<div style="display:flex; align-items:center; gap:0.6rem;">' +
                 '<span class="api-desc">' + escapeHtml(ep.desc) + '</span>' +
-                '<button class="btn" style="padding:0.35rem 0.7rem; font-size:0.75rem;" onclick="event.stopPropagation(); executeApi(\'' + ep.id + '\')">Send</button>' +
+                '<button class="btn" style="padding:0.35rem 0.7rem; font-size:0.75rem;" data-exec-ep="' + escapeHtml(ep.id) + '">Send</button>' +
               '</div>' +
             '</div>' +
-            '<div class="api-body" id="body-' + ep.id + '">' +
+            '<div class="api-body" id="body-' + escapeHtml(ep.id) + '">' +
               buildApiForm(ep) +
               '<div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.75rem;">' +
-                '<button class="btn btn-secondary" style="font-size:0.75rem;" onclick="toggleApiBody(\'' + ep.id + '\')">Close</button>' +
-                '<button class="btn" style="font-size:0.75rem;" onclick="executeApi(\'' + ep.id + '\')">Send Request</button>' +
+                '<button class="btn btn-secondary" style="font-size:0.75rem;" data-toggle-ep="' + escapeHtml(ep.id) + '">Close</button>' +
+                '<button class="btn" style="font-size:0.75rem;" data-exec-ep="' + escapeHtml(ep.id) + '">Send Request</button>' +
               '</div>' +
             '</div>';
+
+          card.querySelectorAll('[data-toggle-ep]').forEach(el => {
+            el.addEventListener('click', () => toggleApiBody(ep.id));
+          });
+          card.querySelectorAll('[data-exec-ep]').forEach(el => {
+            el.addEventListener('click', (event) => {
+              event.stopPropagation();
+              executeApi(ep.id);
+            });
+          });
 
           container.appendChild(card);
         });
@@ -1933,7 +1939,6 @@
           // If login or register succeeded, capture token!
           if (res.ok && resultData && resultData.token) {
             authToken = resultData.token;
-            localStorage.setItem("calibr8_token", authToken);
             document.getElementById("globalTokenInput").value = authToken;
             if (resultData.user) {
               currentUser = resultData.user;
@@ -2000,7 +2005,13 @@
           info: "ℹ️"
         };
         toast.style.cssText = "background:" + (bgColors[type] || bgColors.info) + "; border:1px solid " + (borderColors[type] || borderColors.info) + "; color:#fff; padding:12px 16px; border-radius:10px; font-size:0.86rem; font-weight:600; box-shadow:0 8px 24px rgba(0,0,0,0.45); pointer-events:auto; display:flex; align-items:center; gap:10px; transition:all 0.3s ease;";
-        toast.innerHTML = "<span style='font-size:1.1rem;'>" + (icons[type] || icons.info) + "</span><span>" + escapeHtml(message) + "</span>";
+        const iconSpan = document.createElement("span");
+        iconSpan.style.fontSize = "1.1rem";
+        iconSpan.textContent = icons[type] || icons.info;
+        const msgSpan = document.createElement("span");
+        msgSpan.textContent = message == null ? "" : String(message);
+        toast.appendChild(iconSpan);
+        toast.appendChild(msgSpan);
         container.appendChild(toast);
         setTimeout(() => {
           toast.style.opacity = "0";
@@ -2039,7 +2050,6 @@
 
           if (res.ok && data.token) {
             authToken = data.token;
-            localStorage.setItem("calibr8_token", authToken);
             document.getElementById("globalTokenInput").value = authToken;
             currentUser = data.user;
             updateAuthUI();
@@ -2068,7 +2078,6 @@
 
           if (res.ok && data.token) {
             authToken = data.token;
-            localStorage.setItem("calibr8_token", authToken);
             document.getElementById("globalTokenInput").value = authToken;
             currentUser = data.user;
             updateAuthUI();
@@ -2088,41 +2097,8 @@
       }
 
       async function autoLoginDemoUser() {
-        showToast("Starting authenticated demo student session...", "info");
-        try {
-          // Attempt login with demo student credentials
-          let res = await fetch("/api/auth/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: "student@example.com", password: "StrongPassword123" })
-          });
-          let data = await res.json().catch(() => ({}));
-          if (!res.ok || !data.token) {
-            // If user doesn't exist yet, register demo student
-            res = await fetch("/api/auth/register", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                email: "student@example.com",
-                password: "StrongPassword123",
-                name: "Demo Student"
-              })
-            });
-            data = await res.json().catch(() => ({}));
-          }
-
-          if (res.ok && data.token) {
-            authToken = data.token;
-            localStorage.setItem("calibr8_token", authToken);
-            document.getElementById("globalTokenInput").value = authToken;
-            currentUser = data.user;
-            updateAuthUI();
-            showToast("Demo Student session active! (" + (currentUser.email || "student") + ")", "success");
-            return true;
-          }
-        } catch (err) {
-          console.warn("Auto-login notice:", err.message);
-        }
+        switchTab("authTab");
+        showToast("Please register or sign in with your own credentials in the Auth tab.", "info");
         return false;
       }
 
@@ -2141,9 +2117,7 @@
             currentUser = data.user;
             updateAuthUI();
           } else if (res.status === 401) {
-            // Stale or revoked token in browser localStorage
-            logConsole("AUTH NOTICE", "Stale session token detected in localStorage. Clearing invalid token.");
-            localStorage.removeItem("calibr8_token");
+            logConsole("AUTH NOTICE", "Session token rejected or expired. Clearing active session token.");
             authToken = "";
             document.getElementById("globalTokenInput").value = "";
             currentUser = null;
@@ -2207,12 +2181,17 @@
           (data.chapters || []).forEach(chap => {
             const box = document.createElement("div");
             box.className = "chapter-box";
-            box.innerHTML =
-              '<div class="chapter-title" onclick="loadChapterTopics(\'' + chap.id + '\', this)">' +
-                '<span>📖 ' + escapeHtml(chap.name) + '</span>' +
-                '<span style="font-size:0.75rem; color:#93c5fd;">' + (chap._count?.topics || 0) + ' Topics ▼</span>' +
-              '</div>' +
-              '<div id="topics-for-' + chap.id + '" style="display:none; background:#0b1120;"></div>';
+            const titleEl = document.createElement("div");
+            titleEl.className = "chapter-title";
+            titleEl.innerHTML =
+              '<span>📖 ' + escapeHtml(chap.name) + '</span>' +
+              '<span style="font-size:0.75rem; color:#93c5fd;">' + Number(chap._count?.topics || 0) + ' Topics ▼</span>';
+            titleEl.addEventListener("click", () => loadChapterTopics(chap.id, titleEl));
+            const topicsDiv = document.createElement("div");
+            topicsDiv.id = "topics-for-" + chap.id;
+            topicsDiv.style.cssText = "display:none; background:#0b1120;";
+            box.appendChild(titleEl);
+            box.appendChild(topicsDiv);
             container.appendChild(box);
           });
         } catch (err) {
@@ -2295,10 +2274,13 @@
           card.innerHTML =
             '<div><strong>' + escapeHtml(t.name) + '</strong> <span style="font-size:0.75rem; color:var(--text-muted);">' + escapeHtml(t.slug) + '</span></div>' +
             '<div class="level-pills">' +
-              '<button class="pill-btn ' + (current === 'easy' ? 'active-easy' : '') + '" onclick="setTopicLevel(\'' + t.id + '\', \'easy\')">Easy</button>' +
-              '<button class="pill-btn ' + (current === 'mid' ? 'active-mid' : '') + '" onclick="setTopicLevel(\'' + t.id + '\', \'mid\')">Mid</button>' +
-              '<button class="pill-btn ' + (current === 'hard' ? 'active-hard' : '') + '" onclick="setTopicLevel(\'' + t.id + '\', \'hard\')">Hard</button>' +
+              '<button class="pill-btn ' + (current === 'easy' ? 'active-easy' : '') + '" data-lvl="easy">Easy</button>' +
+              '<button class="pill-btn ' + (current === 'mid' ? 'active-mid' : '') + '" data-lvl="mid">Mid</button>' +
+              '<button class="pill-btn ' + (current === 'hard' ? 'active-hard' : '') + '" data-lvl="hard">Hard</button>' +
             '</div>';
+          card.querySelectorAll('[data-lvl]').forEach(btn => {
+            btn.addEventListener('click', () => setTopicLevel(t.id, btn.dataset.lvl));
+          });
           container.appendChild(card);
         });
 
@@ -2326,12 +2308,12 @@
 
       async function saveCalibration() {
         if (!authToken) {
-          alert("Please log in first from Auth & Profile tab to save your calibration.");
+          showToast("Please log in first from Auth & Profile tab to save your calibration.", "warning");
           switchTab("authTab");
           return;
         }
         if (!dsaTopicList.length) {
-          alert("Load at least one DSA topic from the database before saving calibration.");
+          showToast("Load at least one DSA topic from the database before saving calibration.", "warning");
           return;
         }
         const topicSelections = dsaTopicList.map(topic => ({
@@ -2352,10 +2334,10 @@
           if (!res.ok) {
             throw new Error(data.message || "Request failed with status " + res.status);
           }
-          alert("Calibration saved successfully!");
+          showToast("Calibration saved successfully!", "success");
           fetchProfile();
         } catch (e) {
-          alert("Error saving calibration: " + e.message);
+          showToast("Error saving calibration: " + e.message, "error");
         }
       }
 
@@ -3330,10 +3312,14 @@
       }
 
       // Theme Store Logic
+      function safeHexColor(val, fallback = "#3b82f6") {
+        return typeof val === "string" && /^#[0-9a-fA-F]{3,8}$/.test(val.trim()) ? val.trim() : fallback;
+      }
+
       async function loadThemes() {
         const grid = document.getElementById("themesGrid");
         if (!grid) return;
-        const token = localStorage.getItem("calibr8_token");
+        const token = authToken;
         const headers = token ? { Authorization: "Bearer " + token } : {};
 
         try {
@@ -3351,10 +3337,11 @@
           }
 
           grid.innerHTML = themes.map(t => {
-            const isOwned = Boolean(t.isOwned || t.slug === "default" || t.price === 0);
-            const isActive = t.slug === activeTheme;
-            const priceLabel = t.price === 0 ? "Free" : `${t.price} Coins`;
-            const palette = t.palette || ["#0f172a", "#3b82f6", "#10b981", "#f59e0b"];
+            const isOwned = Boolean(t.owned || t.isOwned || t.slug === "default" || t.price === 0);
+            const isActive = Boolean(t.applied || t.slug === activeTheme);
+            const priceNum = Number(t.price) || 0;
+            const priceLabel = priceNum === 0 ? "Free" : `${priceNum} Coins`;
+            const palette = Array.isArray(t.palette) ? t.palette : [t.previewColor || "#0f172a", "#3b82f6", "#10b981", "#f59e0b"];
 
             return `
               <div style="background:#090e1a; border:1px solid ${isActive ? 'var(--accent)' : 'var(--card-border)'}; border-radius:10px; padding:1.1rem; display:flex; flex-direction:column; justify-content:space-between; box-shadow:${isActive ? '0 0 12px rgba(59,130,246,0.3)' : 'none'};">
@@ -3366,33 +3353,45 @@
                   <p style="color:var(--text-muted); font-size:0.78rem; line-height:1.4; margin-bottom:0.75rem;">${escapeHtml(t.description || "Editor theme with customized Monaco tokens and highlighting.")}</p>
                   
                   <div style="display:flex; gap:0.4rem; margin-bottom:0.9rem;">
-                    ${palette.map(c => `<span style="width:18px; height:18px; border-radius:50%; background:${c}; display:inline-block; border:1px solid rgba(255,255,255,0.2);"></span>`).join("")}
+                    ${palette.map(c => `<span style="width:18px; height:18px; border-radius:50%; background:${safeHexColor(c)}; display:inline-block; border:1px solid rgba(255,255,255,0.2);"></span>`).join("")}
                   </div>
                 </div>
 
                 <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border-color); padding-top:0.75rem;">
-                  <span style="font-weight:700; font-size:0.85rem; color:${t.price === 0 ? '#34d399' : '#fbbf24'};">${priceLabel}</span>
+                  <span style="font-weight:700; font-size:0.85rem; color:${priceNum === 0 ? '#34d399' : '#fbbf24'};">${escapeHtml(priceLabel)}</span>
                   <div>
                     ${isActive
                       ? '<button class="btn btn-secondary" disabled style="opacity:0.6; font-size:0.75rem;">Active</button>'
                       : isOwned
-                        ? `<button class="btn btn-success" style="font-size:0.75rem;" onclick="applyTheme('${escapeHtml(t.slug)}')">Apply</button>`
-                        : `<button class="btn" style="font-size:0.75rem;" onclick="buyTheme('${escapeHtml(t.slug)}', ${t.price})">Buy (${t.price} 🪙)</button>`
+                        ? `<button class="btn btn-success" style="font-size:0.75rem;" data-theme-action="apply" data-theme-slug="${escapeHtml(t.slug)}">Apply</button>`
+                        : `<button class="btn" style="font-size:0.75rem;" data-theme-action="buy" data-theme-slug="${escapeHtml(t.slug)}" data-theme-price="${priceNum}">Buy (${priceNum} 🪙)</button>`
                     }
                   </div>
                 </div>
               </div>
             `;
           }).join("");
+
+          if (!grid.dataset.boundThemeActions) {
+            grid.dataset.boundThemeActions = "1";
+            grid.addEventListener("click", (event) => {
+              const btn = event.target.closest("button[data-theme-action]");
+              if (!btn) return;
+              const action = btn.dataset.themeAction;
+              const slug = btn.dataset.themeSlug;
+              if (action === "apply") applyTheme(slug);
+              else if (action === "buy") buyTheme(slug, Number(btn.dataset.themePrice) || 0);
+            });
+          }
         } catch (e) {
           grid.innerHTML = `<p style="color:var(--danger); padding:1rem;">Failed to load themes: ${escapeHtml(e.message)}</p>`;
         }
       }
 
       async function buyTheme(slug, price) {
-        const token = localStorage.getItem("calibr8_token");
+        const token = authToken;
         if (!token) {
-          alert("Please log in to purchase themes.");
+          showToast("Please log in to purchase themes.", "warning");
           switchTab("authTab");
           return;
         }
@@ -3406,23 +3405,23 @@
           });
           const data = await res.json();
           if (!res.ok) {
-            alert(data.message || "Failed to purchase theme.");
+            showToast(data.message || "Failed to purchase theme.", "error");
             return;
           }
           logConsole(`POST /api/themes/${slug}/buy`, data);
-          alert(`🎉 Successfully purchased ${slug} theme!`);
+          showToast(`Successfully purchased ${slug} theme!`, "success");
           await loadThemes();
           await loadBalance();
           await loadHistory();
         } catch (e) {
-          alert("Purchase error: " + e.message);
+          showToast("Purchase error: " + e.message, "error");
         }
       }
 
       async function applyTheme(slug) {
-        const token = localStorage.getItem("calibr8_token");
+        const token = authToken;
         if (!token) {
-          alert("Please log in to apply themes.");
+          showToast("Please log in to apply themes.", "warning");
           switchTab("authTab");
           return;
         }
@@ -3437,14 +3436,14 @@
           });
           const data = await res.json();
           if (!res.ok) {
-            alert(data.message || "Failed to apply theme.");
+            showToast(data.message || "Failed to apply theme.", "error");
             return;
           }
           logConsole("PUT /api/themes/apply", data);
-          alert(`✅ Applied ${slug} theme as active!`);
+          showToast(`Applied ${slug} theme as active!`, "success");
           await loadThemes();
         } catch (e) {
-          alert("Apply error: " + e.message);
+          showToast("Apply error: " + e.message, "error");
         }
       }
 

@@ -171,6 +171,9 @@ static void c8__cleanup_fs(void) {
 }
 
 __attribute__((constructor(101))) static void c8__harness(void) {
+  prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);       /* /proc/<pid>/{fd,mem,...} -> root only */
+  prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
+
   /* Header line: "C8MC2 <timeLimitMs> <count> <budgetMs> <flags> <payloadBytes>\n",
      then per case "<len>\n<bytes>". Read byte by byte so nothing past it is consumed. */
   char line[256];
@@ -191,9 +194,6 @@ __attribute__((constructor(101))) static void c8__harness(void) {
   long total = strtol(p, &p, 10);
   if (tl <= 0) tl = 2000;
   if (total < 0) total = 0;
-
-  prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);       /* /proc/<pid>/{fd,mem,...} -> root only */
-  prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
 
   static char buf[C8_BUF];
   int pfd = c8__memfd();
@@ -346,9 +346,159 @@ const HARNESS_LIBC_FUNCTIONS = [
   "strncmp", "strtol", "syscall", "tmpfile", "unlink", "wait4", "waitpid",
   "write", "exit", "abort", "malloc", "free", "calloc", "realloc",
 ];
-const LIBC_DEFINITION = new RegExp(
-  `\\b(?:${HARNESS_LIBC_FUNCTIONS.join("|")})\\s*\\([^;{}()]*\\)\\s*(?:noexcept\\s*)?\\{`,
+const LIBC_CALL_START = new RegExp(
+  `\\b(?:${HARNESS_LIBC_FUNCTIONS.join("|")})\\s*\\(`,
+  "g",
 );
+
+/**
+ * Strips C/C++ comments and optionally string/char/raw-string literals so
+ * attackers cannot hide directives or split tokens with comments, nor trigger
+ * false positives inside comments.
+ */
+function stripCppCommentsAndLiterals(src, { stripLiterals = false } = {}) {
+  let out = "";
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const ch = src[i];
+    const next = src[i + 1];
+    // Line comment
+    if (ch === "/" && next === "/") {
+      out += " ";
+      i += 2;
+      while (i < n && src[i] !== "\n") i++;
+      continue;
+    }
+    // Block comment
+    if (ch === "/" && next === "*") {
+      out += " ";
+      i += 2;
+      while (i < n && !(src[i] === "*" && src[i + 1] === "/")) i++;
+      i += 2;
+      continue;
+    }
+    // C++ raw string literal: R"delim(...)delim"
+    if ((ch === "R" || ((ch === "u" || ch === "U" || ch === "L") && src[i + 1] === "R") || (ch === "u" && src[i + 1] === "8" && src[i + 2] === "R"))) {
+      const rIdx = ch === "R" ? i : (src[i + 1] === "R" ? i + 1 : i + 2);
+      if (src[rIdx + 1] === "\"") {
+        const parenIdx = src.indexOf("(", rIdx + 2);
+        if (parenIdx !== -1 && parenIdx - (rIdx + 2) <= 16) {
+          const delim = src.slice(rIdx + 2, parenIdx);
+          if (!/[\s()\\]/.test(delim)) {
+            const endMarker = `)${delim}"`;
+            const closeIdx = src.indexOf(endMarker, parenIdx + 1);
+            if (closeIdx !== -1) {
+              const endPos = closeIdx + endMarker.length;
+              out += stripLiterals ? ' "" ' : src.slice(i, endPos);
+              i = endPos;
+              continue;
+            }
+          }
+        }
+      }
+    }
+    // pp-number (C++14 / C23): `'` followed by an identifier char is a digit
+    // separator (1'000'000, 0xFF'FF), not a char literal. Treating it as a
+    // literal would hide the code up to the next `'` from every check below.
+    const prevIsIdent = i > 0 && /[A-Za-z0-9_]/.test(src[i - 1]);
+    if (!prevIsIdent && (/[0-9]/.test(ch) || (ch === "." && /[0-9]/.test(next || "")))) {
+      const start = i;
+      i++;
+      while (i < n) {
+        const c = src[i];
+        if (/[A-Za-z0-9_.]/.test(c)) i++;
+        else if (c === "'" && /[A-Za-z0-9_]/.test(src[i + 1] || "")) i += 2;
+        else if ((c === "+" || c === "-") && /[eEpP]/.test(src[i - 1])) i++;
+        else break;
+      }
+      out += src.slice(start, i);
+      continue;
+    }
+    // Normal string or char literal
+    if (ch === "\"" || ch === "'") {
+      const quote = ch;
+      const start = i;
+      i++;
+      while (i < n) {
+        if (src[i] === "\\") {
+          i += 2;
+          continue;
+        }
+        if (src[i] === quote) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      out += stripLiterals ? (quote === "\"" ? ' "" ' : " '' ") : src.slice(start, i);
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+/**
+ * Checks whether any libc function name appears as a function definition
+ * (matching balanced parameter parentheses followed by optional qualifiers
+ * and `{` or `try {`).
+ */
+function hasLibcDefinition(codeOnly) {
+  LIBC_CALL_START.lastIndex = 0;
+  let match;
+  while ((match = LIBC_CALL_START.exec(codeOnly)) !== null) {
+    let idx = match.index + match[0].length;
+    let depth = 1;
+    while (idx < codeOnly.length && depth > 0) {
+      const c = codeOnly[idx];
+      if (c === "(") depth++;
+      else if (c === ")") depth--;
+      idx++;
+    }
+    if (depth !== 0) return true; // unbalanced -> fail closed
+    // Skip trailing qualifiers: noexcept(...), throw(...), const, volatile, __attribute__((...)), [[...]]
+    while (idx < codeOnly.length) {
+      while (idx < codeOnly.length && /\s/.test(codeOnly[idx])) idx++;
+      if (codeOnly.startsWith("noexcept", idx) && !/[A-Za-z0-9_]/.test(codeOnly[idx + 8] || "")) {
+        idx += 8;
+      } else if (codeOnly.startsWith("throw", idx) && !/[A-Za-z0-9_]/.test(codeOnly[idx + 5] || "")) {
+        idx += 5;
+      } else if (codeOnly.startsWith("const", idx) && !/[A-Za-z0-9_]/.test(codeOnly[idx + 5] || "")) {
+        idx += 5;
+      } else if (codeOnly.startsWith("volatile", idx) && !/[A-Za-z0-9_]/.test(codeOnly[idx + 8] || "")) {
+        idx += 8;
+      } else if (codeOnly[idx] === "(") {
+        let qd = 1;
+        idx++;
+        while (idx < codeOnly.length && qd > 0) {
+          if (codeOnly[idx] === "(") qd++;
+          else if (codeOnly[idx] === ")") qd--;
+          idx++;
+        }
+      } else if (codeOnly[idx] === "[") {
+        let bd = 1;
+        idx++;
+        while (idx < codeOnly.length && bd > 0) {
+          if (codeOnly[idx] === "[") bd++;
+          else if (codeOnly[idx] === "]") bd--;
+          idx++;
+        }
+      } else {
+        break;
+      }
+    }
+    while (idx < codeOnly.length && /\s/.test(codeOnly[idx])) idx++;
+    if (codeOnly[idx] === "{") return true;
+    if (codeOnly.startsWith("try", idx) && /\s*\{/.test(codeOnly.slice(idx + 3, idx + 16))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const SAFE_INCLUDE_REST = /^<(?:bits\/stdc\+\+\.h|[A-Za-z0-9_+-]+(?:\.h)?)>\s*$/;
 
 /**
  * The harness is compiled into the same binary as the user's code, after it.
@@ -366,33 +516,49 @@ const LIBC_DEFINITION = new RegExp(
  */
 export function isHarnessSafeUserCode(userCode) {
   if (typeof userCode !== "string") return false;
-  // Translation phases 1-2: trigraphs (ISO modes) and line splicing.
-  const code = userCode
-    .replace(/\?\?=/g, "#")
-    .replace(/\?\?\//g, "\\")
-    .replace(/\\\r?\n/g, "");
+  // Trigraphs (ISO modes) change how quotes, braces and directives tokenize
+  // ('??'' is '^'), and whether they apply depends on the -std flag. Fail
+  // closed instead of guessing.
+  if (/\?\?[=/'()!<>-]/.test(userCode)) return false;
+  // Translation phase 2: line splicing.
+  const spliced = userCode.replace(/\\\r?\n/g, "");
 
-  // Any preprocessor directive except #include and "#pragma GCC optimize/target"
+  // Strip comments first (preserving strings for #include / extern "C" inspection).
+  const noComments = stripCppCommentsAndLiterals(spliced, { stripLiterals: false });
+
+  // Any preprocessor directive except allowlisted #include and "#pragma GCC optimize/target"
   // (digraph %: is '#').
   const directive = /^[ \t]*(?:#|%:)[ \t]*([A-Za-z_]+)(.*)$/gm;
-  for (const [, name, rest] of code.matchAll(directive)) {
-    if (name === "include") continue;
+  for (const [, name, rest] of noComments.matchAll(directive)) {
+    if (name === "include") {
+      if (!SAFE_INCLUDE_REST.test(rest.trim())) return false;
+      continue;
+    }
     if (name === "pragma" && /^\s*GCC\s+(?:optimize|target)\b/.test(rest)) continue;
     return false;
   }
+
+  if (/\bextern\s*"C"/.test(noComments)) return false;
+
+  // Strip comments AND literals before keyword / definition checks so strings
+  // do not cause false positives and nested tokens cannot evade detection.
+  const codeOnly = stripCppCommentsAndLiterals(spliced, { stripLiterals: true });
+
   const forbidden = [
     /__attribute/, // constructor, init_priority, ifunc, alias, section, ...
     /\b(?:__)?gnu(?:__)?\s*::/, // [[gnu::constructor]]
     /\busing\s+(?:__)?gnu(?:__)?\b/, // [[using gnu: constructor]]
     /\b(?:__)?asm(?:__)?\b/,
     /\b_Pragma\b/,
-    /\bextern\s*"C"/,
+    /\boperator\s+(?:new|delete)\b/, // global allocation hooks
     /\\[uU][0-9a-fA-F]{4}/, // universal character names in identifiers
-    /\bc8__/, // harness namespace
+    /\bc8__/, // multi-case harness namespace
+    /\bc8p__/, // profiling harness namespace
+    /\bc8prof\b/, // profiling driver helpers
     /\.(?:pre)?init_array|\.ctors\b/,
   ];
-  if (forbidden.some((pattern) => pattern.test(code))) return false;
-  return !LIBC_DEFINITION.test(code);
+  if (forbidden.some((pattern) => pattern.test(codeOnly))) return false;
+  return !hasLibcDefinition(codeOnly);
 }
 
 /**

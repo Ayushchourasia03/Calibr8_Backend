@@ -49,6 +49,9 @@ const PROFILE_HARNESS_C = String.raw`
 #ifndef PR_SET_CHILD_SUBREAPER
 #define PR_SET_CHILD_SUBREAPER 36
 #endif
+#ifndef PR_SET_DUMPABLE
+#define PR_SET_DUMPABLE 4
+#endif
 #ifndef MAP_ANONYMOUS
 #define MAP_ANONYMOUS 0x20
 #endif
@@ -96,7 +99,16 @@ static long c8p__since(const struct timeval* a) {
   return (now.tv_sec - a->tv_sec) * 1000 + (now.tv_usec - a->tv_usec) / 1000;
 }
 
+static void c8p__close_from(int lowfd) {
+#ifdef SYS_close_range
+  if (syscall(SYS_close_range, (unsigned int)lowfd, ~0U, 0) == 0) return;
+#endif
+  for (int fd = lowfd; fd < 4096; fd++) close(fd);
+}
+
 __attribute__((constructor(101))) static void c8p__harness(void) {
+  prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
+  prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
   char line[256];
   size_t ll = 0;
   while (ll < sizeof line - 1) {
@@ -188,7 +200,8 @@ __attribute__((constructor(101))) static void c8p__harness(void) {
         signal(SIGALRM, SIG_DFL);
         setenv("C8_TAG", tag, 1);
         dup2(inFd, 0); dup2(outFd, 1); dup2(errFd, 2);
-        close(inFd); close(outFd); close(errFd);
+        c8p__close_from(3);
+        prctl(PR_SET_DUMPABLE, 1, 0, 0, 0);
         munmap(in, mapLen);
         struct rlimit rl;
         rl.rlim_cur = (rlim_t)((tl + 999) / 1000 + 1);

@@ -15,6 +15,9 @@ import { ApiError } from './ApiError.js';
  * @param {{ authTime?: number, expiresIn?: string }} [options]
  * @returns {string}
  */
+const JWT_ISSUER = "calibr8";
+const JWT_AUDIENCE = "calibr8-api";
+
 export const signSessionToken = (user, { authTime, expiresIn = JWT_EXPIRES_IN } = {}) =>
   jwt.sign(
     {
@@ -24,7 +27,12 @@ export const signSessionToken = (user, { authTime, expiresIn = JWT_EXPIRES_IN } 
       jti: crypto.randomUUID(),
     },
     JWT_SECRET,
-    { expiresIn, algorithm: JWT_ALGORITHM },
+    {
+      expiresIn,
+      algorithm: JWT_ALGORITHM,
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+    },
   );
 
 /**
@@ -33,7 +41,12 @@ export const signSessionToken = (user, { authTime, expiresIn = JWT_EXPIRES_IN } 
  * @returns {object} decoded payload with jti, id, tv, auth_time, iat, exp
  * @throws {JsonWebTokenError | TokenExpiredError}
  */
-export const verifyToken = (token) => jwt.verify(token, JWT_SECRET, { algorithms: [JWT_ALGORITHM] });
+export const verifyToken = (token) =>
+  jwt.verify(token, JWT_SECRET, {
+    algorithms: [JWT_ALGORITHM],
+    issuer: JWT_ISSUER,
+    audience: JWT_AUDIENCE,
+  });
 
 /**
  * Decode token without verification (useful for inspecting exp/jti on expired/revoking tokens).

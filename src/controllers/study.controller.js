@@ -44,13 +44,13 @@ export const getChaptersBySubject = async (req, res, next) => {
 
 /**
  * GET /api/study/chapters/:chapterId/topics
- * Returns all topics belonging to a specific chapter.
+ * Returns all published topics belonging to a specific chapter.
  */
 export const getTopicsByChapter = async (req, res, next) => {
   try {
     const { chapterId } = req.params;
     const topics = await prisma.studyTopic.findMany({
-      where: { chapterId },
+      where: { chapterId, isPublished: true },
       orderBy: { order: "asc" },
       select: { id: true, slug: true, name: true, order: true },
     });
@@ -62,13 +62,13 @@ export const getTopicsByChapter = async (req, res, next) => {
 
 /**
  * GET /api/study/topics/:topicSlug
- * Returns study content, markdown, and MCQs for a specific topic.
+ * Returns study content, markdown, and MCQs (without answer keys or explanations) for a published topic.
  */
 export const getTopicBySlug = async (req, res, next) => {
   try {
     const { topicSlug } = req.params;
     const topic = await prisma.studyTopic.findFirst({
-      where: { slug: topicSlug },
+      where: { slug: topicSlug, isPublished: true },
       include: {
         mcqs: {
           orderBy: { order: "asc" },
@@ -78,7 +78,6 @@ export const getTopicBySlug = async (req, res, next) => {
             options: true,
             difficulty: true,
             order: true,
-            explanation: true,
           },
         },
         chapter: { include: { subject: true } },
@@ -111,18 +110,30 @@ export const submitMCQs = async (req, res, next) => {
     }
 
     const topic = await prisma.studyTopic.findFirst({
-      where: { slug: topicSlug },
+      where: { slug: topicSlug, isPublished: true },
       include: { mcqs: true },
     });
     if (!topic) {
       throw new ApiError(404, "Topic not found.", "NOT_FOUND");
     }
 
-    // Correct answers are only revealed for questions the user answered, so
-    // the quiz cannot be read out by submitting an empty answer sheet.
-    const answered = (topic.mcqs || []).filter((mcq) =>
-      Object.prototype.hasOwnProperty.call(answers, mcq.id) && Number.isInteger(answers[mcq.id]),
-    );
+    // Correct answers are only revealed for questions the user answered with a
+    // valid option index, so the quiz cannot be enumerated arbitrarily.
+    const answered = [];
+    for (const mcq of topic.mcqs || []) {
+      if (!Object.prototype.hasOwnProperty.call(answers, mcq.id)) continue;
+      const choice = answers[mcq.id];
+      const optionCount = Array.isArray(mcq.options) ? mcq.options.length : 0;
+      if (!Number.isInteger(choice) || choice < 0 || choice >= optionCount) {
+        throw new ApiError(
+          400,
+          "Submitted answer index is invalid for one or more questions.",
+          "INVALID_ANSWERS",
+        );
+      }
+      answered.push(mcq);
+    }
+
     if (answered.length === 0) {
       throw new ApiError(400, "Answer at least one question before submitting.", "NO_ANSWERS");
     }

@@ -84,7 +84,12 @@ export const getProblemBySlug = async (req, res, next) => {
         testcases: visibleTestcases,
         templates: userTemplates,
         userTemplates,
-        templatesArray: problem.templates || [],
+        // problem.templates may be an array (DB) or a language-keyed object
+        // (JSON problems); templatesMap covers both. Never expose header/footer.
+        templatesArray: Object.keys(rawTemplates).map((language) => ({
+          language,
+          code: userTemplates[language] ?? "",
+        })),
       },
     });
   } catch (err) {

@@ -91,20 +91,23 @@ export const authLimiter = createRateLimiter({
 });
 
 /**
- * Per-account login throttle: distributed credential stuffing against one
- * account is slowed regardless of how many IPs are used. Only failed logins
- * count (see recordFailedLogin / clearFailedLogins).
+ * Per-(account, IP) login throttle: stops online brute-force / stuffing from
+ * an attacker IP without allowing a third party to lock out a victim's real IP.
  */
 const LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_FAILURE_MAX = 10;
-const loginFailures = new Map(); // email -> { count, resetTime }
+const loginFailures = new Map(); // `${email}|${ipKey}` -> { count, resetTime }
 setInterval(() => {
   const now = Date.now();
   for (const [key, record] of loginFailures) if (now > record.resetTime) loginFailures.delete(key);
 }, 60_000).unref?.();
 
-export function assertLoginAllowed(email) {
-  const record = loginFailures.get(email);
+function loginThrottleKey(email, ipKey = "default") {
+  return `${String(email || "").trim().toLowerCase()}|${ipKey || "default"}`;
+}
+
+export function assertLoginAllowed(email, ipKey = "default") {
+  const record = loginFailures.get(loginThrottleKey(email, ipKey));
   if (record && Date.now() <= record.resetTime && record.count >= LOGIN_FAILURE_MAX) {
     const retryAfterSeconds = Math.ceil((record.resetTime - Date.now()) / 1000);
     throw new ApiError(
@@ -116,21 +119,30 @@ export function assertLoginAllowed(email) {
   }
 }
 
-export function recordFailedLogin(email) {
+export function recordFailedLogin(email, ipKey = "default") {
+  const key = loginThrottleKey(email, ipKey);
   const now = Date.now();
-  let record = loginFailures.get(email);
+  let record = loginFailures.get(key);
   if (!record || now > record.resetTime) {
     if (!record && loginFailures.size >= MAX_TRACKED_KEYS) {
       loginFailures.delete(loginFailures.keys().next().value);
     }
     record = { count: 0, resetTime: now + LOGIN_FAILURE_WINDOW_MS };
-    loginFailures.set(email, record);
+    loginFailures.set(key, record);
   }
   record.count += 1;
 }
 
-export function clearFailedLogins(email) {
-  loginFailures.delete(email);
+export function clearFailedLogins(email, ipKey = null) {
+  const normalized = String(email || "").trim().toLowerCase();
+  if (ipKey) {
+    loginFailures.delete(loginThrottleKey(normalized, ipKey));
+    return;
+  }
+  const prefix = `${normalized}|`;
+  for (const key of loginFailures.keys()) {
+    if (key.startsWith(prefix)) loginFailures.delete(key);
+  }
 }
 
 /**
