@@ -171,9 +171,11 @@ async function runTests() {
     const runCppData = await runCppRes.json();
     assert.strictEqual(runCppData.status, "Accepted");
     assert.strictEqual(runCppData.passedCount, runCppData.totalCount);
-    assert.ok(runCppData.complexity, "Complexity analysis should be attached");
-    assert.strictEqual(runCppData.complexity.time.bestEstimate, "O(max(n, m))");
-    assert.strictEqual(runCppData.complexity.space.bestEstimate, "O(1)");
+    assert.strictEqual(
+      runCppData.complexity,
+      undefined,
+      "Run checks visible cases only and must not return complexity",
+    );
     console.log(`✔ Add Two Numbers (C++) Run via CodeBox: ${runCppData.passedCount}/${runCppData.totalCount} passed`);
 
     // 4. Add Two Numbers in Python
