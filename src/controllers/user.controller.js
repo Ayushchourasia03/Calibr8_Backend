@@ -219,7 +219,7 @@ export const updateMe = async (req, res, next) => {
  */
 export const updateLanguage = async (req, res, next) => {
   try {
-    const { language } = req.body;
+    const { language } = req.body ?? {};
     const allowed = ["cpp", "c", "java", "python", "javascript"];
     const normalized = String(language || "")
       .trim()

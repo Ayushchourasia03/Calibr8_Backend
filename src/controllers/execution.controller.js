@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import prisma from "../config/db.js";
-import { areOutputsEqual } from "../utils/outputComparator.js";
+import { areOutputsEqual, exceedsOutputLimit } from "../utils/outputComparator.js";
+import { readLimit } from "../config/limits.js";
 import {
   buildFinalCode,
   LANGUAGE_IDS,
@@ -28,7 +29,24 @@ import { getUserHeaderStats } from "../utils/userHeaderStats.js";
 import { publicTestResults } from "../utils/testcaseResults.js";
 import { analyzeComplexitySafe, MAX_ANALYZE_CODE_BYTES } from "../services/complexityPool.js";
 import { recordDailyProblemCompletion } from "../services/dailyProblemService.js";
-import { acquireJudgeSlot } from "../utils/judgeAdmission.js";
+import {
+  openJudgeSession,
+  runWithJudgeSession,
+  withExecutionSlot,
+  sandboxCostMs,
+  currentJudgeSession,
+} from "../utils/judgeAdmission.js";
+
+/**
+ * Duration cap for the next CodeBox request of the current judge session
+ * (round 2): short while the session has not run anything yet (its code's
+ * cost is unknown), then twice the target chunk duration.
+ */
+function requestDurationCapMs() {
+  const session = currentJudgeSession();
+  const blind = !session || session.spentMs === 0;
+  return blind ? readLimit("JUDGE_BLIND_REQUEST_MAX_MS") : 2 * readLimit("JUDGE_TARGET_CHUNK_MS");
+}
 import {
   supportsMultiCase,
   isHarnessSafeUserCode,
@@ -142,6 +160,49 @@ export async function recoverStaleSubmissions(now = Date.now(), { userId } = {})
   } catch (err) {
     console.error("[Submissions] Stale-submission recovery failed:", err.message);
     return 0;
+  }
+}
+
+// Asynchronous submissions still being judged in this process, keyed by
+// user + problem + language + code hash (duplicate-request protection).
+const pendingSubmissions = new Map();
+
+function queuedSubmissionResponse(submissionId, problem) {
+  return {
+    success: true,
+    submissionId,
+    verdict: "QUEUED",
+    status: "QUEUED",
+    pollUrl: `/api/execution/submissions/${submissionId}`,
+    message: "Submission received and queued for execution.",
+    problem: { slug: problem.slug, title: problem.title },
+  };
+}
+
+/**
+ * Cross-instance per-user cap (SA-H2): the in-process limiters only see one
+ * backend instance, the submissions table is shared by all of them. Counts the
+ * user's recent PROCESSING rows (index userId+status+createdAt). A failing
+ * count is not a reason to reject: the insert that follows reports a database
+ * outage on its own.
+ */
+async function assertSubmissionCapacity(userId) {
+  const limit = readLimit("JUDGE_MAX_PROCESSING_PER_USER");
+  let processing;
+  try {
+    processing = await prisma.submission.count({
+      where: { userId, status: "PROCESSING", createdAt: { gt: new Date(Date.now() - STALE_PROCESSING_MS) } },
+    });
+  } catch {
+    return;
+  }
+  if (processing >= limit) {
+    throw new ApiError(
+      429,
+      "You already have submissions being judged. Wait for them to finish before submitting again.",
+      "SUBMISSION_IN_PROGRESS",
+      { retryAfterSeconds: 5 },
+    );
   }
 }
 
@@ -320,6 +381,24 @@ export function verdictForFailure(failureType) {
 }
 
 /**
+ * Verdict of one executed testcase. Output is only compared when the program
+ * completed normally and its output is within the comparable size
+ * (exceedsOutputLimit, SA-H1); larger output is Output Limit Exceeded.
+ * @returns {{ passed: boolean, status: string }} status: "Accepted",
+ *   "Wrong Answer", "Output Limit Exceeded", "Skipped" or the execution status
+ */
+export function judgeTestcase(execResult, expectedOutput) {
+  if (!execResult || execResult.status === "Skipped") return { passed: false, status: "Skipped" };
+  if (execResult.status !== "OK") return { passed: false, status: execResult.status };
+  if (exceedsOutputLimit(execResult.actual, expectedOutput)) {
+    return { passed: false, status: "Output Limit Exceeded" };
+  }
+  return areOutputsEqual(execResult.actual, expectedOutput)
+    ? { passed: true, status: "Accepted" }
+    : { passed: false, status: "Wrong Answer" };
+}
+
+/**
  * CodeBox reuses one sandbox (cgroup) per batch lane, and isolate's "OOM
  * killed" flag is that cgroup's cumulative counter: after one memory-limit
  * kill, every later testcase in the lane comes back as memory_limit_exceeded
@@ -405,13 +484,20 @@ function isBatchTerminal(batchStatus) {
   );
 }
 
-async function executeCodeboxBatchOnce({
+/** One CodeBox batch request, in a judge slot of the current session (round 2). */
+function executeCodeboxBatchOnce(args) {
+  if (!Array.isArray(args?.testcases) || args.testcases.length === 0) return Promise.resolve([]);
+  return withExecutionSlot(() => executeCodeboxBatchOnceUnscheduled(args));
+}
+
+async function executeCodeboxBatchOnceUnscheduled({
   language,
   fullCode,
   testcases,
   timeLimit = 2000,
   memoryLimit = 256,
   stopOnFailure = false,
+  maxDurationMs = requestDurationCapMs(),
 }) {
   if (!Array.isArray(testcases) || testcases.length === 0) return [];
 
@@ -426,6 +512,10 @@ async function executeCodeboxBatchOnce({
       ...(Number.isInteger(testcase.group) ? { group: testcase.group } : {}),
     })),
     ...(stopOnFailure ? { stop_on_failure: true } : {}),
+    // Round 2: CodeBox stops starting testcases after this long and returns
+    // the rest as skipped, so one request holds a worker (and a judge slot)
+    // for a bounded time whatever the code does.
+    ...(maxDurationMs ? { max_duration_ms: Math.max(500, Math.round(maxDurationMs)) } : {}),
     limits: {
       cpu_time_limit: Math.max(1, Math.ceil((timeLimit || 2000) / 1000)),
       wall_time_limit: Math.max(2, Math.ceil((timeLimit || 2000) / 1000) * 2),
@@ -501,6 +591,15 @@ async function executeCodeboxBatchOnce({
       );
     }
   }
+
+  // The batch (source, every stdin, every output) is no longer needed: free
+  // it from CodeBox's Redis now instead of after its TTL (SA-H2). CodeBox
+  // servers without DELETE /batches/:id answer 404, which is ignored.
+  fetchCodeboxJson(new URL(`/batches/${encodeURIComponent(batchId)}`, runnerUrl), {
+    method: "DELETE",
+    headers,
+    timeoutMs: 5000,
+  }).catch(() => {});
 
   const rawResults = Array.isArray(batchStatus?.results)
     ? batchStatus.results
@@ -693,23 +792,163 @@ function skippedCaseResult(testcase) {
 }
 
 /**
- * Flattens per-chunk results. Chunks never started (after a TLE) become
- * "Skipped"; with stopOnTimeout every case after the first TLE is "Skipped" too,
- * so the outcome does not depend on which parallel chunk finished first.
+ * Completes a result array: cases that were never run become "Skipped"; with
+ * stopOnTimeout every case after the first TLE is "Skipped" too, so the
+ * outcome does not depend on which parallel chunk finished first.
  */
-function finishAfterTimeout(chunks, chunkResults, stopOnTimeout) {
-  const cases = chunks.flat();
-  const flat = [];
-  chunks.forEach((chunk, i) => {
-    chunk.forEach((tc, k) => flat.push(chunkResults[i] ? chunkResults[i][k] : skippedCaseResult(tc)));
-  });
+function finishResults(testcases, results, stopOnTimeout) {
+  const flat = testcases.map((tc, i) => results[i] || skippedCaseResult(tc));
   if (stopOnTimeout) {
     const first = flat.findIndex((r) => r?.status === "Time Limit Exceeded");
     if (first >= 0) {
-      for (let i = first + 1; i < flat.length; i++) flat[i] = skippedCaseResult(cases[i]);
+      for (let i = first + 1; i < flat.length; i++) flat[i] = skippedCaseResult(testcases[i]);
     }
   }
   return flat;
+}
+
+/**
+ * Judging cost control (SA-H2). `failure.isFailure(result, index)` tells
+ * whether an executed case failed definitively (wrong answer, crash, limit).
+ * After the first failure the rest of the tier is still judged, so
+ * passedCount keeps its meaning, but only while the CPU time spent on cases
+ * after that failure stays below JUDGE_POST_FAILURE_CPU_BUDGET_MS of sandbox
+ * time (per case max(CPU, wall), round 2; CPU alone let sleeping code run
+ * every case). Ordinary
+ * (fast) wrong answers are judged exactly as before; deliberately slow wrong
+ * code can no longer hold a judge slot for minutes.
+ */
+/** Lets other requests run during long synchronous judging loops (SA-H1). */
+const yieldToEventLoop = () => new Promise((resolve) => setImmediate(resolve));
+const YIELD_EVERY_MS = 10;
+
+function createFailureControl(failure) {
+  if (!failure || typeof failure.isFailure !== "function") return null;
+  const budgetMs = failure.budgetMs ?? readLimit("JUDGE_POST_FAILURE_CPU_BUDGET_MS");
+  let firstFailure = Infinity;
+  const judged = new Set(); // each index is judged once
+  return {
+    get failureSeen() {
+      return firstFailure !== Infinity;
+    },
+    /** Takes all results so far (by index); resolves true = start no further chunk. */
+    async record(results) {
+      let sliceStart = Date.now();
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        if (!r || r.status === "Skipped" || judged.has(i)) continue;
+        judged.add(i);
+        if (i < firstFailure && failure.isFailure(r, i)) firstFailure = i;
+        if (Date.now() - sliceStart > YIELD_EVERY_MS) {
+          await yieldToEventLoop();
+          sliceStart = Date.now();
+        }
+      }
+      if (firstFailure === Infinity) return false;
+      let spentMs = 0;
+      for (let i = firstFailure + 1; i < results.length; i++) {
+        // Sandbox time, not CPU only: sleeping code costs wall time (FV-1).
+        spentMs += sandboxCostMs(results[i]);
+      }
+      return spentMs >= budgetMs;
+    },
+  };
+}
+
+/**
+ * Runs `testcases` through runChunk(cases, offset) in chunks of `chunkSize`
+ * with up to `concurrency` chunks in flight. Returns results by index
+ * (undefined for cases that were never run).
+ *  - stopOnTimeout: no chunk starts after one reported a TLE.
+ *  - control (createFailureControl): for large tiers a small first chunk
+ *    (JUDGE_FIRST_CHUNK_CASES) runs alone, so a failing submission is
+ *    detected cheaply; once a failure is known, chunks are small and run one
+ *    at a time until the post-failure budget is spent.
+ */
+async function runInChunks(testcases, runChunk, { chunkSize, concurrency, stopOnTimeout = false, control = null, budget = null }) {
+  const results = new Array(testcases.length);
+  const smallChunk = Math.min(readLimit("JUDGE_FIRST_CHUNK_CASES"), chunkSize);
+  const targetChunkMs = readLimit("JUDGE_TARGET_CHUNK_MS");
+  // Indexes still to run. CodeBox's duration cap can return cases as skipped
+  // (not a verdict): they go back to the front and run in a later request.
+  const pending = testcases.map((_, i) => i);
+  let stopped = false;
+  let executedCases = 0;
+  let executedCostMs = 0;
+
+  // Round 2: one chunk is one CodeBox request and one judge slot. Size it
+  // from the observed per-case sandbox time so a request stays near
+  // JUDGE_TARGET_CHUNK_MS even for code that sleeps or burns its whole limit.
+  const adaptiveSize = (size) => {
+    if (executedCases === 0) return size;
+    const perCaseMs = Math.max(1, executedCostMs / executedCases);
+    return Math.max(1, Math.min(size, Math.floor(targetChunkMs / perCaseMs)));
+  };
+
+  const runNext = async (size) => {
+    if (budget?.exceeded) {
+      stopped = true;
+      return;
+    }
+    const indexes = pending.splice(0, adaptiveSize(size));
+    if (indexes.length === 0) return;
+    const cases = indexes.map((i) => testcases[i]);
+    const chunkResults = await runChunk(cases, indexes[0]);
+    const retry = [];
+    indexes.forEach((index, k) => {
+      const result = chunkResults[k];
+      if (result?.status === "Skipped") retry.push(index);
+      else results[index] = result;
+    });
+    const ran = indexes.length - retry.length;
+    if (retry.length) {
+      pending.unshift(...retry);
+      // CodeBox always starts a request's first case; nothing ran means it
+      // cannot make progress: stop (unrun cases end up Skipped, never passed).
+      if (ran === 0) stopped = true;
+    }
+    const costMs = sandboxCostMs(chunkResults);
+    executedCases += ran;
+    executedCostMs += costMs;
+    if (budget && chargeEvaluationBudget(budget, costMs)) stopped = true;
+    if (stopOnTimeout && chunkResults.some((r) => r?.status === "Time Limit Exceeded")) stopped = true;
+    if (control && (await control.record(results))) stopped = true;
+  };
+
+  // Large lists start with a small chunk: a failing or slow submission is
+  // detected cheaply, and the per-case cost sizes the following chunks.
+  if ((control || budget) && testcases.length > smallChunk) await runNext(smallChunk);
+
+  const lane = async (laneIndex) => {
+    while (!stopped && pending.length > 0) {
+      if (control?.failureSeen) {
+        if (laneIndex !== 0) return;
+        await runNext(smallChunk);
+      } else {
+        await runNext(chunkSize);
+      }
+    }
+  };
+  const remainingChunks = Math.ceil(pending.length / chunkSize);
+  const lanes = Math.max(1, Math.min(concurrency, remainingChunks || 1));
+  await Promise.all(Array.from({ length: lanes }, (_, i) => lane(i)));
+  return results;
+}
+
+/**
+ * Total sandbox time one evaluation may use (round 2, JUDGE_EVALUATION_BUDGET_MS),
+ * shared by every tier, chunk and execution path of a Run or Submit.
+ */
+export function createEvaluationBudget(limitMs = readLimit("JUDGE_EVALUATION_BUDGET_MS")) {
+  return { limitMs, spentMs: 0, exceeded: false };
+}
+
+/** Adds costMs; returns true once the budget is used up. */
+function chargeEvaluationBudget(budget, costMs) {
+  if (!budget) return false;
+  budget.spentMs += Math.max(0, Number(costMs) || 0);
+  if (budget.spentMs >= budget.limitMs) budget.exceeded = true;
+  return budget.exceeded;
 }
 
 /** Splits testcases into harness chunks bounded by case count and stdin bytes. */
@@ -738,7 +977,12 @@ function chunkForHarness(testcases) {
  * that did not report (budget ran out). With stopOnTimeout, cases after a
  * definitive TLE come back as "Skipped" and no further chunk is started.
  */
-async function executeMultiCase({
+/** One harness run on CodeBox, in a judge slot of the current session (round 2). */
+function executeMultiCase(args) {
+  return withExecutionSlot(() => executeMultiCaseUnscheduled(args));
+}
+
+async function executeMultiCaseUnscheduled({
   language,
   fullCode,
   testcases,
@@ -756,8 +1000,12 @@ async function executeMultiCase({
   // The harness stops starting new cases before the budget runs out, so a
   // slow chunk reports partial results instead of being killed; the caller
   // re-runs whatever was not reported.
-  const budgetMs =
-    Math.min(MULTICASE_MAX_CPU_SEC, MULTICASE_MAX_WALL_SEC) * 1000 - 1500;
+  // Round 2: no longer than the session's request cap (short while blind),
+  // but always long enough to run at least one case.
+  const budgetMs = Math.min(
+    Math.min(MULTICASE_MAX_CPU_SEC, MULTICASE_MAX_WALL_SEC) * 1000 - 1500,
+    Math.max(perCaseMs * 2 + 500, requestDurationCapMs()),
+  );
   const chunks = chunkForHarness(testcases);
 
   const runChunk = async ({ cases }) => {
@@ -890,8 +1138,9 @@ async function executeMultiCase({
  * rest. Anything still unreported runs on the next execution path so verdicts
  * are never guessed.
  */
-async function executeMultiCaseRounds({ language, fullCode, testcases, timeLimit, memoryLimit, stopOnTimeout }) {
+async function executeMultiCaseRounds({ language, fullCode, testcases, timeLimit, memoryLimit, stopOnTimeout, failure = null, budget = null }) {
   const results = new Array(testcases.length);
+  const control = createFailureControl(failure);
   let missing = testcases.map((_, i) => i);
   for (let round = 0; round < MULTICASE_MAX_ROUNDS && missing.length; round++) {
     const roundResults = await executeMultiCase({
@@ -911,7 +1160,21 @@ async function executeMultiCaseRounds({ language, fullCode, testcases, timeLimit
     });
     if (!progressed) break;
     missing = missing.filter((i) => !results[i]);
+    // Evaluation budget spent (round 2): the remaining cases are not run.
+    if (chargeEvaluationBudget(budget, sandboxCostMs(roundResults)) && missing.length) {
+      missing.forEach((i) => {
+        results[i] = skippedCaseResult(testcases[i]);
+      });
+      missing = [];
+    }
     if (stopOnTimeout && results.some((r) => r?.status === "Time Limit Exceeded")) {
+      missing.forEach((i) => {
+        results[i] = skippedCaseResult(testcases[i]);
+      });
+      missing = [];
+    }
+    // Post-failure budget spent (SA-H2): the remaining cases are not run.
+    if (missing.length && control && (await control.record(results))) {
       missing.forEach((i) => {
         results[i] = skippedCaseResult(testcases[i]);
       });
@@ -919,6 +1182,7 @@ async function executeMultiCaseRounds({ language, fullCode, testcases, timeLimit
     }
   }
   if (missing.length > 0) {
+    const rerunIndexes = missing;
     const rerun = await executeCodeBatch({
       language,
       fullCode,
@@ -927,6 +1191,11 @@ async function executeMultiCaseRounds({ language, fullCode, testcases, timeLimit
       memoryLimit,
       allowMultiCase: false,
       stopOnTimeout,
+      failure: failure && {
+        isFailure: (result, k) => failure.isFailure(result, rerunIndexes[k]),
+        budgetMs: failure.budgetMs,
+      },
+      budget,
     });
     missing.forEach((caseIndex, k) => {
       results[caseIndex] = rerun[k];
@@ -966,8 +1235,11 @@ async function executeCodeBatchImpl({
   memoryLimit = 256,
   allowMultiCase = true,
   stopOnTimeout = false,
+  failure = null,
+  budget = null,
 }) {
   if (!testcases.length) return [];
+  if (budget?.exceeded) return testcases.map((tc) => skippedCaseResult(tc));
 
   const normLang = normalizeLanguage(language);
   if (allowMultiCase && isMultiCaseEnabled() && supportsMultiCase(normLang)) {
@@ -979,6 +1251,8 @@ async function executeCodeBatchImpl({
         timeLimit,
         memoryLimit,
         stopOnTimeout,
+        failure,
+        budget,
       });
     } catch (err) {
       if (err?.code === HARNESS_COMPILE_FAILED) {
@@ -997,32 +1271,18 @@ async function executeCodeBatchImpl({
   // others hit CodeBox's build cache.
   if (isCodeboxBatchExecutionEnabled()) {
     try {
-      const chunks = [];
-      for (let offset = 0; offset < testcases.length; offset += MAX_CASES_PER_BATCH) {
-        chunks.push(testcases.slice(offset, offset + MAX_CASES_PER_BATCH));
-      }
-      const chunkResults = new Array(chunks.length);
-      let nextChunk = 0;
-      let timedOut = false;
-      const worker = async () => {
-        while (nextChunk < chunks.length && !timedOut) {
-          const chunkIndex = nextChunk++;
-          chunkResults[chunkIndex] = await executeCodeboxBatchOnce({
-            language,
-            fullCode,
-            testcases: chunks[chunkIndex],
-            timeLimit,
-            memoryLimit,
-          });
-          if (stopOnTimeout && chunkResults[chunkIndex].some((r) => r?.status === "Time Limit Exceeded")) {
-            timedOut = true;
-          }
-        }
-      };
-      await Promise.all(
-        Array.from({ length: Math.min(MAX_CONCURRENT_BATCHES, chunks.length) }, worker),
+      const results = await runInChunks(
+        testcases,
+        (cases) => executeCodeboxBatchOnce({ language, fullCode, testcases: cases, timeLimit, memoryLimit }),
+        {
+          chunkSize: MAX_CASES_PER_BATCH,
+          concurrency: MAX_CONCURRENT_BATCHES,
+          stopOnTimeout,
+          control: createFailureControl(failure),
+          budget,
+        },
       );
-      return finishAfterTimeout(chunks, chunkResults, stopOnTimeout);
+      return finishResults(testcases, results, stopOnTimeout);
     } catch (err) {
       if (!isInfrastructureError(err)) {
         throw err;
@@ -1038,36 +1298,16 @@ async function executeCodeBatchImpl({
   const cpuTimeLimit = Math.max(1, Math.ceil(timeLimit / 1000));
   const headers = { "Content-Type": "application/json" };
 
-  // Slices testcases into chunks of at most MAX_CASES_PER_BATCH (20).
-  const chunks = [];
-  for (
-    let offset = 0;
-    offset < testcases.length;
-    offset += MAX_CASES_PER_BATCH
-  ) {
-    chunks.push(testcases.slice(offset, offset + MAX_CASES_PER_BATCH));
-  }
-
-  // Run up to MAX_CONCURRENT_BATCHES chunks at once instead of strictly one
-  // after another; results keep their original order.
-  const chunkResults = new Array(chunks.length);
-  let nextChunk = 0;
-  let timedOut = false;
-  const worker = async () => {
-    while (nextChunk < chunks.length && !timedOut) {
-      const chunkIndex = nextChunk++;
-      chunkResults[chunkIndex] = await runLegacyChunk(chunks[chunkIndex]);
-      if (stopOnTimeout && chunkResults[chunkIndex].some((r) => r?.status === "Time Limit Exceeded")) {
-        timedOut = true;
-      }
-    }
-  };
-  const workerCount = Math.max(
-    1,
-    Math.min(MAX_CONCURRENT_BATCHES, chunks.length),
-  );
-  await Promise.all(Array.from({ length: workerCount }, worker));
-  return finishAfterTimeout(chunks, chunkResults, stopOnTimeout);
+  // Chunks of at most MAX_CASES_PER_BATCH (20), up to MAX_CONCURRENT_BATCHES
+  // in flight; results keep their original order.
+  const results = await runInChunks(testcases, (cases) => withExecutionSlot(() => runLegacyChunk(cases)), {
+    chunkSize: MAX_CASES_PER_BATCH,
+    concurrency: MAX_CONCURRENT_BATCHES,
+    stopOnTimeout,
+    control: createFailureControl(failure),
+    budget,
+  });
+  return finishResults(testcases, results, stopOnTimeout);
 
   async function runLegacyChunk(cases) {
     const created = await fetchCodeboxJson(
@@ -1255,7 +1495,7 @@ export const runCode = async (req, res, next) => {
       );
     }
 
-    const { code, userCode, source_code, sourceCode, stdin } = req.body;
+    const { code, userCode, source_code, sourceCode, stdin } = req.body ?? {};
     const studentCode = userCode || code || source_code || sourceCode;
     validateCodeSize(studentCode);
     const allowMultiCase = isHarnessSafeUserCode(studentCode);
@@ -1268,18 +1508,21 @@ export const runCode = async (req, res, next) => {
       if (Buffer.byteLength(stdin, "utf-8") > MAX_CUSTOM_STDIN_BYTES) {
         throw new ApiError(413, "Custom input exceeds maximum allowable size (64 KB).", "STDIN_TOO_LARGE");
       }
-      const release = await acquireJudgeSlot();
+      // One judge session per Run (round 2): its first slot is reserved now,
+      // so a saturated judge still answers 503 JUDGE_BUSY right away.
+      const session = openJudgeSession({ userId: req.user?.id, accountCreatedAt: req.user?.createdAt });
       let result;
       try {
-        result = await runSingleTestCase({
+        await session.reserve();
+        result = await runWithJudgeSession(session, () => runSingleTestCase({
           problem: null,
           language: normLang,
           code: studentCode,
           stdin,
           allowMultiCase,
-        });
+        }));
       } finally {
-        release();
+        session.close();
       }
 
       return res.status(200).json({
@@ -1334,10 +1577,11 @@ export const runCode = async (req, res, next) => {
       );
     }
 
-    const release = await acquireJudgeSlot();
+    const session = openJudgeSession({ userId: req.user?.id, accountCreatedAt: req.user?.createdAt });
     let executionResults;
     try {
-      executionResults = await executeCodeBatch({
+      await session.reserve();
+      executionResults = await runWithJudgeSession(session, () => executeCodeBatch({
         language: normLang,
         fullCode,
         testcases: visibleCases.map((testcase) => ({
@@ -1346,9 +1590,10 @@ export const runCode = async (req, res, next) => {
         timeLimit: problem.timeLimit || 2000,
         memoryLimit: problem.memoryLimit || 256,
         allowMultiCase,
-      });
+        budget: createEvaluationBudget(),
+      }));
     } finally {
-      release();
+      session.close();
     }
 
     const results = [];
@@ -1361,13 +1606,9 @@ export const runCode = async (req, res, next) => {
       const expectedOutput = tc.expectedSmall || tc.output || "";
       const execResult = executionResults[idx];
 
-      let caseStatus = execResult.status;
-      let isPassed = false;
-
-      if (caseStatus === "OK") {
-        isPassed = areOutputsEqual(execResult.actual, expectedOutput);
-        caseStatus = isPassed ? "Accepted" : "Wrong Answer";
-      }
+      const verdict = judgeTestcase(execResult, expectedOutput);
+      const caseStatus = verdict.status;
+      const isPassed = verdict.passed;
 
       if (!isPassed) {
         allPassed = false;
@@ -1398,18 +1639,6 @@ export const runCode = async (req, res, next) => {
 
     const passedCount = results.filter((r) => r.passed).length;
 
-    // Off the event loop, with a hard timeout (never throws).
-    const complexity = await analyzeComplexitySafe({
-      code: studentCode,
-      language: normLang,
-      problemSlug: problem.slug,
-      executionResult: {
-        timeMs: Math.max(...results.map((r) => r.timeMs || 0), 0),
-        memoryKb: Math.max(...results.map((r) => r.memoryKb || 0), 0),
-      },
-      include: ["time", "space"], // Compact static analysis without dynamic evidence overhead
-    });
-
     res.status(200).json({
       success: true,
       verdict: overallStatus,
@@ -1417,7 +1646,6 @@ export const runCode = async (req, res, next) => {
       passedCount,
       totalCount: results.length,
       results,
-      complexity: compactComplexitySummary(complexity),
     });
   } catch (err) {
     next(err);
@@ -1443,6 +1671,13 @@ async function runAllTiersInOneBatch({ tiers, language, fullCode, timeLimit, mem
   if (!isCodeboxBatchExecutionEnabled() || total === 0 || total > SINGLE_BATCH_MAX_CASES) {
     return null;
   }
+  // SA-H2: the one-shot batch runs every case even after a wrong answer
+  // (CodeBox does not know expected outputs), so it is only used when the
+  // worst case (every case near its time limit) is cheap. Larger problems use
+  // the per-tier path with its post-failure budget.
+  if (total * Math.max(1, Number(timeLimit) || 2000) > readLimit("JUDGE_ONE_SHOT_MAX_COST_MS")) {
+    return null;
+  }
   try {
     const flat = await executeCodeboxBatchOnce({
       language,
@@ -1456,6 +1691,9 @@ async function runAllTiersInOneBatch({ tiers, language, fullCode, timeLimit, mem
       timeLimit,
       memoryLimit,
       stopOnFailure: true,
+      // A slow program stops the one-shot early (skipped cases are re-run per
+      // tier below). The one-shot is always a blind request.
+      maxDurationMs: readLimit("JUDGE_BLIND_REQUEST_MAX_MS"),
     });
     const perTier = [];
     let offset = 0;
@@ -1500,6 +1738,8 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
   let firstFailure = null;
   let finalStatus = "ACCEPTED";
   const results = [];
+  // Total sandbox time this Submit may use, across all tiers (round 2).
+  const budget = createEvaluationBudget();
 
   const total = allTestcases.length;
   const tier1Count = Math.max(1, Math.floor(total * 0.35));
@@ -1533,6 +1773,20 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
   let tierReached = "Tier 0 (Failed)";
   let shortCircuited = false;
 
+  // One verdict per executed case, shared by the failure control and the
+  // result loop below, so no output is compared twice.
+  const verdicts = new WeakMap();
+  const verdictOf = (result, expected) => {
+    if (!result || typeof result !== "object") return judgeTestcase(result, expected);
+    let verdict = verdicts.get(result);
+    if (!verdict) {
+      verdict = judgeTestcase(result, expected);
+      verdicts.set(result, verdict);
+    }
+    return verdict;
+  };
+  const expectedOf = (testcase) => testcase.expectedSmall || testcase.output || "";
+
   // Fast path: every tier in ONE CodeBox batch (one request, one compile).
   // Testcases carry their tier as a group; with stop_on_failure CodeBox skips
   // later tiers once a testcase crashes/times out, so failing submissions still
@@ -1547,6 +1801,9 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
     timeLimit: problem.timeLimit || 2000,
     memoryLimit: problem.memoryLimit || 256,
   });
+  if (precomputedTierResults) {
+    chargeEvaluationBudget(budget, precomputedTierResults.reduce((sum, tierResults) => sum + sandboxCostMs(tierResults), 0));
+  }
 
   for (const [tierIndex, tier] of tiers.entries()) {
     if (!tier.cases.length || shortCircuited) continue;
@@ -1570,15 +1827,25 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
         memoryLimit: problem.memoryLimit || 256,
         stopOnTimeout: true,
         allowMultiCase,
+        failure: {
+          isFailure: (result, i) => !verdictOf(result, expectedOf(tier.cases[i])).passed,
+        },
+        budget,
       });
     }
 
     let tierHasFailure = false;
+    let sliceStart = Date.now();
 
     for (let idx = 0; idx < tier.cases.length; idx++) {
+      // Comparing hundreds of large outputs must not hold the event loop.
+      if (Date.now() - sliceStart > YIELD_EVERY_MS) {
+        await yieldToEventLoop();
+        sliceStart = Date.now();
+      }
       const tc = tier.cases[idx];
       const testInput = tc.stdinSmall || tc.input || "";
-      const expectedOutput = tc.expectedSmall || tc.output || "";
+      const expectedOutput = expectedOf(tc);
       const execResult = tierExecResults[idx];
       // Not run: an earlier case in this tier hit a definitive TLE.
       if (execResult?.status === "Skipped") continue;
@@ -1586,13 +1853,9 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
       maxTimeMs = Math.max(maxTimeMs, execResult.timeMs || 0);
       maxMemoryKb = Math.max(maxMemoryKb, execResult.memoryKb || 0);
 
-      let isPassed = false;
-      let failureType = execResult.status;
-
-      if (execResult.status === "OK") {
-        isPassed = areOutputsEqual(execResult.actual, expectedOutput);
-        if (!isPassed) failureType = "Wrong Answer";
-      }
+      const verdict = verdictOf(execResult, expectedOutput);
+      const isPassed = verdict.passed;
+      const failureType = verdict.status;
 
       const caseItem = {
         testIndex: tc.testIndex ?? results.length,
@@ -1637,6 +1900,25 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
       }
     }
 
+    // Unexecuted cases can never let a tier pass (round 2): skipped without
+    // any failure means the evaluation budget or CodeBox's duration cap ran
+    // out, i.e. the code is too slow. Judged as Time Limit Exceeded.
+    if (!tierHasFailure && tierExecResults.some((r) => !r || r.status === "Skipped")) {
+      tierHasFailure = true;
+      if (!firstFailure) {
+        finalStatus = verdictForFailure("Time Limit Exceeded");
+        firstFailure = {
+          testIndex: null,
+          status: "Time Limit Exceeded",
+          budgetExceeded: budget.exceeded,
+          errorText: null,
+          message: budget.exceeded
+            ? `The submission used its total execution time budget (${Math.round(budget.limitMs / 1000)} s of sandbox time) before every test case ran.`
+            : "The submission ran too slowly to finish every test case.",
+        };
+      }
+    }
+
     if (tierHasFailure) {
       tierReached = tier.rankIfFailed;
       shortCircuited = true;
@@ -1655,6 +1937,8 @@ export async function evaluateAllTestcases(problem, language, code, providedFull
     maxMemoryKb,
     firstFailure,
     results,
+    sandboxTimeMs: Math.round(budget.spentMs),
+    budgetExceeded: budget.exceeded,
   };
 }
 
@@ -1684,7 +1968,7 @@ export const submitSolution = async (req, res, next) => {
       );
     }
 
-    const { code, userCode, source_code, sourceCode, wait } = req.body;
+    const { code, userCode, source_code, sourceCode, wait } = req.body ?? {};
     const studentCode = userCode || code || source_code || sourceCode;
     const userId = req.user?.id || null;
     // Every execution route requires authentication; never judge anonymously.
@@ -1711,9 +1995,36 @@ export const submitSolution = async (req, res, next) => {
     const fullCode = buildFinalCode(problem, studentCode, normLang);
     const totalTcs = (problem.testcases || []).length;
 
-    // Backend-wide judge admission (503 JUDGE_BUSY when saturated), before
+    // If wait=true or route is /api/execute/submit (synchronous evaluation)
+    const isDirectExecuteRoute =
+      req.originalUrl?.includes("/execute/submit") ||
+      wait === true ||
+      req.query?.wait === "true" ||
+      req.path === "/submit";
+
+    // The same code for the same problem is already being judged in the
+    // background: hand back that submission instead of judging it twice.
+    const dedupeKey = `${userId}|${problem.id}|${normLang}|${crypto
+      .createHash("sha256")
+      .update(studentCode)
+      .digest("hex")}`;
+    if (!isDirectExecuteRoute) {
+      const pending = pendingSubmissions.get(dedupeKey);
+      if (pending) {
+        return res.status(202).json({ ...queuedSubmissionResponse(pending.submissionId, problem), deduplicated: true });
+      }
+    }
+
+    // Cross-instance per-user cap (database), then backend-wide judge
+    // admission (per-user share, 503 JUDGE_BUSY when saturated), before
     // anything is stored.
-    releaseJudge = await acquireJudgeSlot();
+    await assertSubmissionCapacity(userId);
+    // One judge session per Submit (round 2). Its first slot is reserved
+    // before anything is stored (503 JUDGE_BUSY synchronously); every later
+    // CodeBox request of the evaluation takes its own slot.
+    const judgeSession = openJudgeSession({ userId, accountCreatedAt: req.user?.createdAt });
+    releaseJudge = () => judgeSession.close();
+    await judgeSession.reserve();
 
     let submission;
     try {
@@ -1750,13 +2061,6 @@ export const submitSolution = async (req, res, next) => {
       problem: { slug: problem.slug, title: problem.title },
     });
 
-    // If wait=true or route is /api/execute/submit (synchronous evaluation)
-    const isDirectExecuteRoute =
-      req.originalUrl?.includes("/execute/submit") ||
-      wait === true ||
-      req.query?.wait === "true" ||
-      req.path === "/submit";
-
     // "Already solved?" lookup, overlapped with execution: an accepted
     // re-submit of a solved problem earns nothing, so it can skip the reward
     // transaction entirely.
@@ -1785,14 +2089,14 @@ export const submitSolution = async (req, res, next) => {
     const runEvaluation = async () => {
       let evaluation;
       try {
-        evaluation = await evaluateAllTestcases(
+        evaluation = await runWithJudgeSession(judgeSession, () => evaluateAllTestcases(
           problem,
           normLang,
           studentCode,
           fullCode,
-        );
+        ));
       } finally {
-        // The judge slot only covers CodeBox work.
+        // The judge session only covers CodeBox work.
         releaseJudge?.();
         releaseJudge = null;
       }
@@ -1814,17 +2118,20 @@ export const submitSolution = async (req, res, next) => {
         evaluation.totalCount > 0 &&
         evaluation.passedCount === evaluation.totalCount;
 
-      // Off the event loop with a hard timeout; never throws.
-      const complexityTask = analyzeComplexitySafe({
-        code: studentCode,
-        language: normLang,
-        problemSlug: problem.slug,
-        executionResult: {
-          timeMs: evaluation.maxTimeMs,
-          memoryKb: evaluation.maxMemoryKb,
-        },
-        include: ["time", "space"],
-      });
+      // Complexity is only meaningful after every visible and hidden testcase
+      // has passed; Run only evaluates visible cases and never analyzes it.
+      const complexityTask = isAccepted
+        ? analyzeComplexitySafe({
+          code: studentCode,
+          language: normLang,
+          problemSlug: problem.slug,
+          executionResult: {
+            timeMs: evaluation.maxTimeMs,
+            memoryKb: evaluation.maxMemoryKb,
+          },
+          include: ["time", "space"],
+        })
+        : Promise.resolve(null);
 
       // 1. The verdict is persisted first. Rewards are derived from a stored
       //    verdict only, so a failed verdict write can never leave score,
@@ -1952,7 +2259,7 @@ export const submitSolution = async (req, res, next) => {
 
       updated = {
         ...updated,
-        complexity,
+        ...(complexity ? { complexity } : {}),
         complexityProfile,
       };
 
@@ -1985,7 +2292,9 @@ export const submitSolution = async (req, res, next) => {
         memory: completed.memory || completed.maxMemoryKb,
         results: publicTestResults(completed.results || []),
         firstFailure: completed.firstFailure || null,
-        complexity: compactComplexitySummary(completed.complexity),
+        ...(completed.status === "ACCEPTED" && completed.complexity
+          ? { complexity: compactComplexitySummary(completed.complexity) }
+          : {}),
         complexityProfile: completed.complexityProfile || null,
         reward: completed.reward || null,
         rewardError: completed.rewardError || false,
@@ -1999,6 +2308,7 @@ export const submitSolution = async (req, res, next) => {
 
     // Keep the per-user execution slot until the background job settles.
     const releaseInFlight = req.holdInFlightSlot?.();
+    pendingSubmissions.set(dedupeKey, { submissionId: submission.id });
     const job = runEvaluation()
       .catch((err) => {
         console.error("[Submission Background Error]:", err?.code || err?.name || "Error");
@@ -2015,23 +2325,15 @@ export const submitSolution = async (req, res, next) => {
           .catch(() => {});
       })
       .finally(() => {
+        if (pendingSubmissions.get(dedupeKey)?.submissionId === submission.id) {
+          pendingSubmissions.delete(dedupeKey);
+        }
         releaseInFlight?.();
         activeEvaluations.delete(job);
       });
     activeEvaluations.add(job);
 
-    res.status(202).json({
-      success: true,
-      submissionId: submission.id,
-      verdict: "QUEUED",
-      status: "QUEUED",
-      pollUrl: `/api/execution/submissions/${submission.id}`,
-      message: "Submission received and queued for execution.",
-      problem: {
-        slug: problem.slug,
-        title: problem.title,
-      },
-    });
+    res.status(202).json(queuedSubmissionResponse(submission.id, problem));
   } catch (err) {
     // Synchronous failures before the evaluation took over the slot.
     releaseJudge?.();
@@ -2140,9 +2442,14 @@ export const getSubmissionStatus = async (req, res, next) => {
         createdAt: submission.createdAt,
         firstFailure: submission.firstFailure || null,
         results: publicTestResults(submission.results || []),
-        complexity: compactComplexitySummary(
-          cachedSubmission?.complexity || submission.complexity || null,
-        ),
+        ...((submission.status === "ACCEPTED" &&
+          (cachedSubmission?.complexity || submission.complexity))
+          ? {
+            complexity: compactComplexitySummary(
+              cachedSubmission?.complexity || submission.complexity,
+            ),
+          }
+          : {}),
         complexityProfile,
         reward: submission.reward || null,
         rewardError: submission.rewardError || false,
@@ -2165,7 +2472,7 @@ export const getSubmissionStatus = async (req, res, next) => {
 export const getComplexityAnalysis = async (req, res, next) => {
   try {
     const { code, userCode, source_code, language, lang, slug, problemSlug } =
-      req.body;
+      req.body ?? {};
     const studentCode = userCode || code || source_code;
     const rawLang = language || lang || "python";
     const normLang = normalizeLanguage(rawLang);

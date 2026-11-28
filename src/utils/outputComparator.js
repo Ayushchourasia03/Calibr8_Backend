@@ -15,13 +15,63 @@
  * bare value. Deliberately strict: "yes"/"no" are NOT booleans.
  */
 
+import { readLimit } from "../config/limits.js";
+
 const NUMBER_TAG = "\u0000n:";
+
+// SECURITY (SA-H1): every pattern below is linear-time. Program output is
+// attacker-controlled and is compared on the main event loop, so no pattern
+// may contain quantifiers that can split the same characters in more than one
+// way (the previous `\d+\.?\d*` took O(n^2) on a long digit run ending in a
+// non-digit: ~8 s for 64 KB). The fraction is only reachable after a literal
+// "." here, so a digit run can be matched in exactly one way.
+const INTEGER_LEXEME = /^[+-]?\d+$/;
+const DECIMAL_LEXEME = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+/**
+ * Program output longer than this (or than twice the expected output, if
+ * that is larger) is never compared: the caller reports Output Limit
+ * Exceeded. CodeBox truncates outputs at 65,536 characters and appends a
+ * marker, so a truncated output always exceeds the default.
+ */
+export const DEFAULT_MAX_OUTPUT_CHARS = 65_536;
+
+export function maxComparableOutputChars(expectedRaw, limit = configuredOutputLimit()) {
+  const expectedLength = typeof expectedRaw === "string" ? expectedRaw.length : 0;
+  return Math.max(limit, expectedLength * 2 + 1024);
+}
+
+function configuredOutputLimit() {
+  return readLimit("JUDGE_MAX_OUTPUT_CHARS");
+}
+
+/** True when the program output is too large to be compared (see above). */
+export function exceedsOutputLimit(actualRaw, expectedRaw) {
+  const length = typeof actualRaw === "string" ? actualRaw.length : String(actualRaw ?? "").length;
+  return length > maxComparableOutputChars(expectedRaw);
+}
+
+/**
+ * Canonical integer text, identical to BigInt(text).toString() but linear in
+ * the length (no big-number arithmetic on attacker-sized input).
+ */
+function canonicalInteger(text) {
+  let index = 0;
+  let negative = false;
+  if (text[0] === "+" || text[0] === "-") {
+    negative = text[0] === "-";
+    index = 1;
+  }
+  while (index < text.length - 1 && text[index] === "0") index++;
+  const digits = text.slice(index);
+  return digits === "0" ? "0" : `${negative ? "-" : ""}${digits}`;
+}
 
 /** Canonical form of a numeric lexeme, or null when it is not a number. */
 function canonicalNumber(lexeme) {
   const text = String(lexeme).trim();
-  if (/^[+-]?\d+$/.test(text)) return BigInt(text).toString();
-  if (!/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return null;
+  if (INTEGER_LEXEME.test(text)) return canonicalInteger(text);
+  if (!DECIMAL_LEXEME.test(text)) return null;
   const value = Number(text);
   if (!Number.isFinite(value)) return null;
   // Non-integer lexemes compare by double value; integral ones ("1e3",
@@ -31,18 +81,56 @@ function canonicalNumber(lexeme) {
 
 const tagNumber = (canonical) => `${NUMBER_TAG}${canonical}`;
 
+// Strict JSON number grammar (RFC 8259), unambiguous and linear-time.
+const JSON_NUMBER = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+
+const isNumberChar = (code) =>
+  (code >= 48 && code <= 57) || code === 45 || code === 43 || code === 46 || code === 101 || code === 69;
+
 /**
  * JSON.parse that keeps exact numeric values: every number becomes a tagged
  * canonical string, built from its source text (no precision loss).
+ *
+ * One linear pass replaces each number token outside strings by its tagged
+ * string, then the native parser runs without a reviver (a reviver with
+ * source-text access cost ~100 ms for a 64 KB array, SA-H1). Tokens that are
+ * not valid JSON numbers throw, exactly like JSON.parse did before.
  */
 function parseExactJson(text) {
-  return JSON.parse(text, function reviver(_key, value, context) {
-    if (typeof value === "number") {
-      const canonical = canonicalNumber(context?.source ?? String(value));
-      return tagNumber(canonical ?? String(value));
+  const parts = [];
+  let chunkStart = 0;
+  let i = 0;
+  const n = text.length;
+  while (i < n) {
+    const code = text.charCodeAt(i);
+    if (code === 34) {
+      // String literal: copied as is (escapes skipped, never tagged).
+      i++;
+      while (i < n) {
+        const c = text.charCodeAt(i);
+        if (c === 92) {
+          i += 2;
+          continue;
+        }
+        i++;
+        if (c === 34) break;
+      }
+      continue;
     }
-    return value;
-  });
+    if (code === 45 || (code >= 48 && code <= 57)) {
+      let j = i + 1;
+      while (j < n && isNumberChar(text.charCodeAt(j))) j++;
+      const lexeme = text.slice(i, j);
+      if (!JSON_NUMBER.test(lexeme)) throw new SyntaxError("Invalid JSON number");
+      parts.push(text.slice(chunkStart, i), JSON.stringify(tagNumber(canonicalNumber(lexeme))));
+      chunkStart = j;
+      i = j;
+      continue;
+    }
+    i++;
+  }
+  parts.push(text.slice(chunkStart));
+  return JSON.parse(parts.join(""));
 }
 
 const isTaggedNumber = (value) => typeof value === "string" && value.startsWith(NUMBER_TAG);
@@ -129,6 +217,17 @@ function scalarText(value) {
  * @returns {boolean} True if outputs match structurally/semantically
  */
 export function areOutputsEqual(actualRaw, expectedRaw) {
+  // Total function: malformed or adversarial output (e.g. JSON nested deeply
+  // enough to overflow JSON.stringify) is a wrong answer, never an exception
+  // that would turn the whole submission into ERROR.
+  try {
+    return compareOutputs(actualRaw, expectedRaw);
+  } catch {
+    return false;
+  }
+}
+
+function compareOutputs(actualRaw, expectedRaw) {
   const normActual = normalizeOutput(actualRaw);
   const normExpected = normalizeOutput(expectedRaw);
   if (normActual === normExpected) return true;

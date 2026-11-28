@@ -42,6 +42,15 @@ export const onboard = async (req, res, next) => {
       }));
     }
 
+    // SA-L5: there are only a few dozen DSA topics; a longer list is never
+    // legitimate and would turn into an oversized IN (...) query.
+    const MAX_TOPIC_ENTRIES = 100;
+    for (const list of [topicSelections, topicLevels, topicIds]) {
+      if (Array.isArray(list) && list.length > MAX_TOPIC_ENTRIES) {
+        throw new ApiError(400, `At most ${MAX_TOPIC_ENTRIES} topics can be submitted.`, "TOO_MANY_TOPICS");
+      }
+    }
+
     let resolvedTopicIdentifiers = [];
     const levelByTopicIdentifier = new Map();
 
@@ -246,7 +255,7 @@ export const getStatus = async (req, res, next) => {
  */
 export const updateLanguage = async (req, res, next) => {
   try {
-    const { language } = req.body;
+    const { language } = req.body ?? {};
     const allowed = ["cpp", "c", "java", "python", "javascript"];
     const normalized = String(language || "")
       .trim()

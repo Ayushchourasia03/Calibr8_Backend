@@ -11,6 +11,7 @@ import { protect } from "../middlewares/auth.middleware.js";
 import {
   analyzeLimiter,
   inFlightLimiter,
+  pollLimiter,
   runLimiter,
   submitLimiter,
 } from "../middlewares/rateLimit.middleware.js";
@@ -30,8 +31,8 @@ router.post("/run", protect, runLimiter, inFlightLimiter, runCode);
 router.post("/submit", protect, submitLimiter, inFlightLimiter, submitSolution);
 
 // GET /api/execution/submissions/:id - poll submission status, verdict & complexity
-router.get("/submissions/:id", protect, getSubmissionStatus);
-router.get("/submissions/:id/complexity", protect, getSubmissionComplexity);
+router.get("/submissions/:id", protect, pollLimiter, getSubmissionStatus);
+router.get("/submissions/:id/complexity", protect, pollLimiter, getSubmissionComplexity);
 
 // POST /api/execution/analyze-complexity - standalone static & empirical complexity analysis
 // Authenticated: the analyzer is CPU-heavy (it runs in a worker pool with a hard timeout).

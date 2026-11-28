@@ -10,6 +10,9 @@ import { purgeExpiredRevokedTokens } from "./utils/tokenBlacklist.js";
 import { getCodeboxUrl } from "./utils/codeboxClient.js";
 import { startProfilingWorker, stopProfilingWorker } from "./profiling/profilingQueue.js";
 import { closeComplexityPool } from "./services/complexityPool.js";
+import { closePasswordPool } from "./services/passwordPool.js";
+import { enforceEnvironment } from "./config/validateEnv.js";
+import { readLimit } from "./config/limits.js";
 import {
   drainEvaluations,
   recoverStaleSubmissions,
@@ -74,6 +77,9 @@ async function checkCodeboxEngine() {
 }
 
 async function startServer() {
+  // Unsafe production settings stop the process here (SA-M3); everything
+  // else is logged. Never prints secret values.
+  enforceEnvironment();
   warnAboutConfiguration();
   if (process.env.DATABASE_URL) {
     try {
@@ -122,6 +128,9 @@ async function startServer() {
   // timeouts (60 s) to avoid sporadic 502s on reused connections.
   server.keepAliveTimeout = 65_000;
   server.headersTimeout = 66_000;
+  // Time allowed to receive a whole request (slow-body clients). Response
+  // time of long synchronous submissions is not affected.
+  server.requestTimeout = readLimit("REQUEST_TIMEOUT_MS");
 
   server.on("error", (error) => {
     console.error("❌ Server error:", error.message);
@@ -159,6 +168,7 @@ async function shutdown(signal, exitCode = 0) {
   if (pending) console.log(`⏳ Waited for ${pending} background evaluation(s).`);
 
   await closeComplexityPool().catch(() => {});
+  await closePasswordPool().catch(() => {});
 
   try {
     await prisma.$disconnect();
@@ -174,4 +184,7 @@ async function shutdown(signal, exitCode = 0) {
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-startServer();
+startServer().catch((error) => {
+  console.error("❌ Startup failed:", error?.message || error);
+  process.exit(1);
+});

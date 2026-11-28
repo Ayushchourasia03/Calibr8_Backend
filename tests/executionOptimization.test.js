@@ -50,7 +50,6 @@ globalThis.fetch = async (input, options = {}) => {
         submissions: tokens.map((token, idx) => {
           const sub = lastSubmittedSubmissions[idx] || {};
           const stdin = sub.stdin || "";
-
           let stdout = "0 1";
           if (stdin.includes("3 2 4") || stdin.startsWith("3 6")) {
             stdout = "1 2";
@@ -231,12 +230,9 @@ async function runOptimizationTests() {
       assert.ok(r.input !== undefined, "Visible testcases must have input in run mode");
     }
 
-    // Verify compact complexity summary
-    assert.ok(runData.complexity, "Run response must include compact complexity");
-    assert.ok(runData.complexity.time && runData.complexity.time.bestEstimate, "Must have compact time estimate");
-    assert.ok(runData.complexity.space && runData.complexity.space.bestEstimate, "Must have compact space estimate");
-    // Ensure verbose dynamic profiler is not leaked to frontend in compact summary
-    assert.strictEqual(runData.complexity.dynamicProfiles, undefined, "Verbose dynamic profiles must not be exposed");
+    // Run checks visible cases only, so hidden-case correctness is unknown and
+    // complexity must only be returned by an accepted full submission.
+    assert.strictEqual(runData.complexity, undefined, "Run must not return complexity");
 
     // Ensure Run did not persist a submission ID
     assert.strictEqual(runData.submissionId, undefined, "Run endpoint must not persist or return submissionId");
@@ -269,6 +265,12 @@ async function runOptimizationTests() {
     assert.strictEqual(submitData.status, submitData.verdict);
     assert.strictEqual(typeof submitData.passedCount, "number");
     assert.strictEqual(typeof submitData.totalCount, "number");
+    if (submitData.verdict === "ACCEPTED") {
+      assert.strictEqual(submitData.passedCount, submitData.totalCount);
+      assert.ok(submitData.complexity, "Accepted full submission must return complexity");
+    } else {
+      assert.strictEqual(submitData.complexity, undefined, "Failed submission must not return complexity");
+    }
 
     // Verify duplicate fields are eliminated
     assert.strictEqual(submitData.cases, undefined, "Duplicate 'cases' array must NOT exist");
@@ -361,8 +363,12 @@ async function runOptimizationTests() {
     );
 
     // Verify stored complexity analysis is reused
-    assert.ok(sub.complexity, "Must return stored complexity analysis");
-    assert.strictEqual(sub.complexity.time.bestEstimate, "O(n)");
+    if (sub.verdict === "ACCEPTED") {
+      assert.ok(sub.complexity, "Must return stored complexity analysis");
+      assert.strictEqual(sub.complexity.time.bestEstimate, "O(n)");
+    } else {
+      assert.strictEqual(sub.complexity, undefined, "Failed submission details must not return complexity");
+    }
 
     // Verify compact problem info
     assert.strictEqual(sub.problem.slug, "two-sum");

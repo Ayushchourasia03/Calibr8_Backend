@@ -125,7 +125,7 @@ export const buyTheme = async (req, res, next) => {
 
 export const applyTheme = async (req, res, next) => {
   try {
-    const { slug } = req.body;
+    const { slug } = req.body ?? {};
     if (!slug) {
       throw new ApiError(400, "slug required", "BAD_REQUEST");
     }

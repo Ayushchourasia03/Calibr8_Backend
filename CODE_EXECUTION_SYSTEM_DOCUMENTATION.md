@@ -184,7 +184,7 @@ The Calibr8 Code Execution System provides a secure, sandboxed, high-throughput 
   "code": "class Solution:\n    def twoSum(self, nums: List[int], target: int) -> List[int]:\n        seen = {}\n        for i, num in enumerate(nums):\n            diff = target - num\n            if diff in seen:\n                return [seen[diff], i]\n            seen[num] = i\n        return []"
 }
 ```
-- **Execution Behavior:** Evaluates **only visible/sample test cases** (`isVisible: true`). Does not record submissions in the database or award points.
+- **Execution Behavior:** Evaluates **only visible/sample test cases** (`isVisible: true`). Does not record submissions in the database or award points. Because hidden testcases are not evaluated by Run, it does not return complexity data; complexity is returned only after a full submission passes every visible and hidden testcase.
 - **Success Response (`200 OK`)**:
 ```json
 {
