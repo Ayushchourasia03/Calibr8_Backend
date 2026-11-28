@@ -14,6 +14,22 @@ const SCOPES = ["global", "college", "batch", "state", "country"];
  * user ids and account creation dates are never exposed; the caller's own
  * row is flagged with isCurrentUser.
  */
+const REGIONAL_FIELDS = ["college", "branch", "batch", "state", "country"];
+
+/**
+ * Regional fields shown to signed-in users for OTHER users' rows (SA-L10,
+ * round 2): LEADERBOARD_REGIONAL_FIELDS = "all" (default, unchanged
+ * behaviour), "none", or a comma-separated subset. A product decision; the
+ * caller's own row always shows its own fields.
+ */
+export function visibleRegionalFields(raw = process.env.LEADERBOARD_REGIONAL_FIELDS) {
+  const value = String(raw ?? "all").trim().toLowerCase();
+  if (value === "" || value === "all") return REGIONAL_FIELDS;
+  if (value === "none") return [];
+  const wanted = new Set(value.split(",").map((f) => f.trim()));
+  return REGIONAL_FIELDS.filter((f) => wanted.has(f));
+}
+
 export const getRankings = async (req, res, next) => {
   try {
     const signedIn = Boolean(req.user?.id);
@@ -56,12 +72,18 @@ export const getRankings = async (req, res, next) => {
       },
     });
 
-    const data = users.map(({ id, college, branch, batch, state, country, ...row }, index) => ({
-      rank: index + 1,
-      ...row,
-      ...(signedIn ? { college, branch, batch, state, country } : {}),
-      isCurrentUser: signedIn && id === req.user.id,
-    }));
+    const shownFields = visibleRegionalFields();
+    const data = users.map(({ id, college, branch, batch, state, country, ...row }, index) => {
+      const isCurrentUser = signedIn && id === req.user.id;
+      const regional = { college, branch, batch, state, country };
+      const fields = isCurrentUser ? REGIONAL_FIELDS : signedIn ? shownFields : [];
+      return {
+        rank: index + 1,
+        ...row,
+        ...Object.fromEntries(fields.map((f) => [f, regional[f]])),
+        isCurrentUser,
+      };
+    });
 
     res.status(200).json({
       success: true,

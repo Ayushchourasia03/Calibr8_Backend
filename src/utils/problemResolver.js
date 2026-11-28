@@ -106,6 +106,9 @@ export function updateCachedProblemSolvedCount(problemId, solvedCount) {
 export async function resolveProblem(slugOrId) {
   if (!slugOrId) return null;
   const key = String(slugOrId).trim().toLowerCase();
+  // No slug, id or problem number is this long: answer "not found" without
+  // database work (SA-M6).
+  if (key.length > 200) return null;
 
   if (PROBLEM_CACHE_TTL_MS > 0) {
     const cached = problemCache.get(key);

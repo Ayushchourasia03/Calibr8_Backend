@@ -41,12 +41,19 @@ export const signSessionToken = (user, { authTime, expiresIn = JWT_EXPIRES_IN } 
  * @returns {object} decoded payload with jti, id, tv, auth_time, iat, exp
  * @throws {JsonWebTokenError | TokenExpiredError}
  */
-export const verifyToken = (token) =>
-  jwt.verify(token, JWT_SECRET, {
+export const verifyToken = (token) => {
+  const decoded = jwt.verify(token, JWT_SECRET, {
     algorithms: [JWT_ALGORITHM],
     issuer: JWT_ISSUER,
     audience: JWT_AUDIENCE,
   });
+  // Every session token is issued with an expiry; one without is never valid
+  // (FV-7: jsonwebtoken only checks exp when it is present).
+  if (typeof decoded?.exp !== "number") {
+    throw new jwt.JsonWebTokenError("jwt exp claim required");
+  }
+  return decoded;
+};
 
 /**
  * Decode token without verification (useful for inspecting exp/jti on expired/revoking tokens).

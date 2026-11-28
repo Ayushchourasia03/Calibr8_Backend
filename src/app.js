@@ -7,6 +7,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import indexRouter from "./routers/index.router.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
+import { apiLimiter } from "./middlewares/rateLimit.middleware.js";
+import { allowLogLine, httpLogStream, sanitizeLogText, statusCategory } from "./utils/logLimiter.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,6 +43,24 @@ app.use((req, res, next) => {
 export const serveApiConsole =
   (isDevOrTest && process.env.SERVE_API_CONSOLE !== "false") ||
   process.env.SERVE_API_CONSOLE === "true";
+
+// 0b. Log failed requests only; never print request bodies such as submitted
+// code. One line per failed request, within a per-minute budget per status
+// class (the budget is checked before the line is formatted; the rest is
+// summarized once a minute, SA-L9 round 2). The error code comes from the
+// error handler (res.locals.errorCode), so it does not log a second line.
+morgan.token("path", (req) => sanitizeLogText(req.path));
+morgan.token("id", (req) => sanitizeLogText(req.id, 64));
+morgan.token("code", (_req, res) => sanitizeLogText(res.locals?.errorCode || "-", 64));
+app.use(
+  morgan(":method :path :status :response-time ms :code :id", {
+    stream: httpLogStream,
+    skip: (_req, res) => {
+      const category = statusCategory(res.statusCode);
+      return !category || !allowLogLine(category);
+    },
+  }),
+);
 
 // 1. Security headers
 app.use((req, res, next) => {
@@ -86,18 +106,14 @@ app.use(
   }),
 );
 
-// 3. Body parsing
+// 3. Per-IP ceiling for every API request (SA-M6), before any parsing or
+// database work. Stricter per-route limiters still apply.
+app.use("/api", apiLimiter);
+
+// 4. Body parsing
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
-// 4. Log failed requests only; never print request bodies such as submitted code.
-morgan.token("path", (req) => req.path);
-morgan.token("id", (req) => req.id);
-app.use(
-  morgan(":method :path :status :response-time ms :id", {
-    skip: (_req, res) => res.statusCode < 400,
-  }),
-);
 
 // The API explorer page is a development tool: not served in production
 // unless explicitly enabled.

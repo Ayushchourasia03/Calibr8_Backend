@@ -1,5 +1,9 @@
+import crypto from "crypto";
 import { ApiError } from "../utils/ApiError.js";
 import { clientIpKey } from "../utils/clientIp.js";
+import { readLimit } from "../config/limits.js";
+import { securityEvent } from "../utils/securityLog.js";
+import { verifyToken } from "../utils/jwt.js";
 
 // NOTE: counters live in this process. With several backend instances each
 // instance enforces its own budget, so put an edge/WAF rate limit in front of
@@ -23,6 +27,7 @@ export function createRateLimiter(options) {
     keyGenerator = (req) => clientIpKey(req),
     message = "Too many requests. Please wait a moment before trying again.",
     code = "RATE_LIMITED",
+    name = "rate_limit",
   } = options;
 
   const hits = new Map();
@@ -68,6 +73,7 @@ export function createRateLimiter(options) {
 
     if (record.count > max) {
       res.setHeader("Retry-After", resetSeconds);
+      if (record.count === max + 1) securityEvent("rate_limited", { limiter: name, req });
       return next(
         new ApiError(429, message, code, { retryAfterSeconds: resetSeconds }),
       );
@@ -88,6 +94,101 @@ export const authLimiter = createRateLimiter({
   message:
     "Too many login or registration attempts. Please try again in a few minutes.",
   code: "AUTH_RATE_LIMITED",
+  name: "auth",
+});
+
+/**
+ * Account creation per IP (IPv6: per /64), on top of authLimiter (SA-M4):
+ * slows down bulk creation of throwaway accounts, each of which would bring
+ * its own per-user execution budget.
+ */
+export const registerLimiter = createRateLimiter({
+  windowMs: readLimit("REGISTER_RATE_LIMIT_WINDOW_MS"),
+  max: readLimit("REGISTER_RATE_LIMIT_MAX"),
+  keyGenerator: (req) => `register:${clientIpKey(req)}`,
+  message: "Too many accounts were created from this network. Please try again later.",
+  code: "REGISTER_RATE_LIMITED",
+  name: "register",
+});
+
+/**
+ * Generous per-IP ceiling for every /api request (SA-M6). Endpoints with
+ * their own, stricter limiter keep it; this one bounds what a single client
+ * can make the database do through public, otherwise unthrottled reads.
+ */
+const unauthenticatedApiLimiter = createRateLimiter({
+  windowMs: readLimit("API_RATE_LIMIT_WINDOW_MS"),
+  max: readLimit("API_RATE_LIMIT_MAX"),
+  keyGenerator: (req) => `api:${clientIpKey(req)}`,
+  name: "api",
+});
+const userApiLimiter = createRateLimiter({
+  windowMs: readLimit("API_RATE_LIMIT_WINDOW_MS"),
+  max: readLimit("API_USER_RATE_LIMIT_MAX"),
+  keyGenerator: (req) => `apiuser:${req.rateLimitUserId}`,
+  name: "api_user",
+});
+const authenticatedIpApiLimiter = createRateLimiter({
+  windowMs: readLimit("API_RATE_LIMIT_WINDOW_MS"),
+  max: readLimit("API_AUTHENTICATED_IP_RATE_LIMIT_MAX"),
+  keyGenerator: (req) => `apiip:${clientIpKey(req)}`,
+  name: "api_ip_authenticated",
+});
+
+/** User id of a validly signed, unexpired session token on the request, else null (no database). */
+function signedSessionUserId(req) {
+  const header = req.headers?.authorization;
+  if (typeof header !== "string" || !header.startsWith("Bearer ") || header.length > 4096) return null;
+  try {
+    const decoded = verifyToken(header.slice(7).trim());
+    return typeof decoded?.id === "string" && decoded.id.length <= 64 ? decoded.id : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Ceiling for every /api request (SA-M6), identity-aware since round 2
+ * (FV-5). Requests with a validly signed session token are budgeted per user
+ * (API_USER_RATE_LIMIT_MAX), with a high per-IP safety ceiling
+ * (API_AUTHENTICATED_IP_RATE_LIMIT_MAX), so students behind one campus NAT
+ * no longer share one bucket. Everything else keeps the per-IP budget
+ * (API_RATE_LIMIT_MAX). A forged token cannot pick a bucket: the signature
+ * is checked (HMAC only; revocation is checked later by protect).
+ */
+export function apiLimiter(req, res, next) {
+  const userId = signedSessionUserId(req);
+  if (!userId) return unauthenticatedApiLimiter(req, res, next);
+  req.rateLimitUserId = userId;
+  return authenticatedIpApiLimiter(req, res, (err) => (err ? next(err) : userApiLimiter(req, res, next)));
+}
+
+/**
+ * Submission-status polling per user (round 2). Its own budget, so polling
+ * cannot use up the global one and a stuck client cannot poll without bound.
+ */
+export const pollLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: readLimit("POLL_RATE_LIMIT_MAX"),
+  keyGenerator: (req) => `poll:${req.user?.id || clientIpKey(req)}`,
+  message: "You are checking submission status too often. Please slow down.",
+  name: "poll",
+});
+
+/** Readiness probes per IP (SA-M6 round 2); load balancers probe a few times a minute. */
+export const healthLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: readLimit("HEALTH_RATE_LIMIT_MAX"),
+  keyGenerator: (req) => `health:${clientIpKey(req)}`,
+  name: "health",
+});
+
+/** OAuth callback (unauthenticated, makes outbound GitHub calls) per IP (SA-L6). */
+export const oauthCallbackLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: readLimit("OAUTH_CALLBACK_RATE_LIMIT_MAX"),
+  keyGenerator: (req) => `oauth-callback:${clientIpKey(req)}`,
+  name: "oauth_callback",
 });
 
 /**
@@ -102,14 +203,21 @@ setInterval(() => {
   for (const [key, record] of loginFailures) if (now > record.resetTime) loginFailures.delete(key);
 }, 60_000).unref?.();
 
+// Fixed-size key per account (SA-M1): the raw email is attacker-sized input
+// and used to be kept in this map for 15 minutes per failed attempt.
+function accountKey(email) {
+  return crypto.createHash("sha256").update(String(email || "").trim().toLowerCase()).digest("base64url").slice(0, 22);
+}
+
 function loginThrottleKey(email, ipKey = "default") {
-  return `${String(email || "").trim().toLowerCase()}|${ipKey || "default"}`;
+  return `${accountKey(email)}|${String(ipKey || "default").slice(0, 64)}`;
 }
 
 export function assertLoginAllowed(email, ipKey = "default") {
   const record = loginFailures.get(loginThrottleKey(email, ipKey));
   if (record && Date.now() <= record.resetTime && record.count >= LOGIN_FAILURE_MAX) {
     const retryAfterSeconds = Math.ceil((record.resetTime - Date.now()) / 1000);
+    securityEvent("login_locked", { account: accountKey(email), ip: ipKey });
     throw new ApiError(
       429,
       "Too many failed login attempts for this account. Please try again later.",
@@ -134,12 +242,11 @@ export function recordFailedLogin(email, ipKey = "default") {
 }
 
 export function clearFailedLogins(email, ipKey = null) {
-  const normalized = String(email || "").trim().toLowerCase();
   if (ipKey) {
-    loginFailures.delete(loginThrottleKey(normalized, ipKey));
+    loginFailures.delete(loginThrottleKey(email, ipKey));
     return;
   }
-  const prefix = `${normalized}|`;
+  const prefix = `${accountKey(email)}|`;
   for (const key of loginFailures.keys()) {
     if (key.startsWith(prefix)) loginFailures.delete(key);
   }

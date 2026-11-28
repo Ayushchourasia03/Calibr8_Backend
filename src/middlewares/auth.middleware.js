@@ -1,6 +1,7 @@
 import { verifyToken } from '../utils/jwt.js';
 import { ApiError } from '../utils/ApiError.js';
 import { isTokenBlacklisted } from '../utils/tokenBlacklist.js';
+import { securityEvent } from '../utils/securityLog.js';
 import prisma from '../config/db.js';
 
 // Lean projection loaded on every authenticated request. Handlers that need
@@ -95,8 +96,11 @@ export const protect = async (req, res, next) => {
       return next(new ApiError(401, 'Token expired. Please log in again.', 'TOKEN_EXPIRED'));
     }
     if (err.name === 'JsonWebTokenError' || err.name === 'NotBeforeError') {
+      // A bad signature/issuer/audience is never produced by our own clients.
+      securityEvent('token_rejected', { req, reason: err.name });
       return next(new ApiError(401, 'Invalid token. Please log in again.', 'INVALID_TOKEN'));
     }
+    if (err.code === 'TOKEN_REVOKED') securityEvent('token_rejected', { req, reason: 'revoked' });
     next(err);
   }
 };

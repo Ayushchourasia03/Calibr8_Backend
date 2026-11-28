@@ -4,6 +4,7 @@
 // synchronous code) and a fresh worker takes its place. When the queue is
 // full, analysis is skipped: it is optional and never affects verdicts.
 import { Worker } from "worker_threads";
+import { readLimit } from "../config/limits.js";
 
 const WORKER_URL = new URL("./complexityWorker.js", import.meta.url);
 
@@ -31,7 +32,16 @@ function unknown(reason) {
 }
 
 function spawn() {
-  const slot = { worker: new Worker(WORKER_URL), job: null };
+  // Heap cap (SA-L4): an input that makes the analyzer allocate without bound
+  // kills only this worker (ERR_WORKER_OUT_OF_MEMORY -> "unknown" result and
+  // a fresh worker), never the API process.
+  const heapMb = readLimit("COMPLEXITY_WORKER_MAX_HEAP_MB");
+  const slot = {
+    worker: new Worker(WORKER_URL, {
+      resourceLimits: { maxOldGenerationSizeMb: heapMb, maxYoungGenerationSizeMb: Math.max(16, Math.floor(heapMb / 8)) },
+    }),
+    job: null,
+  };
   slot.worker.on("message", ({ id, result, error }) => {
     const job = slot.job;
     if (!job || job.id !== id) return;

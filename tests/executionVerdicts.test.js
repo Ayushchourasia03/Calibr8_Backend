@@ -220,6 +220,7 @@ try {
   const dataAccepted = await resAccepted.json();
   assert.equal(dataAccepted.verdict, "Accepted");
   assert.equal(dataAccepted.passedCount, 2);
+  assert.equal(dataAccepted.complexity, undefined);
 
   // Wrong Answer
   currentBehavior = () => ({ statusId: 3, stdout: "99 99" });
@@ -238,6 +239,7 @@ try {
   assert.equal(resWA.status, 200);
   const dataWA = await resWA.json();
   assert.equal(dataWA.verdict, "Wrong Answer");
+  assert.equal(dataWA.complexity, undefined);
 
   // Time Limit Exceeded (statusId: 5)
   currentBehavior = () => ({ statusId: 5, stdout: "" });
@@ -256,6 +258,7 @@ try {
   assert.equal(resTLE.status, 200);
   const dataTLE = await resTLE.json();
   assert.equal(dataTLE.verdict, "Time Limit Exceeded");
+  assert.equal(dataTLE.complexity, undefined);
 
   // Compilation Error (statusId: 6)
   currentBehavior = () => ({ statusId: 6, compile_output: "SyntaxError: invalid syntax" });
@@ -274,6 +277,7 @@ try {
   assert.equal(resCE.status, 200);
   const dataCE = await resCE.json();
   assert.equal(dataCE.verdict, "Compilation Error");
+  assert.equal(dataCE.complexity, undefined);
   console.log("Run verdicts (Accepted, WA, TLE, CE) verified.");
 
   // 5. Multi-Tier Submission: POST /api/execution/submit & Polling
@@ -300,6 +304,7 @@ try {
   assert.equal(dataSubmit.tierReached, "Tier 3 (Optimal)");
   assert.equal(dataSubmit.passedCount, twoSumCount);
   assert.equal(dataSubmit.totalCount, twoSumCount);
+  assert.ok(dataSubmit.complexity);
   const submissionId = dataSubmit.submissionId;
   assert.ok(submissionId);
 
@@ -313,6 +318,7 @@ try {
   assert.equal(pollData.submission.id, submissionId);
   assert.equal(pollData.submission.verdict, "ACCEPTED");
   assert.equal(pollData.submission.tierReached, "Tier 3 (Optimal)");
+  assert.ok(pollData.submission.complexity);
 
   // Hidden testcase protection check: ensure hidden testcases have input/expected omitted
   const hiddenCases = pollData.submission.results.filter((r) => !r.isVisible);
@@ -338,6 +344,12 @@ try {
   const shortData = await resShort.json();
   assert.equal(shortData.verdict, "WRONG_ANSWER");
   assert.equal(shortData.tierReached, "Tier 0 (Failed)");
+  assert.equal(shortData.complexity, undefined);
+  const shortPoll = await fetch(`${baseUrl}/execution/submissions/${shortData.submissionId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(shortPoll.status, 200);
+  assert.equal((await shortPoll.json()).submission.complexity, undefined);
   assert.equal(shortData.totalCount, twoSumCount);
   assert.ok(shortData.results.length < twoSumCount, "Tier 2 and Tier 3 should be short-circuited");
   console.log("Tier short-circuiting verified.");

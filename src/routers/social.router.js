@@ -6,7 +6,7 @@ import {
   unlinkProvider,
 } from "../controllers/social.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
-import { sessionLimiter } from "../middlewares/rateLimit.middleware.js";
+import { oauthCallbackLimiter, sessionLimiter } from "../middlewares/rateLimit.middleware.js";
 
 const router = Router();
 
@@ -14,7 +14,7 @@ const router = Router();
 router.get("/:provider/link-url", protect, sessionLimiter, getLinkUrl);
 
 // GET /api/social/:provider/callback - OAuth callback handler (redirects with ?link_code)
-router.get("/:provider/callback", handleCallback);
+router.get("/:provider/callback", oauthCallbackLimiter, handleCallback);
 
 // POST /api/social/:provider/complete - link the provider account to the signed-in user
 router.post("/:provider/complete", protect, sessionLimiter, completeLink);

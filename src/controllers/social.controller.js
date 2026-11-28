@@ -112,10 +112,24 @@ function openLinkCode(code) {
 
 // Codes are single-use within this process (best effort; they also expire).
 const usedLinkCodes = new Map(); // nonce -> expiry
+// OAuth `state` values are single-use too (SA-L6): a state can start one
+// GitHub code exchange, not one per replay during its 10-minute lifetime.
+const usedStateNonces = new Map(); // nonce -> expiry (ms)
+const MAX_TRACKED_NONCES = 50_000;
 setInterval(() => {
   const now = Date.now();
   for (const [nonce, exp] of usedLinkCodes) if (exp < now) usedLinkCodes.delete(nonce);
+  for (const [nonce, exp] of usedStateNonces) if (exp < now) usedStateNonces.delete(nonce);
 }, 60_000).unref?.();
+
+/** Marks a state nonce as used; false when it was already used. */
+function consumeStateNonce(payload) {
+  const nonce = typeof payload?.nonce === "string" ? payload.nonce : null;
+  if (!nonce || usedStateNonces.has(nonce)) return false;
+  if (usedStateNonces.size >= MAX_TRACKED_NONCES) usedStateNonces.delete(usedStateNonces.keys().next().value);
+  usedStateNonces.set(nonce, (Number(payload.exp) || Date.now() / 1000 + 600) * 1000);
+  return true;
+}
 
 /**
  * GET /api/social/:provider/link-url
@@ -192,6 +206,9 @@ export const handleCallback = async (req, res) => {
     const providerName = String(provider).toLowerCase();
     if (providerName !== "github" || payload.provider !== providerName) {
       return res.redirect(`${safeFrontend}/?link_error=UNKNOWN_PROVIDER`);
+    }
+    if (!consumeStateNonce(payload)) {
+      return res.redirect(`${safeFrontend}/?link_error=EXPIRED`);
     }
 
     const config = oauthConfig(providerName);

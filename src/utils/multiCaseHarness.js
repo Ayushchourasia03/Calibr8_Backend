@@ -56,6 +56,7 @@ const HARNESS_C = String.raw`
 #include <sys/syscall.h>
 #include <sys/prctl.h>
 #include <errno.h>
+#include <time.h>
 
 #ifndef PR_SET_CHILD_SUBREAPER
 #define PR_SET_CHILD_SUBREAPER 36
@@ -115,6 +116,42 @@ static void c8__close_from(int lowfd) {
   if (syscall(SYS_close_range, (unsigned int)lowfd, ~0U, 0) == 0) return;
 #endif
   for (int fd = lowfd; fd < 4096; fd++) close(fd);
+}
+
+/* Descendants that left the case's process group (setsid/setpgid) survive
+   kill(-pid). The harness is a child-subreaper, so they become its children:
+   kill every remaining child before the next case starts, so nothing started
+   by one case can observe or influence a later one (SA-L1). */
+static void c8__kill_strays(void) {
+  pid_t self = getpid();
+  for (int round = 0; round < 64; round++) {
+    int found = 0;
+    DIR* dp = opendir("/proc");
+    if (!dp) return;
+    struct dirent* e;
+    char path[64], line[512];
+    while ((e = readdir(dp)) != NULL) {
+      char* end = NULL;
+      long pid = strtol(e->d_name, &end, 10);
+      if (!end || *end || pid <= 0 || pid == (long)self) continue;
+      snprintf(path, sizeof path, "/proc/%ld/stat", pid);
+      int fd = open(path, O_RDONLY | O_CLOEXEC);
+      if (fd < 0) continue;
+      ssize_t n = read(fd, line, sizeof line - 1);
+      close(fd);
+      if (n <= 0) continue;
+      line[n] = 0;
+      char* rp = NULL; /* "pid (comm) S ppid ...": comm may contain ')' */
+      for (char* q = line; *q; q++) if (*q == ')') rp = q;
+      if (!rp || rp[1] == 0 || rp[2] == 0 || rp[3] == 0) continue;
+      if (strtol(rp + 3, NULL, 10) == (long)self) { kill((pid_t)pid, SIGKILL); found = 1; }
+    }
+    closedir(dp);
+    while (waitpid(-1, NULL, WNOHANG) > 0) {}
+    if (!found) return;
+    struct timespec ts = { 0, 1000000 };
+    nanosleep(&ts, NULL);
+  }
 }
 
 /* Per-case filesystem isolation: entries present before the first case are
@@ -297,7 +334,7 @@ __attribute__((constructor(101))) static void c8__harness(void) {
       kill(-pid, SIGKILL); /* anything the case left running in its group */
     }
     gettimeofday(&t1, NULL);
-    while (waitpid(-1, NULL, WNOHANG) > 0) {}
+    c8__kill_strays();
     c8__cleanup_fs();
 
     long cpuMs = ru.ru_utime.tv_sec * 1000 + ru.ru_utime.tv_usec / 1000
@@ -345,6 +382,8 @@ const HARNESS_LIBC_FUNCTIONS = [
   "sigaction", "sigemptyset", "signal", "snprintf", "strcmp", "strdup",
   "strncmp", "strtol", "syscall", "tmpfile", "unlink", "wait4", "waitpid",
   "write", "exit", "abort", "malloc", "free", "calloc", "realloc",
+  // c8__kill_strays (SA-L1)
+  "getpid", "open", "nanosleep",
 ];
 const LIBC_CALL_START = new RegExp(
   `\\b(?:${HARNESS_LIBC_FUNCTIONS.join("|")})\\s*\\(`,

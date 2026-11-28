@@ -15,6 +15,8 @@ import coinRouter from "./coin.router.js";
 import dailyProblemRouter from "./dailyProblem.router.js";
 import prisma from "../config/db.js";
 import { getCodeboxUrl, fetchCodeboxJson } from "../utils/codeboxClient.js";
+import { createReadinessProbe } from "../utils/readiness.js";
+import { healthLimiter } from "../middlewares/rateLimit.middleware.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,22 +47,23 @@ async function checkCodebox() {
   codeboxCheck = { at: Date.now(), ok };
   return ok;
 }
-const withTimeout = (promise, ms) =>
-  Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms).unref())]);
+// Single-flight, cached for READINESS_CACHE_MS, rate-limited per IP: a probe
+// flood makes at most one database query per interval (SA-M6 round 2).
+const readinessProbe = createReadinessProbe({
+  checkDatabase: () => prisma.$queryRaw`SELECT 1`,
+  checkCodebox,
+});
 const handleReady = async (req, res) => {
-  const [database, codebox] = await Promise.all([
-    withTimeout(prisma.$queryRaw`SELECT 1`, 2000).then(() => true, () => false),
-    checkCodebox(),
-  ]);
-  const ready = database && codebox !== false;
+  const { ready, checks, checkedAt } = await readinessProbe();
   res.status(ready ? 200 : 503).json({
     status: ready ? "ready" : "degraded",
-    checks: { database, codebox },
+    checks,
+    checkedAt: new Date(checkedAt).toISOString(),
     timestamp: new Date().toISOString(),
   });
 };
-router.get("/health/ready", handleReady);
-router.get("/api/health/ready", handleReady);
+router.get("/health/ready", healthLimiter, handleReady);
+router.get("/api/health/ready", healthLimiter, handleReady);
 
 // Consistent /api/* routing namespace
 router.use("/api/auth", authRouter);
