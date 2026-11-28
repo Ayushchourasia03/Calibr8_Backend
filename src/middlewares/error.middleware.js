@@ -1,4 +1,5 @@
 import { ApiError } from "../utils/ApiError.js";
+import { allowLogLine, sanitizeLogText } from "../utils/logLimiter.js";
 
 /**
  * Global error handling middleware.
@@ -17,15 +18,19 @@ export const errorHandler = (err, req, res, next) => {
   const status = err instanceof ApiError ? err.status : err.status || err.statusCode;
   // Unexpected (5xx) errors are logged with their stack for diagnosis; the
   // client only ever sees a generic message.
+  // The request line (morgan, src/app.js) carries this code; client errors
+  // are not logged a second time here (SA-L9 round 2).
+  if (res.locals) res.locals.errorCode = err?.code || err?.type || err?.name;
   if (!status || status >= 500) {
-    // Prisma messages embed the query arguments (user data): log the class
-    // and code only for those.
-    const detail = String(err?.name || "").startsWith("PrismaClient")
-      ? `${err.name} ${err.code || ""}`
-      : err?.stack || err;
-    console.error(`[API Error]${requestId} ${req.method} ${req.path}:`, detail);
-  } else {
-    console.error(`[API Error]${requestId} ${req.method} ${req.path}:`, err.name || "Error", err.code || "");
+    // Within the per-minute 5xx budget (src/utils/logLimiter.js); checked
+    // before the stack is formatted. Prisma messages embed the query
+    // arguments (user data): log the class and code only for those.
+    if (allowLogLine("5xx")) {
+      const detail = String(err?.name || "").startsWith("PrismaClient")
+        ? `${err.name} ${err.code || ""}`
+        : err?.stack || err;
+      console.error(`[API Error]${sanitizeLogText(requestId, 80)} ${req.method} ${sanitizeLogText(req.path)}:`, detail);
+    }
   }
 
   if (err instanceof ApiError) {
@@ -41,6 +46,14 @@ export const errorHandler = (err, req, res, next) => {
   }
 
   // Body parser errors (express.json / urlencoded)
+  // FV-9: too many urlencoded parameters is its own error, not "code too large".
+  if (err.type === "parameters.too.many") {
+    return res.status(413).json({
+      success: false,
+      code: "TOO_MANY_PARAMETERS",
+      message: "Request has too many parameters.",
+    });
+  }
   if (err.type === "entity.too.large") {
     return res.status(413).json({
       success: false,

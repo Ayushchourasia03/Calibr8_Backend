@@ -6,3 +6,12 @@ npm-debug.log
 .vscode/
 solutions/
 
+# Security assessment material describes open, exploitable weaknesses and
+# must never reach this (public) repository. Keep it locally or in a private
+# location. (BACKEND_PRODUCTION_AUDIT.md and walkthrough.md were committed
+# before this rule; removing them from the repository is an owner decision.)
+SECURITY_AUDIT.md
+SECURITY_REMEDIATION.md
+SECURITY_REMEDIATION_ROUND2.md
+FINAL_SECURITY_VERIFICATION.md
+

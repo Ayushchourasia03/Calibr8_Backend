@@ -9,11 +9,11 @@ import {
   logoutAll,
 } from '../controllers/auth.controller.js';
 import { protect } from '../middlewares/auth.middleware.js';
-import { authLimiter, sessionLimiter } from '../middlewares/rateLimit.middleware.js';
+import { authLimiter, registerLimiter, sessionLimiter } from '../middlewares/rateLimit.middleware.js';
 
 const router = Router();
 
-router.post('/register', authLimiter, register);
+router.post('/register', authLimiter, registerLimiter, register);
 router.post('/login', authLimiter, login);
 router.post('/logout', protect, logout);
 router.post('/logout-all', protect, sessionLimiter, logoutAll);

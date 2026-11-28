@@ -205,7 +205,9 @@ test("Python never uses the harness", async () => {
   assert.deepEqual(requests.map((r) => r.url.pathname), ["/batches"]);
 });
 
-test("harness results are deleted from CodeBox after they are read", () => {
-  assert.ok(cleanupDeletes.length > 0, "at least one DELETE /submissions/:token was sent");
-  assert.ok(cleanupDeletes.every((path) => path.startsWith("/submissions/")));
+test("harness and batch results are deleted from CodeBox after they are read", () => {
+  assert.ok(cleanupDeletes.some((path) => path.startsWith("/submissions/")), "DELETE /submissions/:token was sent");
+  // SA-H2: batch results (source + every stdin + outputs) are freed too.
+  assert.ok(cleanupDeletes.some((path) => path.startsWith("/batches/")), "DELETE /batches/:id was sent");
+  assert.ok(cleanupDeletes.every((path) => path.startsWith("/submissions/") || path.startsWith("/batches/")));
 });

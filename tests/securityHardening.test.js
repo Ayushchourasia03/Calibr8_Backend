@@ -105,14 +105,15 @@ test("H3: judge admission caps concurrency and rejects when the queue is full", 
   process.env.JUDGE_QUEUE_TIMEOUT_MS = "1000";
   __resetJudgeAdmissionForTests();
   try {
-    const release1 = await acquireJudgeSlot();
-    const second = acquireJudgeSlot(); // queued
-    await assert.rejects(acquireJudgeSlot(), (err) => err.code === "JUDGE_BUSY");
+    // Distinct users (round 2: each user also has a session cap).
+    const release1 = await acquireJudgeSlot({ userId: "h3-a" });
+    const second = acquireJudgeSlot({ userId: "h3-b" }); // queued
+    await assert.rejects(acquireJudgeSlot({ userId: "h3-c" }), (err) => err.code === "JUDGE_BUSY");
     release1();
     const release2 = await second; // handed over
     release2();
     release2(); // idempotent
-    const release3 = await acquireJudgeSlot();
+    const release3 = await acquireJudgeSlot({ userId: "h3-c" });
     release3();
   } finally {
     delete process.env.JUDGE_MAX_CONCURRENT;

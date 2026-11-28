@@ -1,5 +1,8 @@
 import prisma from "../config/db.js";
-import { hashPassword, comparePassword, needsRehash } from "../utils/bcrypt.js";
+import crypto from "crypto";
+import { hashPassword, comparePassword, needsRehash, isPasswordInputTooLong } from "../utils/bcrypt.js";
+import { securityEvent } from "../utils/securityLog.js";
+import { FIELD_LIMITS } from "../utils/validation.js";
 import { signSessionToken, decodeToken, assertSessionWithinMaxAge } from "../utils/jwt.js";
 import { ApiError } from "../utils/ApiError.js";
 import { blacklistToken } from "../utils/tokenBlacklist.js";
@@ -13,6 +16,10 @@ import {
 } from "../middlewares/rateLimit.middleware.js";
 import { grantDailyLoginReward, getCoinsEarnedToday } from "../services/coinService.js";
 import { getISTDateString } from "../services/streakService.js";
+
+/** Account reference for security logs: never the email itself. */
+const accountRef = (email) =>
+  crypto.createHash("sha256").update(String(email || "").trim().toLowerCase()).digest("base64url").slice(0, 22);
 
 // Never sent to clients.
 function stripSecrets(user) {
@@ -168,8 +175,16 @@ export const login = async (req, res, next) => {
     if (typeof email !== "string" || typeof password !== "string") {
       throw new ApiError(400, "email and password must be strings.", "MISSING_CREDENTIALS");
     }
+    // SA-M1: oversized input is rejected before any database query, bcrypt
+    // work or throttle bookkeeping (which would keep it in memory).
+    if (email.length > FIELD_LIMITS.email + 32 || isPasswordInputTooLong(password)) {
+      throw new ApiError(400, "Invalid email or password.", "INVALID_CREDENTIALS_FORMAT");
+    }
 
     const normalizedEmail = email.trim().toLowerCase();
+    if (normalizedEmail.length > FIELD_LIMITS.email) {
+      throw new ApiError(400, "Invalid email or password.", "INVALID_CREDENTIALS_FORMAT");
+    }
     const ipKey = clientIpKey(req);
     // Per-(account, IP) throttle on top of the per-IP limiter (credential stuffing).
     assertLoginAllowed(normalizedEmail, ipKey);
@@ -190,6 +205,7 @@ export const login = async (req, res, next) => {
     const isMatch = await comparePassword(password, user?.passwordHash);
     if (!user || !isMatch) {
       recordFailedLogin(normalizedEmail, ipKey);
+      securityEvent("login_failed", { req, account: accountRef(normalizedEmail), knownAccount: Boolean(user) });
       throw new ApiError(401, "Invalid email or password.", "INVALID_CREDENTIALS");
     }
     clearFailedLogins(normalizedEmail, ipKey);
@@ -285,6 +301,7 @@ export const logoutAll = async (req, res, next) => {
     if (req.token) {
       await blacklistToken(req.token, req.auth?.decoded || decodeToken(req.token));
     }
+    securityEvent("sessions_revoked", { req, reason: "logout_all" });
     res.status(200).json({
       success: true,
       message: "Logged out of all sessions.",
@@ -450,6 +467,7 @@ export const changePassword = async (req, res, next) => {
 
     const isMatch = await comparePassword(currentPassword, user.passwordHash);
     if (!isMatch) {
+      securityEvent("password_change_failed", { req });
       throw new ApiError(400, "Current password is incorrect.", "INVALID_CURRENT_PASSWORD");
     }
 
@@ -462,6 +480,7 @@ export const changePassword = async (req, res, next) => {
       select: { id: true, tokenVersion: true },
     });
     clearFailedLogins(user.email);
+    securityEvent("sessions_revoked", { req, reason: "password_changed" });
 
     res.status(200).json({
       success: true,
@@ -499,6 +518,7 @@ export const deleteAccount = async (req, res, next) => {
     if (req.token) {
       await blacklistToken(req.token, req.auth?.decoded || decodeToken(req.token));
     }
+    securityEvent("account_deleted", { req });
 
     res.status(200).json({ success: true, message: "Your account has been deleted." });
   } catch (err) {
